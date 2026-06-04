@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Select Language{% endblock %}
+{% block content %}
+<h2>Select Exam Language</h2>
+<form method="POST" action="{{ url_for('student_exam_start') }}">
+    <div class="row mt-4">
+        {% for lang, cfg in languages.items() %}
+        <div class="col-md-3 mb-3">
+            <div class="card p-3 text-center">
+                <input type="radio" name="language" value="{{ lang }}" id="lang-{{ lang }}" class="form-check-input" required>
+                <label for="lang-{{ lang }}" class="form-check-label d-block">
+                    <h5>{{ cfg.name }}</h5>
+                    <small class="text-muted">.{{ cfg.ext }}</small>
+                </label>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    <button type="submit" class="btn btn-primary btn-lg mt-3">Start Exam</button>
+</form>
+{% endblock %}

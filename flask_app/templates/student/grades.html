@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}My Grades{% endblock %}
+{% block content %}
+<h2>My Grade History</h2>
+
+{% if grades %}
+<table class="table table-hover mt-3">
+    <thead class="table-dark">
+        <tr>
+            <th>#</th>
+            <th>Date</th>
+            <th>Question</th>
+            <th>Language</th>
+            <th>Score</th>
+            <th>Status</th>
+            <th>AI Comment</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for g in grades %}
+        <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ g.submitted_at.strftime('%Y-%m-%d %H:%M') if g.submitted_at else 'N/A' }}</td>
+            <td>{{ g.question_text[:50] }}...</td>
+            <td><span class="badge bg-secondary">{{ g.language }}</span></td>
+            <td><strong>{{ g.score }}/100</strong></td>
+            <td>
+                {% if g.is_reviewed %}
+                <span class="badge bg-success">Reviewed</span>
+                {% else %}
+                <span class="badge bg-warning">AI Rated</span>
+                {% endif %}
+            </td>
+            <td><small class="text-muted">{{ g.ai_comment[:60] }}...</small></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="alert alert-info">No exam records yet. <a href="{{ url_for('student_select_language') }}">Take an exam</a>.</div>
+{% endif %}
+
+<a href="{{ url_for('student_dashboard') }}" class="btn btn-outline-secondary">Back to Dashboard</a>
+{% endblock %}

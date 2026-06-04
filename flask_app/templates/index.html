@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Login - Exam System{% endblock %}
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-5">
+        <div class="card p-4">
+            <h2 class="text-center mb-4">Login</h2>
+            <form method="POST" action="{{ url_for('login') }}">
+                <div class="mb-3">
+                    <label class="form-label">Name</label>
+                    <input type="text" name="name" class="form-control" required maxlength="100" autofocus>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Employee / Student ID</label>
+                    <input type="text" name="employee_id" class="form-control" required maxlength="50">
+                </div>
+                <div class="mb-4">
+                    <label class="form-label">Role</label>
+                    <select name="role" class="form-select" required>
+                        <option value="student">Student</option>
+                        <option value="teacher">Teacher</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary w-100">Login / Register</button>
+            </form>
+            <p class="text-muted text-center mt-3 small">First login automatically registers your account.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}

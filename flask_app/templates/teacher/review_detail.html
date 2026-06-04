@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Review Exam{% endblock %}
+{% block content %}
+<h2>Review Submission</h2>
+
+<div class="row mt-3">
+    <div class="col-md-8">
+        <div class="card p-3 mb-3">
+            <h6>Student: {{ exam.student_name }}</h6>
+            <h6>Language: <span class="badge bg-secondary">{{ exam.language }}</span></h6>
+            <hr>
+            <h6>Question:</h6>
+            <p>{{ exam.question_text }}</p>
+            <hr>
+            <h6>Student Answer:</h6>
+            <pre class="code-editor">{{ exam.student_answer }}</pre>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-3 mb-3">
+            <h6>AI Grading</h6>
+            <h3 class="text-primary">{{ exam.ai_score }}/100</h3>
+            <p class="text-muted small">{{ exam.ai_comment }}</p>
+        </div>
+
+        <div class="card p-3">
+            <h6>Your Review</h6>
+            <form method="POST">
+                <div class="mb-3">
+                    <label class="form-label">Final Score (0-100)</label>
+                    <input type="number" name="score" class="form-control" min="0" max="100"
+                           value="{{ exam.ai_score }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Teacher Comment</label>
+                    <textarea name="teacher_comment" class="form-control" rows="3" required
+                              placeholder="Your feedback..."></textarea>
+                </div>
+                <button type="submit" class="btn btn-success w-100">Submit Review</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<a href="{{ url_for('teacher_review_list') }}" class="btn btn-outline-secondary mt-2">Back to Review List</a>
+{% endblock %}

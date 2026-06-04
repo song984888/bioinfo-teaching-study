@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Exam Complete{% endblock %}
+{% block content %}
+<h2>Exam Completed</h2>
+<div class="alert alert-success">
+    <h4>Your answers have been submitted and graded!</h4>
+</div>
+
+<div class="row mt-4">
+    {% for r in results %}
+    <div class="col-md-6 mb-3">
+        <div class="card p-3">
+            <h6>Question {{ r.q_index + 1 }}</h6>
+            <h2 class="text-primary">{{ r.score }}/100</h2>
+            <p class="text-muted small">{{ r.comment[:100] }}...</p>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="mt-4">
+    <a href="{{ url_for('student_grades') }}" class="btn btn-primary">View All Grades</a>
+    <a href="{{ url_for('student_dashboard') }}" class="btn btn-outline-secondary">Back to Dashboard</a>
+</div>
+{% endblock %}
