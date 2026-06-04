@@ -3,7 +3,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 
 from config import Config
 from models import init_pool, init_db, get_db
-from decorators import login_required, student_required, teacher_required
+from decorators import login_required, student_required, teacher_required, admin_required
 from services import (
     authenticate_user, grade_submission, get_student_grades,
     get_all_records, get_unreviewed, save_review, generate_questions_bulk
@@ -40,6 +40,8 @@ def create_app():
                 return redirect(url_for('student_dashboard'))
             elif role == 'teacher':
                 return redirect(url_for('teacher_dashboard'))
+            elif role == 'admin':
+                return redirect(url_for('admin_dashboard'))
         return render_template('index.html')
 
     @app.route('/login', methods=['GET', 'POST'])
@@ -308,6 +310,45 @@ def create_app():
 
         result = execute_code(code, language)
         return jsonify(result)
+
+    # ---- Admin Routes ----
+
+    @app.route('/admin/dashboard')
+    @login_required
+    @admin_required
+    def admin_dashboard():
+        from models import get_all_exam_records, get_db
+        cursor = g.db.cursor(dictionary=True)
+        cursor.execute("SELECT COUNT(*) as cnt FROM users")
+        user_count = cursor.fetchone()['cnt']
+        cursor.execute("SELECT COUNT(*) as cnt FROM questions")
+        q_count = cursor.fetchone()['cnt']
+        cursor.execute("SELECT COUNT(*) as cnt FROM exams")
+        exam_count = cursor.fetchone()['cnt']
+        cursor.execute("""
+            SELECT u.id, u.name, u.employee_id, u.role, u.created_at,
+                   COUNT(e.id) as exam_count
+            FROM users u LEFT JOIN exams e ON u.id = e.student_id
+            GROUP BY u.id ORDER BY u.role, u.created_at DESC
+        """)
+        users = cursor.fetchall()
+        return render_template('admin/dashboard.html',
+                               user_count=user_count, q_count=q_count,
+                               exam_count=exam_count, users=users)
+
+    @app.route('/admin/users/<int:user_id>/delete', methods=['POST'])
+    @login_required
+    @admin_required
+    def admin_delete_user(user_id):
+        if user_id == session['user_id']:
+            flash('Cannot delete your own account.', 'danger')
+            return redirect(url_for('admin_dashboard'))
+        cursor = g.db.cursor()
+        cursor.execute("DELETE FROM exams WHERE student_id = %s", (user_id,))
+        cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
+        g.db.commit()
+        flash('User deleted.', 'info')
+        return redirect(url_for('admin_dashboard'))
 
     # ---- Error Handlers ----
 
