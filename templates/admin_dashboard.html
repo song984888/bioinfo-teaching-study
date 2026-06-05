@@ -418,7 +418,7 @@ async function loadQuestions() {
                 <td>${q.language || '-'}</td>
                 <td>${statusBadge(q)}</td>
                 <td class="action-btns">
-                    <a href="/teacher/question_detail?id=${q.id}&source=${q.source || 'questions'}" class="btn btn-sm btn-primary">查看</a>
+                    <a href="/question/${q.id}" class="btn btn-sm btn-primary">查看</a>
                     <button class="btn btn-sm btn-danger" onclick="deleteQuestion(${q.id}, '${q.source || 'questions'}')">删除</button>
                 </td>
             </tr>
@@ -472,7 +472,7 @@ async function loadKnowledgeBases() {
                 <td>${escapeHtml(kb.owner_name || '-')}</td>
                 <td>${kb.created_at || '-'}</td>
                 <td class="action-btns">
-                    <a href="/teacher/view_knowledge_base/${kb.id}" class="btn btn-sm btn-primary">查看</a>
+                    <a href="/teacher/knowledge_bases/${kb.id}" class="btn btn-sm btn-primary">查看</a>
                     <button class="btn btn-sm btn-danger" onclick="deleteKnowledgeBase(${kb.id})">删除</button>
                 </td>
             </tr>

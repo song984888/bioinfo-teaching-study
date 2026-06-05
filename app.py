@@ -2703,7 +2703,7 @@ def teacher_generate_questions():
 
 @app.route('/teacher/review_questions')
 def review_questions():
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     # 获取筛选参数
     topic_filter = request.args.get('topic', '')
@@ -2789,7 +2789,7 @@ def review_questions():
 @app.route('/teacher/question_bank')
 def question_bank():
     """题库浏览 - 查看已通过审核的题目"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     # 获取筛选参数
@@ -4301,7 +4301,7 @@ def get_document_info(doc_id):
 # 题目详情
 @app.route('/question/<int:question_id>')
 def question_detail(question_id):
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     conn = get_db_connection()
@@ -5120,27 +5120,42 @@ def extract_concept_relations_with_ai(content, concepts, doc_id):
 @app.route('/teacher/knowledge_bases')
 def knowledge_bases():
     """知识库列表页面"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     
-    # 获取用户的知识库列表及题目统计（去重）
-    cursor.execute("""
-        SELECT kb.*, u.name as owner_name,
-               COUNT(DISTINCT kd.id) as document_count,
-               (SELECT COUNT(DISTINCT kq.question_text) 
-                FROM knowledge_questions kq 
-                JOIN knowledge_documents kd2 ON kq.knowledge_document_id = kd2.id 
-                WHERE kd2.knowledge_base_id = kb.id) as question_count
-        FROM knowledge_bases kb
-        LEFT JOIN knowledge_documents kd ON kb.id = kd.knowledge_base_id
-        JOIN users u ON kb.owner_id = u.employee_id
-        WHERE (kb.owner_id = %s) OR (kb.is_public = TRUE AND kb.owner_id != %s)
-        GROUP BY kb.id, u.name
-        ORDER BY kb.updated_at DESC
-    """, (session['user_id'], session['user_id']))
+    # 获取知识库列表及题目统计（管理员看全部，教师看自己及公开的）
+    if session['role'] == 'admin':
+        cursor.execute("""
+            SELECT kb.*, u.name as owner_name,
+                   COUNT(DISTINCT kd.id) as document_count,
+                   (SELECT COUNT(DISTINCT kq.question_text) 
+                    FROM knowledge_questions kq 
+                    JOIN knowledge_documents kd2 ON kq.knowledge_document_id = kd2.id 
+                    WHERE kd2.knowledge_base_id = kb.id) as question_count
+            FROM knowledge_bases kb
+            LEFT JOIN knowledge_documents kd ON kb.id = kd.knowledge_base_id
+            JOIN users u ON kb.owner_id = u.employee_id
+            GROUP BY kb.id, u.name
+            ORDER BY kb.updated_at DESC
+        """)
+    else:
+        cursor.execute("""
+            SELECT kb.*, u.name as owner_name,
+                   COUNT(DISTINCT kd.id) as document_count,
+                   (SELECT COUNT(DISTINCT kq.question_text) 
+                    FROM knowledge_questions kq 
+                    JOIN knowledge_documents kd2 ON kq.knowledge_document_id = kd2.id 
+                    WHERE kd2.knowledge_base_id = kb.id) as question_count
+            FROM knowledge_bases kb
+            LEFT JOIN knowledge_documents kd ON kb.id = kd.knowledge_base_id
+            JOIN users u ON kb.owner_id = u.employee_id
+            WHERE (kb.owner_id = %s) OR (kb.is_public = TRUE AND kb.owner_id != %s)
+            GROUP BY kb.id, u.name
+            ORDER BY kb.updated_at DESC
+        """, (session['user_id'], session['user_id']))
     
     knowledge_bases = cursor.fetchall()
     cursor.close()
@@ -5198,19 +5213,27 @@ def create_knowledge_base():
 @app.route('/teacher/knowledge_bases/<int:kb_id>')
 def view_knowledge_base(kb_id):
     """查看知识库详情"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     
-    # 验证权限
-    cursor.execute("""
-        SELECT kb.*, u.name as owner_name
-        FROM knowledge_bases kb
-        JOIN users u ON kb.owner_id = u.employee_id
-        WHERE kb.id = %s AND (kb.owner_id = %s OR kb.is_public = TRUE)
-    """, (kb_id, session['user_id']))
+    # 验证权限（管理员可以查看所有知识库）
+    if session['role'] == 'admin':
+        cursor.execute("""
+            SELECT kb.*, u.name as owner_name
+            FROM knowledge_bases kb
+            JOIN users u ON kb.owner_id = u.employee_id
+            WHERE kb.id = %s
+        """, (kb_id,))
+    else:
+        cursor.execute("""
+            SELECT kb.*, u.name as owner_name
+            FROM knowledge_bases kb
+            JOIN users u ON kb.owner_id = u.employee_id
+            WHERE kb.id = %s AND (kb.owner_id = %s OR kb.is_public = TRUE)
+        """, (kb_id, session['user_id']))
     
     knowledge_base = cursor.fetchone()
     
