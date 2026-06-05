@@ -960,6 +960,80 @@ def get_teacher_dashboard_stats():
     
     return stats
 
+def get_admin_dashboard_stats():
+    """获取管理员控制台统计数据"""
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    stats = {
+        'total_users': 0,
+        'student_count': 0,
+        'teacher_count': 0,
+        'admin_count': 0,
+        'disabled_users': 0,
+        'total_questions': 0,
+        'pending_questions': 0,
+        'approved_questions': 0,
+        'knowledge_bases_count': 0,
+        'knowledge_documents_count': 0,
+        'knowledge_questions_count': 0,
+        'exam_records_count': 0,
+    }
+    
+    try:
+        # 用户统计
+        cursor.execute("SELECT COUNT(*) AS total FROM users")
+        stats['total_users'] = cursor.fetchone()['total']
+        
+        cursor.execute("SELECT COUNT(*) AS cnt FROM users WHERE role = 'student'")
+        stats['student_count'] = cursor.fetchone()['cnt']
+        
+        cursor.execute("SELECT COUNT(*) AS cnt FROM users WHERE role = 'teacher'")
+        stats['teacher_count'] = cursor.fetchone()['cnt']
+        
+        cursor.execute("SELECT COUNT(*) AS cnt FROM users WHERE role = 'admin'")
+        stats['admin_count'] = cursor.fetchone()['cnt']
+        
+        cursor.execute("SELECT COUNT(*) AS cnt FROM users WHERE can_login = 0")
+        stats['disabled_users'] = cursor.fetchone()['cnt']
+        
+        # 题目统计
+        cursor.execute("SELECT COUNT(*) AS total FROM questions")
+        stats['total_questions'] = cursor.fetchone()['total']
+        
+        cursor.execute("SELECT COUNT(*) AS cnt FROM questions WHERE is_approved = FALSE")
+        p1 = cursor.fetchone()['cnt']
+        cursor.execute("SELECT COUNT(*) AS cnt2 FROM theory_questions WHERE is_approved = FALSE")
+        p2 = cursor.fetchone()['cnt2']
+        stats['pending_questions'] = p1 + p2
+        
+        cursor.execute("SELECT COUNT(*) AS cnt FROM questions WHERE is_approved = TRUE")
+        a1 = cursor.fetchone()['cnt']
+        cursor.execute("SELECT COUNT(*) AS cnt2 FROM theory_questions WHERE is_approved = TRUE")
+        a2 = cursor.fetchone()['cnt2']
+        stats['approved_questions'] = a1 + a2
+        
+        # 知识库统计
+        cursor.execute("SELECT COUNT(*) AS cnt FROM knowledge_bases")
+        stats['knowledge_bases_count'] = cursor.fetchone()['cnt']
+        
+        cursor.execute("SELECT COUNT(*) AS cnt FROM knowledge_documents")
+        stats['knowledge_documents_count'] = cursor.fetchone()['cnt']
+        
+        cursor.execute("SELECT COUNT(*) AS cnt FROM knowledge_questions")
+        stats['knowledge_questions_count'] = cursor.fetchone()['cnt']
+        
+        # 考试记录统计
+        cursor.execute("SELECT COUNT(*) AS cnt FROM exams")
+        stats['exam_records_count'] = cursor.fetchone()['cnt']
+        
+    except Exception as e:
+        app.logger.error(f"获取管理员控制台统计信息失败: {str(e)}")
+    finally:
+        cursor.close()
+        conn.close()
+    
+    return stats
+
 #获取考试记录详情
 def get_exam_summary(student_id):
     try:
@@ -1592,6 +1666,11 @@ def dashboard():
     
     if session['role'] == 'student':
         return render_template('student_dashboard.html')
+    elif session['role'] == 'admin':
+        stats = get_admin_dashboard_stats()
+        return render_template('admin_dashboard.html',
+                               stats=stats,
+                               current_date=datetime.now().strftime("%Y年%m月%日"))
     else:
         stats = get_teacher_dashboard_stats()
         return render_template('teacher_dashboard.html',
@@ -3118,6 +3197,277 @@ def toggle_login(user_id):
     conn.close()
     
     return redirect(url_for('account_management'))
+
+# ==================== 管理员 API 路由 ====================
+
+@app.route('/admin/accounts/list')
+def admin_accounts_list():
+    """管理员获取所有用户列表 (JSON)"""
+    if 'user_id' not in session or session['role'] != 'admin':
+        return jsonify({'success': False, 'message': '权限不足'}), 403
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT id, name, employee_id, role, can_login FROM users ORDER BY id ASC")
+    users = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    
+    result = []
+    for u in users:
+        result.append({
+            'id': u['id'],
+            'name': u['name'],
+            'employee_id': u['employee_id'],
+            'role': u['role'],
+            'can_login': bool(u.get('can_login', 1))
+        })
+    return jsonify({'success': True, 'users': result})
+
+@app.route('/admin/accounts/create', methods=['POST'])
+def admin_create_account():
+    """管理员创建新用户"""
+    if 'user_id' not in session or session['role'] != 'admin':
+        return jsonify({'success': False, 'message': '权限不足'}), 403
+    
+    name = request.form['name']
+    employee_id = request.form['employee_id']
+    password = request.form['password']
+    role = request.form['role']
+    
+    import hashlib
+    password_hash = hashlib.sha256(password.encode('utf-8')).hexdigest()
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "INSERT INTO users (name, employee_id, role, password_hash, can_login) VALUES (%s, %s, %s, %s, %s)",
+            (name, employee_id, role, password_hash, 1)
+        )
+        conn.commit()
+        return jsonify({'success': True, 'message': '用户创建成功'})
+    except mysql.connector.IntegrityError:
+        return jsonify({'success': False, 'message': '学号已存在'})
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/admin/accounts/toggle/<int:user_id>', methods=['POST'])
+def admin_toggle_login(user_id):
+    """管理员切换用户登录权限"""
+    if 'user_id' not in session or session['role'] != 'admin':
+        return jsonify({'success': False, 'message': '权限不足'}), 403
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT can_login FROM users WHERE id = %s", (user_id,))
+        user = cursor.fetchone()
+        if not user:
+            return jsonify({'success': False, 'message': '用户不存在'})
+        
+        new_state = not user['can_login']
+        cursor.execute("UPDATE users SET can_login = %s WHERE id = %s", (new_state, user_id))
+        conn.commit()
+        return jsonify({'success': True, 'can_login': new_state})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/admin/accounts/delete/<int:user_id>', methods=['POST'])
+def admin_delete_user(user_id):
+    """管理员删除用户"""
+    if 'user_id' not in session or session['role'] != 'admin':
+        return jsonify({'success': False, 'message': '权限不足'}), 403
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM users WHERE id = %s AND id != 1", (user_id,))
+        conn.commit()
+        return jsonify({'success': True, 'message': '用户已删除'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/admin/accounts/edit/<int:user_id>', methods=['POST'])
+def admin_edit_user(user_id):
+    """管理员编辑用户信息"""
+    if 'user_id' not in session or session['role'] != 'admin':
+        return jsonify({'success': False, 'message': '权限不足'}), 403
+    
+    name = request.form.get('name', '')
+    role = request.form.get('role', '')
+    password = request.form.get('password', '')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        if password:
+            import hashlib
+            password_hash = hashlib.sha256(password.encode('utf-8')).hexdigest()
+            cursor.execute(
+                "UPDATE users SET name = %s, role = %s, password_hash = %s WHERE id = %s",
+                (name, role, password_hash, user_id)
+            )
+        else:
+            cursor.execute(
+                "UPDATE users SET name = %s, role = %s WHERE id = %s",
+                (name, role, user_id)
+            )
+        conn.commit()
+        return jsonify({'success': True, 'message': '用户信息已更新'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/admin/questions/list')
+def admin_questions_list():
+    """管理员获取题目列表 (JSON)"""
+    if 'user_id' not in session or session['role'] != 'admin':
+        return jsonify({'success': False, 'message': '权限不足'}), 403
+    
+    search = request.args.get('search', '')
+    status = request.args.get('status', '')
+    qtype = request.args.get('type', '')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    questions = []
+    
+    try:
+        sql = "SELECT id, question_text, question_type, language, is_approved, 'questions' AS source FROM questions WHERE 1=1"
+        params = []
+        if search:
+            sql += " AND question_text LIKE %s"
+            params.append(f'%{search}%')
+        if status == 'pending':
+            sql += " AND is_approved = FALSE"
+        elif status == 'approved':
+            sql += " AND is_approved = TRUE"
+        if qtype == 'programming':
+            sql += " AND question_type = 'programming'"
+        elif qtype == 'theory':
+            sql += " AND question_type = 'theory'"
+        elif qtype:
+            sql += " AND question_type = %s"
+            params.append(qtype)
+        sql += " ORDER BY id DESC LIMIT 200"
+        cursor.execute(sql, params)
+        questions = cursor.fetchall()
+    
+        sql2 = "SELECT id, question_text, question_type, 'N/A' AS language, is_approved, 'theory_questions' AS source FROM theory_questions WHERE 1=1"
+        params2 = []
+        if search:
+            sql2 += " AND question_text LIKE %s"
+            params2.append(f'%{search}%')
+        if status == 'pending':
+            sql2 += " AND is_approved = FALSE"
+        elif status == 'approved':
+            sql2 += " AND is_approved = TRUE"
+        sql2 += " ORDER BY id DESC LIMIT 200"
+        cursor.execute(sql2, params2)
+        questions += cursor.fetchall()
+    except Exception:
+        pass
+    
+    cursor.close()
+    conn.close()
+    
+    return jsonify({'success': True, 'questions': questions})
+
+@app.route('/admin/questions/delete/<int:question_id>', methods=['POST'])
+def admin_delete_question(question_id):
+    """管理员删除题目"""
+    if 'user_id' not in session or session['role'] != 'admin':
+        return jsonify({'success': False, 'message': '权限不足'}), 403
+    
+    source = request.args.get('source', 'questions')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        if source == 'theory_questions':
+            cursor.execute("DELETE FROM theory_questions WHERE id = %s", (question_id,))
+        else:
+            cursor.execute("DELETE FROM questions WHERE id = %s", (question_id,))
+        conn.commit()
+        return jsonify({'success': True, 'message': '题目已删除'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/admin/knowledge_bases/list')
+def admin_knowledge_bases_list():
+    """管理员获取知识库列表 (JSON)"""
+    if 'user_id' not in session or session['role'] != 'admin':
+        return jsonify({'success': False, 'message': '权限不足'}), 403
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        cursor.execute("""
+            SELECT kb.id, kb.name, kb.owner_id, kb.created_at,
+                   COALESCE(u.name, '未知') AS owner_name,
+                   (SELECT COUNT(*) FROM knowledge_documents kd WHERE kd.knowledge_base_id = kb.id) AS doc_count,
+                   (SELECT COUNT(*) FROM knowledge_questions kq 
+                    JOIN knowledge_documents kd ON kq.knowledge_document_id = kd.id 
+                    WHERE kd.knowledge_base_id = kb.id) AS question_count
+            FROM knowledge_bases kb
+            LEFT JOIN users u ON kb.owner_id = u.employee_id
+            ORDER BY kb.id DESC
+        """)
+        kbs = cursor.fetchall()
+    except Exception:
+        kbs = []
+    
+    cursor.close()
+    conn.close()
+    
+    result = []
+    for kb in kbs:
+        result.append({
+            'id': kb['id'],
+            'name': kb.get('name', ''),
+            'title': kb.get('title', kb.get('name', '')),
+            'owner_name': kb.get('owner_name', ''),
+            'doc_count': kb.get('doc_count', 0),
+            'question_count': kb.get('question_count', 0),
+            'created_at': str(kb.get('created_at', ''))
+        })
+    return jsonify({'success': True, 'knowledge_bases': result})
+
+@app.route('/admin/knowledge_bases/delete/<int:kb_id>', methods=['POST'])
+def admin_delete_knowledge_base(kb_id):
+    """管理员删除知识库"""
+    if 'user_id' not in session or session['role'] != 'admin':
+        return jsonify({'success': False, 'message': '权限不足'}), 403
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM knowledge_documents WHERE knowledge_base_id = %s", (kb_id,))
+        cursor.execute("DELETE FROM knowledge_concepts WHERE knowledge_base_id = %s", (kb_id,))
+        cursor.execute("DELETE FROM knowledge_bases WHERE id = %s", (kb_id,))
+        conn.commit()
+        return jsonify({'success': True, 'message': '知识库已删除'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+    finally:
+        cursor.close()
+        conn.close()
+
 
 
 

@@ -1,0 +1,757 @@
+{% extends "base.html" %}
+
+{% block title %}管理员控制台{% endblock %}
+
+{% block content %}
+<div class="dashboard admin-dashboard">
+    <!-- 用户信息卡片 -->
+    <div class="user-profile-card">
+        <div class="user-info">
+            <div class="user-avatar">🛡️</div>
+            <div class="user-details">
+                <h3 class="user-name">{{ session.name }}</h3>
+                <p class="user-meta">
+                    <span class="badge badge-role">{{ session.role }}</span>
+                    <span class="badge badge-id">工号：{{ session.user_id }}</span>
+                </p>
+                <a href="{{ url_for('user_account') }}" class="btn-view-profile">查看个人详情</a>
+            </div>
+        </div>
+    </div>
+    
+    <h1 class="dashboard-title">管理员控制台</h1>
+    <p class="welcome-msg">欢迎，{{ session.name }}！今天是 {{ current_date }}</p>
+    
+    <!-- 快速统计信息 -->
+    <div class="stats-container">
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.total_users }}</div>
+            <div class="stat-label">用户总数</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.student_count }}</div>
+            <div class="stat-label">学生</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.teacher_count }}</div>
+            <div class="stat-label">教师</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.admin_count }}</div>
+            <div class="stat-label">管理员</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.total_questions }}</div>
+            <div class="stat-label">试题总数</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.pending_questions }}</div>
+            <div class="stat-label">待审核</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.knowledge_bases_count }}</div>
+            <div class="stat-label">知识库</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.exam_records_count }}</div>
+            <div class="stat-label">考试记录</div>
+        </div>
+    </div>
+    
+    <!-- Tab 导航 -->
+    <div class="admin-tabs">
+        <button class="tab-btn active" data-tab="tab-accounts">👥 账号管理</button>
+        <button class="tab-btn" data-tab="tab-questions">📝 试题管理</button>
+        <button class="tab-btn" data-tab="tab-knowledge">📚 题库管理</button>
+    </div>
+    
+    <!-- ====== Tab 1: 账号管理 ====== -->
+    <div class="tab-content active" id="tab-accounts">
+        <div class="section-header">
+            <h2>账号管理</h2>
+            <button class="btn btn-primary" onclick="showRegisterForm()">+ 注册新用户</button>
+        </div>
+        
+        <!-- 注册表单 (默认隐藏) -->
+        <div id="register-form" class="feature-card" style="display:none; margin-bottom: 20px;">
+            <h3>注册新用户</h3>
+            <form id="admin-register-form">
+                <div class="form-row">
+                    <div class="form-group" style="flex:1;">
+                        <label>姓名</label>
+                        <input type="text" name="name" class="styled-input" required>
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label>工号/学号</label>
+                        <input type="text" name="employee_id" class="styled-input" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex:1;">
+                        <label>密码</label>
+                        <input type="password" name="password" class="styled-input" required>
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label>角色</label>
+                        <select name="role" class="styled-select" required>
+                            <option value="student">学生</option>
+                            <option value="teacher">教师</option>
+                            <option value="admin">管理员</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-success">创建账户</button>
+                    <button type="button" class="btn btn-secondary" onclick="hideRegisterForm()">取消</button>
+                </div>
+            </form>
+        </div>
+        
+        <!-- 用户列表 -->
+        <div class="table-container">
+            <div class="table-toolbar">
+                <input type="text" id="user-search" placeholder="搜索姓名或学号..." oninput="filterUsers()" class="styled-input" style="width: 300px;">
+                <select id="role-filter" onchange="filterUsers()" class="styled-select" style="width: 150px;">
+                    <option value="">所有角色</option>
+                    <option value="student">学生</option>
+                    <option value="teacher">教师</option>
+                    <option value="admin">管理员</option>
+                </select>
+                <span id="user-count" class="result-count"></span>
+            </div>
+            <table class="styled-table" id="users-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>姓名</th>
+                        <th>工号/学号</th>
+                        <th>角色</th>
+                        <th>登录状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="users-tbody">
+                    <tr><td colspan="6" class="loading-cell">加载中...</td></tr>
+                </tbody>
+            </table>
+            <div class="pagination" id="users-pagination"></div>
+        </div>
+    </div>
+    
+    <!-- ====== Tab 2: 试题管理 ====== -->
+    <div class="tab-content" id="tab-questions">
+        <div class="section-header">
+            <h2>试题管理</h2>
+            <div class="action-buttons">
+                <a href="{{ url_for('review_questions') }}" class="btn btn-warning">待审核题目</a>
+                <a href="{{ url_for('question_bank') }}" class="btn btn-primary">题库浏览</a>
+                <a href="{{ url_for('question_summary') }}" class="btn btn-secondary">试题统计</a>
+            </div>
+        </div>
+        
+        <div class="table-container">
+            <div class="table-toolbar">
+                <input type="text" id="question-search" placeholder="搜索题目内容..." oninput="loadQuestions()" class="styled-input" style="width: 300px;">
+                <select id="question-status-filter" onchange="loadQuestions()" class="styled-select" style="width: 150px;">
+                    <option value="">所有状态</option>
+                    <option value="pending">待审核</option>
+                    <option value="approved">已通过</option>
+                    <option value="rejected">已拒绝</option>
+                </select>
+                <select id="question-type-filter" onchange="loadQuestions()" class="styled-select" style="width: 150px;">
+                    <option value="">所有类型</option>
+                    <option value="programming">程序设计</option>
+                    <option value="theory">理论题</option>
+                    <option value="single_choice">单选题</option>
+                    <option value="multi_choice">多选题</option>
+                    <option value="fill_blank">填空题</option>
+                </select>
+            </div>
+            <table class="styled-table" id="questions-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>题目内容</th>
+                        <th>类型</th>
+                        <th>语言</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="questions-tbody">
+                    <tr><td colspan="6" class="loading-cell">加载中...</td></tr>
+                </tbody>
+            </table>
+            <div class="pagination" id="questions-pagination"></div>
+        </div>
+    </div>
+    
+    <!-- ====== Tab 3: 题库管理 ====== -->
+    <div class="tab-content" id="tab-knowledge">
+        <div class="section-header">
+            <h2>题库管理</h2>
+            <a href="{{ url_for('knowledge_bases') }}" class="btn btn-primary">知识库管理</a>
+        </div>
+        
+        <div class="table-container">
+            <table class="styled-table" id="kb-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>知识库名称</th>
+                        <th>文档数</th>
+                        <th>题目数</th>
+                        <th>拥有者</th>
+                        <th>创建时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="kb-tbody">
+                    <tr><td colspan="7" class="loading-cell">加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ===== Tab 切换 =====
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        this.classList.add('active');
+        document.getElementById(this.dataset.tab).classList.add('active');
+        
+        // 切换到对应标签时加载数据
+        if (this.dataset.tab === 'tab-accounts') loadUsers();
+        if (this.dataset.tab === 'tab-questions') loadQuestions();
+        if (this.dataset.tab === 'tab-knowledge') loadKnowledgeBases();
+    });
+});
+
+// ===== 账号管理 =====
+let allUsers = [];
+
+function showRegisterForm() {
+    document.getElementById('register-form').style.display = 'block';
+}
+
+function hideRegisterForm() {
+    document.getElementById('register-form').style.display = 'none';
+    document.getElementById('admin-register-form').reset();
+}
+
+// 注册新用户
+document.getElementById('admin-register-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    
+    try {
+        const resp = await fetch('/admin/accounts/create', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content },
+            body: formData
+        });
+        const data = await resp.json();
+        
+        if (data.success) {
+            alert('用户创建成功！');
+            hideRegisterForm();
+            loadUsers();
+        } else {
+            alert('创建失败: ' + data.message);
+        }
+    } catch (err) {
+        alert('网络错误: ' + err.message);
+    }
+});
+
+// 加载用户列表
+async function loadUsers() {
+    const tbody = document.getElementById('users-tbody');
+    tbody.innerHTML = '<tr><td colspan="6" class="loading-cell">加载中...</td></tr>';
+    
+    try {
+        const resp = await fetch('/admin/accounts/list');
+        const data = await resp.json();
+        allUsers = data.users || [];
+        renderUsers(allUsers);
+    } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="6" class="error-cell">加载失败: ' + err.message + '</td></tr>';
+    }
+}
+
+function filterUsers() {
+    const search = document.getElementById('user-search').value.toLowerCase();
+    const role = document.getElementById('role-filter').value;
+    
+    let filtered = allUsers;
+    if (search) {
+        filtered = filtered.filter(u => 
+            (u.name || '').toLowerCase().includes(search) || 
+            (u.employee_id || '').toLowerCase().includes(search)
+        );
+    }
+    if (role) {
+        filtered = filtered.filter(u => u.role === role);
+    }
+    renderUsers(filtered);
+}
+
+function renderUsers(users) {
+    const tbody = document.getElementById('users-tbody');
+    document.getElementById('user-count').textContent = `共 ${users.length} 条`;
+    
+    if (users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-cell">暂无用户数据</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = users.map(u => `
+        <tr class="${u.can_login ? '' : 'disabled-row'}">
+            <td>${u.id}</td>
+            <td>${escapeHtml(u.name)}</td>
+            <td>${escapeHtml(u.employee_id)}</td>
+            <td><span class="badge badge-${u.role}">${roleLabel(u.role)}</span></td>
+            <td>
+                <label class="toggle-switch">
+                    <input type="checkbox" ${u.can_login ? 'checked' : ''} onchange="toggleUserLogin(${u.id}, this.checked)">
+                    <span class="toggle-slider"></span>
+                </label>
+                ${u.can_login ? '<span style="color:green;margin-left:8px;">正常</span>' : '<span style="color:red;margin-left:8px;">已禁用</span>'}
+            </td>
+            <td class="action-btns">
+                <button class="btn btn-sm btn-secondary" onclick="editUser(${u.id})">编辑</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteUser(${u.id})">删除</button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function roleLabel(role) {
+    const map = { student: '学生', teacher: '教师', admin: '管理员' };
+    return map[role] || role;
+}
+
+async function toggleUserLogin(userId, enable) {
+    try {
+        const resp = await fetch(`/admin/accounts/toggle/${userId}`, { method: 'POST' });
+        const data = await resp.json();
+        if (!data.success) {
+            alert('操作失败: ' + data.message);
+            loadUsers(); // 刷新恢复状态
+        }
+    } catch (err) {
+        alert('操作失败: ' + err.message);
+        loadUsers();
+    }
+}
+
+async function deleteUser(userId) {
+    if (!confirm('确定要删除该用户吗？此操作不可恢复！')) return;
+    
+    try {
+        const resp = await fetch(`/admin/accounts/delete/${userId}`, { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            loadUsers();
+            location.reload(); // 刷新统计数字
+        } else {
+            alert('删除失败: ' + data.message);
+        }
+    } catch (err) {
+        alert('删除失败: ' + err.message);
+    }
+}
+
+function editUser(userId) {
+    const user = allUsers.find(u => u.id === userId);
+    if (!user) return;
+    
+    const newName = prompt('输入新姓名：', user.name);
+    if (newName === null) return;
+    const newRole = prompt('输入角色 (student/teacher/admin)：', user.role);
+    if (newRole === null) return;
+    const newPassword = prompt('输入新密码（留空表示不修改）：', '');
+    
+    fetch(`/admin/accounts/edit/${userId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `name=${encodeURIComponent(newName)}&role=${encodeURIComponent(newRole)}&password=${encodeURIComponent(newPassword || '')}`
+    }).then(r => r.json()).then(data => {
+        if (data.success) {
+            loadUsers();
+        } else {
+            alert('修改失败: ' + data.message);
+        }
+    }).catch(err => alert('修改失败: ' + err.message));
+}
+
+// ===== 试题管理 =====
+async function loadQuestions() {
+    const tbody = document.getElementById('questions-tbody');
+    tbody.innerHTML = '<tr><td colspan="6" class="loading-cell">加载中...</td></tr>';
+    
+    const search = document.getElementById('question-search').value;
+    const status = document.getElementById('question-status-filter').value;
+    const type = document.getElementById('question-type-filter').value;
+    
+    try {
+        const resp = await fetch(`/admin/questions/list?search=${encodeURIComponent(search)}&status=${status}&type=${type}`);
+        const data = await resp.json();
+        
+        if (data.questions.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="empty-cell">暂无题目数据</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = data.questions.map(q => `
+            <tr>
+                <td>${q.id}</td>
+                <td class="text-ellipsis" title="${escapeHtml(q.question_text || '')}">
+                    ${escapeHtml((q.question_text || '').substring(0, 80))}...
+                </td>
+                <td><span class="badge badge-type">${q.question_type || q.type || '未知'}</span></td>
+                <td>${q.language || '-'}</td>
+                <td>${statusBadge(q)}</td>
+                <td class="action-btns">
+                    <a href="/teacher/question_detail?id=${q.id}&source=${q.source || 'questions'}" class="btn btn-sm btn-primary">查看</a>
+                    <button class="btn btn-sm btn-danger" onclick="deleteQuestion(${q.id}, '${q.source || 'questions'}')">删除</button>
+                </td>
+            </tr>
+        `).join('');
+    } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="6" class="error-cell">加载失败: ' + err.message + '</td></tr>';
+    }
+}
+
+function statusBadge(q) {
+    if (q.is_approved === true || q.is_approved === 1) return '<span style="color:green;">已通过</span>';
+    if (q.is_approved === false || q.is_approved === 0) return '<span style="color:orange;">待审核</span>';
+    return '<span style="color:gray;">未知</span>';
+}
+
+async function deleteQuestion(id, source) {
+    if (!confirm('确定要删除该题目吗？')) return;
+    try {
+        const resp = await fetch(`/admin/questions/delete/${id}?source=${source}`, { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            loadQuestions();
+        } else {
+            alert('删除失败: ' + data.message);
+        }
+    } catch (err) {
+        alert('删除失败: ' + err.message);
+    }
+}
+
+// ===== 题库管理 =====
+async function loadKnowledgeBases() {
+    const tbody = document.getElementById('kb-tbody');
+    tbody.innerHTML = '<tr><td colspan="7" class="loading-cell">加载中...</td></tr>';
+    
+    try {
+        const resp = await fetch('/admin/knowledge_bases/list');
+        const data = await resp.json();
+        
+        if (data.knowledge_bases.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty-cell">暂无知识库</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = data.knowledge_bases.map(kb => `
+            <tr>
+                <td>${kb.id}</td>
+                <td>${escapeHtml(kb.name || kb.title || '未命名')}</td>
+                <td>${kb.doc_count || 0}</td>
+                <td>${kb.question_count || 0}</td>
+                <td>${escapeHtml(kb.owner_name || '-')}</td>
+                <td>${kb.created_at || '-'}</td>
+                <td class="action-btns">
+                    <a href="/teacher/view_knowledge_base/${kb.id}" class="btn btn-sm btn-primary">查看</a>
+                    <button class="btn btn-sm btn-danger" onclick="deleteKnowledgeBase(${kb.id})">删除</button>
+                </td>
+            </tr>
+        `).join('');
+    } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="7" class="error-cell">加载失败: ' + err.message + '</td></tr>';
+    }
+}
+
+async function deleteKnowledgeBase(id) {
+    if (!confirm('确定要删除该知识库及其所有关联数据吗？')) return;
+    try {
+        const resp = await fetch(`/admin/knowledge_bases/delete/${id}`, { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            loadKnowledgeBases();
+            location.reload();
+        } else {
+            alert('删除失败: ' + data.message);
+        }
+    } catch (err) {
+        alert('删除失败: ' + err.message);
+    }
+}
+
+// ===== 工具函数 =====
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ===== 初始加载 =====
+loadUsers();
+</script>
+
+<style>
+/* Admin Dashboard Styles */
+.admin-dashboard .admin-tabs {
+    display: flex;
+    gap: 4px;
+    margin: 25px 0 0 0;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+.admin-dashboard .tab-btn {
+    padding: 12px 24px;
+    border: none;
+    background: none;
+    font-size: 15px;
+    font-weight: 500;
+    color: #666;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.2s;
+    border-radius: 6px 6px 0 0;
+}
+
+.admin-dashboard .tab-btn:hover {
+    color: #333;
+    background: #f5f5f5;
+}
+
+.admin-dashboard .tab-btn.active {
+    color: #4a90d9;
+    border-bottom-color: #4a90d9;
+    background: #fff;
+}
+
+.admin-dashboard .tab-content {
+    display: none;
+    padding: 20px 0;
+}
+
+.admin-dashboard .tab-content.active {
+    display: block;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.section-header h2 {
+    margin: 0;
+    font-size: 20px;
+    color: #333;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+.table-toolbar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.result-count {
+    color: #999;
+    font-size: 13px;
+}
+
+.styled-input, .styled-select {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.styled-input:focus, .styled-select:focus {
+    border-color: #4a90d9;
+    box-shadow: 0 0 0 3px rgba(74,144,217,0.1);
+}
+
+.styled-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.styled-table th {
+    background: #f8f9fa;
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+    color: #555;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+.styled-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #eee;
+}
+
+.styled-table tr:hover {
+    background: #f8f9ff;
+}
+
+.styled-table .disabled-row {
+    opacity: 0.6;
+    background: #fff5f5;
+}
+
+.text-ellipsis {
+    max-width: 250px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.loading-cell, .empty-cell, .error-cell {
+    text-align: center;
+    padding: 30px !important;
+    color: #999;
+}
+
+.error-cell { color: #dc3545; }
+
+/* Toggle Switch */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: #ccc;
+    transition: 0.3s;
+    border-radius: 24px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background-color: #28a745;
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+    transform: translateX(20px);
+}
+
+/* Form styles */
+.form-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 12px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+    color: #555;
+}
+
+.form-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.feature-card {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 20px;
+    border: 1px solid #e8e8e8;
+}
+
+.feature-card h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #333;
+    font-size: 16px;
+}
+
+/* Badges */
+.badge-role {
+    background: #e3f2fd;
+    color: #1976d2;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+}
+
+.badge-student { background: #e8f5e9; color: #2e7d32; }
+.badge-teacher { background: #e3f2fd; color: #1976d2; }
+.badge-admin { background: #fce4ec; color: #c62828; }
+.badge-type { background: #f3e5f5; color: #7b1fa2; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+
+.badge-id {
+    background: #f5f5f5;
+    color: #666;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+}
+
+/* Buttons */
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn-primary { background: #4a90d9; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
+.btn-secondary { background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
+.btn-success { background: #28a745; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
+.btn-warning { background: #ffc107; color: #333; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; text-decoration: none; display: inline-block; }
+.btn-danger { background: #dc3545; color: white; border: none; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+
+.action-btns {
+    display: flex;
+    gap: 6px;
+}
+
+.action-btns .btn { white-space: nowrap; }
+</style>
+{% endblock %}
