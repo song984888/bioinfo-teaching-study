@@ -5330,20 +5330,28 @@ def delete_knowledge_base(kb_id):
 @app.route('/teacher/knowledge_bases/<int:kb_id>/documents/<int:doc_id>/delete', methods=['POST'])
 def delete_document(kb_id, doc_id):
     """删除知识库中的单个文档及其所有问题和概念"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     conn = get_db_connection()
     cursor = conn.cursor()
     
     try:
-        # 验证权限：只有知识库所有者才能删除文档
-        cursor.execute("""
-            SELECT kd.title, kb.name as kb_name
-            FROM knowledge_documents kd
-            JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
-            WHERE kd.id = %s AND kb.id = %s AND kb.owner_id = %s
-        """, (doc_id, kb_id, session['user_id']))
+        # 验证权限：管理员和知识库所有者可以删除文档
+        if session['role'] == 'admin':
+            cursor.execute("""
+                SELECT kd.title, kb.name as kb_name
+                FROM knowledge_documents kd
+                JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+                WHERE kd.id = %s AND kb.id = %s
+            """, (doc_id, kb_id))
+        else:
+            cursor.execute("""
+                SELECT kd.title, kb.name as kb_name
+                FROM knowledge_documents kd
+                JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+                WHERE kd.id = %s AND kb.id = %s AND kb.owner_id = %s
+            """, (doc_id, kb_id, session['user_id']))
         
         document = cursor.fetchone()
         
@@ -5404,20 +5412,29 @@ def delete_document(kb_id, doc_id):
 @app.route('/teacher/knowledge_bases/<int:kb_id>/document/<int:doc_id>')
 def view_document(kb_id, doc_id):
     """查看文档详情"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     
-    # 验证权限
-    cursor.execute("""
-        SELECT kd.*, kb.name as knowledge_base_name, u.name as owner_name
-        FROM knowledge_documents kd
-        JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
-        JOIN users u ON kb.owner_id = u.employee_id
-        WHERE kd.id = %s AND kb.id = %s AND (kb.owner_id = %s OR kb.is_public = TRUE)
-    """, (doc_id, kb_id, session['user_id']))
+    # 验证权限（管理员可以查看所有文档）
+    if session['role'] == 'admin':
+        cursor.execute("""
+            SELECT kd.*, kb.name as knowledge_base_name, u.name as owner_name
+            FROM knowledge_documents kd
+            JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+            JOIN users u ON kb.owner_id = u.employee_id
+            WHERE kd.id = %s AND kb.id = %s
+        """, (doc_id, kb_id))
+    else:
+        cursor.execute("""
+            SELECT kd.*, kb.name as knowledge_base_name, u.name as owner_name
+            FROM knowledge_documents kd
+            JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+            JOIN users u ON kb.owner_id = u.employee_id
+            WHERE kd.id = %s AND kb.id = %s AND (kb.owner_id = %s OR kb.is_public = TRUE)
+        """, (doc_id, kb_id, session['user_id']))
     
     document = cursor.fetchone()
     
@@ -5455,19 +5472,27 @@ def view_document(kb_id, doc_id):
 @app.route('/teacher/knowledge_bases/<int:kb_id>/document/<int:doc_id>/view_pdf')
 def view_document_pdf(kb_id, doc_id):
     """在线预览 PDF 文档"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     
-    # 验证权限
-    cursor.execute("""
-        SELECT kd.*
-        FROM knowledge_documents kd
-        JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
-        WHERE kd.id = %s AND kb.id = %s AND (kb.owner_id = %s OR kb.is_public = TRUE)
-    """, (doc_id, kb_id, session['user_id']))
+    # 验证权限（管理员可以查看所有文档）
+    if session['role'] == 'admin':
+        cursor.execute("""
+            SELECT kd.*
+            FROM knowledge_documents kd
+            JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+            WHERE kd.id = %s AND kb.id = %s
+        """, (doc_id, kb_id))
+    else:
+        cursor.execute("""
+            SELECT kd.*
+            FROM knowledge_documents kd
+            JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+            WHERE kd.id = %s AND kb.id = %s AND (kb.owner_id = %s OR kb.is_public = TRUE)
+        """, (doc_id, kb_id, session['user_id']))
     
     document = cursor.fetchone()
     
@@ -5493,19 +5518,27 @@ def view_document_pdf(kb_id, doc_id):
 @app.route('/teacher/knowledge_bases/<int:kb_id>/document/<int:doc_id>/download')
 def download_document(kb_id, doc_id):
     """下载文档"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     
-    # 验证权限
-    cursor.execute("""
-        SELECT kd.*
-        FROM knowledge_documents kd
-        JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
-        WHERE kd.id = %s AND kb.id = %s AND (kb.owner_id = %s OR kb.is_public = TRUE)
-    """, (doc_id, kb_id, session['user_id']))
+    # 验证权限（管理员可以下载所有文档）
+    if session['role'] == 'admin':
+        cursor.execute("""
+            SELECT kd.*
+            FROM knowledge_documents kd
+            JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+            WHERE kd.id = %s AND kb.id = %s
+        """, (doc_id, kb_id))
+    else:
+        cursor.execute("""
+            SELECT kd.*
+            FROM knowledge_documents kd
+            JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+            WHERE kd.id = %s AND kb.id = %s AND (kb.owner_id = %s OR kb.is_public = TRUE)
+        """, (doc_id, kb_id, session['user_id']))
     
     document = cursor.fetchone()
     
@@ -5533,16 +5566,19 @@ def download_document(kb_id, doc_id):
 @app.route('/teacher/knowledge_bases/<int:kb_id>/upload', methods=['GET', 'POST'])
 def upload_document(kb_id):
     """上传文档到知识库"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
-    # 验证权限
+    # 验证权限（管理员可以上传到任何知识库）
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT * FROM knowledge_bases 
-        WHERE id = %s AND (owner_id = %s OR is_public = TRUE)
-    """, (kb_id, session['user_id']))
+    if session['role'] == 'admin':
+        cursor.execute("SELECT * FROM knowledge_bases WHERE id = %s", (kb_id,))
+    else:
+        cursor.execute("""
+            SELECT * FROM knowledge_bases 
+            WHERE id = %s AND (owner_id = %s OR is_public = TRUE)
+        """, (kb_id, session['user_id']))
     
     knowledge_base = cursor.fetchone()
     if not knowledge_base:
@@ -6025,7 +6061,7 @@ def kg_render(kb_id):
 @app.route('/teacher/knowledge_bases/<int:kb_id>/document/<int:doc_id>/concepts')
 def extract_concepts(kb_id, doc_id):
     """从文档中提取概念并构建知识图谱（带频率统计）"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     conn = get_db_connection()
@@ -6037,13 +6073,21 @@ def extract_concepts(kb_id, doc_id):
         flash('不需要重复提取，如果对于提取效果不满意可以手动新增或双击概念删除它！', 'warning')
         return redirect(url_for('view_knowledge_base', kb_id=kb_id))
     
-    # 验证权限
-    cursor.execute("""
-        SELECT kd.*, kb.name as knowledge_base_name
-        FROM knowledge_documents kd
-        JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
-        WHERE kd.id = %s AND kb.id = %s AND (kb.owner_id = %s OR kb.is_public = TRUE)
-    """, (doc_id, kb_id, session['user_id']))
+    # 验证权限（管理员可以提取任何文档的概念）
+    if session['role'] == 'admin':
+        cursor.execute("""
+            SELECT kd.*, kb.name as knowledge_base_name
+            FROM knowledge_documents kd
+            JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+            WHERE kd.id = %s AND kb.id = %s
+        """, (doc_id, kb_id))
+    else:
+        cursor.execute("""
+            SELECT kd.*, kb.name as knowledge_base_name
+            FROM knowledge_documents kd
+            JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+            WHERE kd.id = %s AND kb.id = %s AND (kb.owner_id = %s OR kb.is_public = TRUE)
+        """, (doc_id, kb_id, session['user_id']))
     
     document = cursor.fetchone()
     if not document:
@@ -7187,7 +7231,7 @@ def generate_theory_questions():
 @app.route('/teacher/knowledge_bases/<int:kb_id>/document/<int:doc_id>/concepts/extract', methods=['POST'])
 def extract_concepts_from_document(kb_id, doc_id):
     """从文档中提取概念（AI增强版）"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return jsonify({'error': '未授权访问'}), 401
     
     conn = get_db_connection()
@@ -7206,8 +7250,8 @@ def extract_concepts_from_document(kb_id, doc_id):
         if not document:
             return jsonify({'error': '文档不存在或无权访问'}), 404
         
-        # 检查用户权限
-        if document['owner_id'] != session['user_id'] and not document['is_public']:
+        # 检查用户权限（管理员可以访问所有文档）
+        if session['role'] != 'admin' and document['owner_id'] != session['user_id'] and not document['is_public']:
             return jsonify({'error': '无权访问此文档'}), 403
         
         content = document['content']
