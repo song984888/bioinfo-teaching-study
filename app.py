@@ -2572,7 +2572,7 @@ def teacher_generate_questions():
     # 从配置中获取主题列表
     topicList = list(CONFIG['GENERATE_TOPIC'].keys())
     #app.logger.info(f"加载教师出题页面，主题: {topicList}")
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     if request.method == 'POST':
@@ -2942,7 +2942,7 @@ def question_bank():
 
 @app.route('/teacher/approve_question/<int:question_id>')
 def approve_question(question_id):
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     conn = get_db_connection()
@@ -2965,7 +2965,7 @@ def approve_question(question_id):
 
 @app.route('/teacher/remove_question/<int:question_id>')
 def remove_question(question_id):
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     conn = get_db_connection()
@@ -3118,7 +3118,7 @@ def question_summary():
 
 @app.route('/teacher/account_management')
 def account_management():
-    if 'role' not in session or session['role'] != 'teacher':
+    if 'role' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     conn = get_db_connection()
@@ -3474,7 +3474,7 @@ def admin_delete_knowledge_base(kb_id):
 
 @app.route('/teacher/exam_records')
 def view_exam_records():
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
 
     # 获取筛选参数
@@ -3562,7 +3562,7 @@ def view_exam_records():
 
 @app.route('/teacher/get_exam_detail/<int:exam_id>')
 def get_exam_detail(exam_id):
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return jsonify({'success': False, 'message': '未授权访问'})
     
     try:
@@ -3592,7 +3592,7 @@ def get_exam_detail(exam_id):
 
 @app.route('/teacher/update_exam_score', methods=['POST'])
 def update_exam_score():
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return jsonify({'success': False, 'message': '未授权访问'})
     
     try:
@@ -3619,7 +3619,7 @@ def update_exam_score():
 
 @app.route('/teacher/tasks')
 def view_background_tasks():
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     # 获取查询参数
     page = request.args.get('page', 1, type=int)
@@ -3683,7 +3683,7 @@ def view_background_tasks():
 # 任务详情
 @app.route('/teacher/task/<int:task_id>')
 def task_detail(task_id):
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     conn = get_db_connection()
@@ -3747,7 +3747,7 @@ def task_detail(task_id):
 
 @app.route('/teacher/task/<int:task_id>/restart', methods=['POST'])
 def restart_task(task_id):
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     conn = get_db_connection()
@@ -4082,7 +4082,7 @@ def restart_task(task_id):
 @app.route('/api/questions/<int:question_id>/comments', methods=['GET'])
 def get_comments(question_id):
     """获取题目的评论列表"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return jsonify({'error': '未授权访问'}), 403
     
     conn = get_db_connection()
@@ -4130,7 +4130,7 @@ def get_comments(question_id):
 @app.route('/api/questions/<int:question_id>/comments', methods=['POST'])
 def add_comment(question_id):
     """添加评论"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return jsonify({'success': False, 'message': '未授权访问'}), 403
     
     data = request.get_json()
@@ -4182,7 +4182,7 @@ def add_comment(question_id):
 @app.route('/api/questions/<int:question_id>/document', methods=['GET'])
 def get_question_document(question_id):
     """获取题目关联的原始文档"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return jsonify({'success': False, 'message': '未授权访问'}), 403
     
     conn = get_db_connection()
@@ -4254,7 +4254,7 @@ def get_question_document(question_id):
 @app.route('/api/document/<int:doc_id>/info')
 def get_document_info(doc_id):
     """获取文档的基本信息（包括所属知识库 ID）"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return jsonify({'success': False, 'message': '未授权访问'}), 403
     
     conn = get_db_connection()
@@ -4389,7 +4389,7 @@ def redirect_old_uploads(filename):
 # 删除题目 API
 @app.route('/api/questions/<int:question_id>', methods=['DELETE'])
 def delete_question(question_id):
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return jsonify({'success': False, 'message': '未授权访问'}), 403
     
     conn = get_db_connection()
@@ -5167,7 +5167,7 @@ def knowledge_bases():
 @app.route('/teacher/knowledge_bases/create', methods=['GET', 'POST'])
 def create_knowledge_base():
     """创建知识库"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     if request.method == 'POST':
@@ -5266,7 +5266,7 @@ def view_knowledge_base(kb_id):
 @app.route('/teacher/knowledge_bases/<int:kb_id>/delete', methods=['POST'])
 def delete_knowledge_base(kb_id):
     """删除知识库及其所有文档和概念"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     conn = get_db_connection()
@@ -5701,7 +5701,7 @@ def upload_document(kb_id):
 @app.route('/teacher/document_links_test')
 def document_links_test():
     """测试文档链接页面 - 展示所有文档的正确访问 URL"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     conn = get_db_connection()
@@ -5750,19 +5750,27 @@ def convert_decimal_for_json(obj):
 @app.route('/teacher/knowledge_bases/<int:kb_id>/graph')
 def knowledge_graph(kb_id):
     """显示知识库的知识图谱"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     
-    # 验证权限
-    cursor.execute("""
-        SELECT kb.*, u.name as owner_name
-        FROM knowledge_bases kb
-        JOIN users u ON kb.owner_id = u.employee_id
-        WHERE kb.id = %s AND (kb.owner_id = %s OR kb.is_public = TRUE)
-    """, (kb_id, session['user_id']))
+    # 验证权限（管理员可以查看所有知识库的图谱）
+    if session['role'] == 'admin':
+        cursor.execute("""
+            SELECT kb.*, u.name as owner_name
+            FROM knowledge_bases kb
+            JOIN users u ON kb.owner_id = u.employee_id
+            WHERE kb.id = %s
+        """, (kb_id,))
+    else:
+        cursor.execute("""
+            SELECT kb.*, u.name as owner_name
+            FROM knowledge_bases kb
+            JOIN users u ON kb.owner_id = u.employee_id
+            WHERE kb.id = %s AND (kb.owner_id = %s OR kb.is_public = TRUE)
+        """, (kb_id, session['user_id']))
     
     knowledge_base = cursor.fetchone()
     if not knowledge_base:
@@ -6498,7 +6506,7 @@ def extract_concepts(kb_id, doc_id):
 @app.route('/teacher/knowledge_bases/<int:kb_id>/concepts')
 def get_knowledge_base_concepts(kb_id):
     """获取知识库的所有概念（用于前端选择）"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return jsonify({'error': '未授权访问'}), 401
     
     conn = get_db_connection()
@@ -6545,7 +6553,7 @@ def get_knowledge_base_concepts(kb_id):
 @app.route('/teacher/knowledge_bases/<int:kb_id>/concepts/delete', methods=['POST'])
 def delete_knowledge_base_concept(kb_id):
     """删除知识库中的指定概念"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return jsonify({'error': '未授权访问'}), 401
     
     conn = get_db_connection()
@@ -6608,7 +6616,7 @@ def delete_knowledge_base_concept(kb_id):
 @app.route('/teacher/knowledge_bases/<int:kb_id>/concepts/add', methods=['POST'])
 def add_knowledge_base_concept(kb_id):
     """向知识库添加自定义概念"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return jsonify({'error': '未授权访问'}), 401
     
     conn = get_db_connection()
@@ -6692,7 +6700,7 @@ def add_knowledge_base_concept(kb_id):
 # 修改理论题目生成功能，添加知识库选择
 @app.route('/teacher/generate_theory_questions', methods=['GET', 'POST'])
 def generate_theory_questions():
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
 
     question_types = [
@@ -7391,7 +7399,7 @@ def extract_concepts_with_keywords(content):
 @app.route('/teacher/create_exam_paper')
 def create_exam_paper():
     """组卷配置页面"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     return render_template('teacher/create_exam_paper.html')
@@ -7400,7 +7408,7 @@ def create_exam_paper():
 @app.route('/teacher/generate_exam_paper', methods=['POST'])
 def generate_exam_paper():
     """生成试卷"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     try:
@@ -7467,7 +7475,7 @@ def generate_exam_paper():
 @app.route('/teacher/preview_exam_paper/<int:paper_id>')
 def preview_exam_paper(paper_id):
     """预览试卷"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     conn = get_db_connection()
@@ -7505,7 +7513,7 @@ def preview_exam_paper(paper_id):
 @app.route('/teacher/download_paper_pdf/<int:paper_id>')
 def download_paper_pdf(paper_id):
     """下载试卷 PDF"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return jsonify({'error': '未授权访问'}), 403
     
     paper_type = request.args.get('type', 'A')
@@ -7658,7 +7666,7 @@ def download_paper_pdf(paper_id):
 @app.route('/teacher/paper_management')
 def paper_management():
     """试卷管理页面 - 查看历史试卷列表"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
     conn = get_db_connection()
@@ -7686,7 +7694,7 @@ def paper_management():
 @app.route('/teacher/delete_paper/<int:paper_id>', methods=['POST'])
 def delete_paper(paper_id):
     """删除试卷"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return jsonify({'success': False, 'error': '未授权访问'}), 403
     
     conn = get_db_connection()
@@ -7719,7 +7727,7 @@ def delete_paper(paper_id):
 @app.route('/teacher/clone_paper/<int:paper_id>', methods=['POST'])
 def clone_paper(paper_id):
     """克隆试卷 - 基于已有试卷重新生成"""
-    if 'user_id' not in session or session['role'] != 'teacher':
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         flash('请先登录', 'warning')
         return redirect(url_for('login'))
     
