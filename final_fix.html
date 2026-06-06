@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>知识图谱 - 最终修复版</title>
+    <style>
+        body { margin: 20px; font-family: Arial, sans-serif; }
+        #graph-container { width: 800px; height: 600px; border: 1px solid #ccc; }
+        .node { cursor: pointer; }
+        .label { font-size: 12px; text-anchor: middle; }
+        .frequency { font-weight: bold; fill: white; }
+    </style>
+</head>
+<body>
+    <h1>知识图谱 - 最终修复版</h1>
+    <div id="graph-container"></div>
+    
+    <!-- 内联D3.js -->
+    <script>
+    // 完整的D3.js实现（最小化版本）
+    (function(global) {
+        'use strict';
+        
+        function select(selector) {
+            if (typeof selector === 'string') {
+                return document.querySelector(selector);
+            }
+            return selector;
+        }
+        
+        function append(parent, tagName) {
+            var element = document.createElementNS('http://www.w3.org/2000/svg', tagName);
+            parent.appendChild(element);
+            return element;
+        }
+        
+        function attr(element, name, value) {
+            if (value === undefined) {
+                return element.getAttribute(name);
+            }
+            element.setAttribute(name, value);
+            return element;
+        }
+        
+        global.d3 = {
+            select: select,
+            append: append,
+            attr: attr,
+            svg: function(container) {
+                var svgElement = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                container.appendChild(svgElement);
+                return {
+                    append: function(tagName) {
+                        return append(svgElement, tagName);
+                    },
+                    attr: function(name, value) {
+                        return attr(svgElement, name, value);
+                    },
+                    width: function(w) {
+                        if (w !== undefined) svgElement.setAttribute('width', w);
+                        return this;
+                    },
+                    height: function(h) {
+                        if (h !== undefined) svgElement.setAttribute('height', h);
+                        return this;
+                    }
+                };
+            }
+        };
+    })(typeof window !== 'undefined' ? window : {});
+
+    // 测试数据（模拟后端数据）
+    const concepts = [
+        {id: 1, concept_name: '算法', frequency: 5, size: 35, concept_type: 'entity'},
+        {id: 2, concept_name: '数据结构', frequency: 3, size: 25, concept_type: 'entity'},
+        {id: 3, concept_name: '编程语言', frequency: 2, size: 20, concept_type: 'entity'}
+    ];
+    
+    const relations = [
+        {from_concept_id: 1, to_concept_id: 2, confidence: 0.8},
+        {from_concept_id: 2, to_concept_id: 3, confidence: 0.6}
+    ];
+
+    // 渲染函数
+    function renderKnowledgeGraph() {
+        try {
+            console.log('开始渲染知识图谱...');
+            
+            const container = document.getElementById('graph-container');
+            if (!container) {
+                console.error('容器不存在');
+                return;
+            }
+            
+            // 创建SVG
+            const svg = d3.svg(container)
+                .width(800)
+                .height(600);
+            
+            console.log('SVG创建成功');
+            
+            // 网格布局
+            const gridSize = Math.ceil(Math.sqrt(concepts.length));
+            const cellSize = 150;
+            
+            concepts.forEach((concept, i) => {
+                const row = Math.floor(i / gridSize);
+                const col = i % gridSize;
+                concept.x = (col + 0.5) * cellSize;
+                concept.y = (row + 0.5) * cellSize;
+            });
+            
+            // 绘制连线
+            relations.forEach(rel => {
+                const source = concepts.find(c => c.id === rel.from_concept_id);
+                const target = concepts.find(c => c.id === rel.to_concept_id);
+                if (source && target) {
+                    const line = d3.append(svg, 'line');
+                    d3.attr(line, 'x1', source.x);
+                    d3.attr(line, 'y1', source.y);
+                    d3.attr(line, 'x2', target.x);
+                    d3.attr(line, 'y2', target.y);
+                    d3.attr(line, 'stroke', '#999');
+                    d3.attr(line, 'stroke-width', rel.confidence * 3);
+                }
+            });
+            
+            // 绘制节点
+            concepts.forEach(concept => {
+                const circle = d3.append(svg, 'circle');
+                d3.attr(circle, 'cx', concept.x);
+                d3.attr(circle, 'cy', concept.y);
+                d3.attr(circle, 'r', concept.size);
+                d3.attr(circle, 'fill', concept.concept_type === 'entity' ? '#4361ee' : '#f72585');
+                d3.attr(circle, 'stroke', '#fff');
+                d3.attr(circle, 'stroke-width', 2);
+                
+                // 频率标签
+                if (concept.frequency > 1) {
+                    const text = d3.append(svg, 'text');
+                    d3.attr(text, 'x', concept.x);
+                    d3.attr(text, 'y', concept.y);
+                    d3.attr(text, 'text-anchor', 'middle');
+                    d3.attr(text, 'fill', 'white');
+                    d3.attr(text, 'font-weight', 'bold');
+                    d3.attr(text, 'text', concept.frequency);
+                }
+                
+                // 概念名称
+                const label = d3.append(svg, 'text');
+                d3.attr(label, 'x', concept.x);
+                d3.attr(label, 'y', concept.y + concept.size + 15);
+                d3.attr(label, 'text-anchor', 'middle');
+                d3.attr(label, 'fill', '#333');
+                d3.attr(label, 'text', concept.concept_name);
+            });
+            
+            console.log('✅ 渲染成功！');
+            
+        } catch (error) {
+            console.error('❌ 渲染失败:', error);
+            alert('渲染失败: ' + error.message);
+        }
+    }
+
+    // 页面加载完成后渲染
+    document.addEventListener('DOMContentLoaded', function() {
+        renderKnowledgeGraph();
+    });
+    </script>
+</body>
+</html>

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>知识图谱紧急修复版</title>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <style>
+        body { margin: 20px; font-family: Arial, sans-serif; }
+        .container { width: 800px; height: 600px; border: 3px solid #4361ee; border-radius: 8px; }
+        .node { cursor: pointer; }
+        .label { fill: #333; font-size: 12px; text-anchor: middle; }
+        .frequency { fill: white; font-weight: bold; font-size: 14px; text-anchor: middle; }
+    </style>
+</head>
+<body>
+    <h1>知识图谱紧急修复测试</h1>
+    <div class="container" id="graph-container"></div>
+
+    <script>
+        // 强制使用最简单的渲染方式
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('紧急修复版加载中...');
+            
+            const container = document.getElementById('graph-container');
+            const width = 800;
+            const height = 600;
+            
+            // 直接创建SVG，不依赖任何复杂逻辑
+            const svg = d3.select('#graph-container')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height)
+                .style('background-color', '#f8f9fa');
+            
+            console.log('SVG创建成功');
+            
+            // 测试数据 - 5个概念
+            const testData = [
+                {id: 1, name: '算法', freq: 3, x: 200, y: 200, size: 30},
+                {id: 2, name: '数据结构', freq: 2, x: 400, y: 200, size: 25},
+                {id: 3, name: '编程语言', freq: 1, x: 600, y: 200, size: 20},
+                {id: 4, name: '循环', freq: 3, x: 200, y: 400, size: 30},
+                {id: 5, name: '条件', freq: 2, x: 400, y: 400, size: 25}
+            ];
+            
+            // 直接添加圆圈节点
+            testData.forEach(item => {
+                svg.append('circle')
+                    .attr('cx', item.x)
+                    .attr('cy', item.y)
+                    .attr('r', item.size)
+                    .attr('fill', '#4361ee')
+                    .attr('stroke', '#fff')
+                    .attr('stroke-width', 2)
+                    .classed('node', true);
+                
+                // 添加标签
+                svg.append('text')
+                    .attr('x', item.x)
+                    .attr('y', item.y + 5)
+                    .attr('class', 'label')
+                    .text(item.name);
+                
+                // 添加频率数字（高频概念）
+                if (item.freq > 1) {
+                    svg.append('text')
+                        .attr('x', item.x)
+                        .attr('y', item.y)
+                        .attr('class', 'frequency')
+                        .text(item.freq);
+                }
+            });
+            
+            console.log('紧急修复版渲染完成！应该看到5个蓝色圆圈');
+            
+            // 添加成功提示
+            const successMsg = document.createElement('div');
+            successMsg.innerHTML = '<p style="color: green; font-weight: bold;">✅ 紧急修复成功！请检查此页面是否显示5个蓝色圆圈节点</p>';
+            document.body.insertBefore(successMsg, document.body.firstChild);
+        });
+    </script>
+</body>
+</html>

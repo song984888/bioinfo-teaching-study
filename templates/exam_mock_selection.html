@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+
+{% block title %}选择模拟考试题目{% endblock %}
+
+{% block content %}
+<div class="selection-container">
+    <div class="selection-header">
+        <h2>选择模拟考试题目</h2>
+        <p class="subtitle">请选择你想要的题目主题、编程语言和难度</p>
+    </div>
+
+    <div class="selection-steps">
+        <div class="step active" data-step="1">
+            <span class="step-number">1</span>
+            <span class="step-label">选择主题</span>
+        </div>
+        <div class="step" data-step="2">
+            <span class="step-number">2</span>
+            <span class="step-label">选择语言</span>
+        </div>
+        <div class="step" data-step="3">
+            <span class="step-number">3</span>
+            <span class="step-label">选择难度</span>
+        </div>
+    </div>
+
+    <form id="examForm" method="GET" action="{{ url_for('exam_mock_with_samples') }}">
+        <!-- 步骤1: 选择主题 -->
+        <div class="selection-step active" id="step1">
+            <div class="topic-grid">
+                {% for topic in topics %}
+                <div class="topic-card" data-topic="{{ topic }}">
+                    <div class="topic-icon">
+                        {{ topic_icons.get(topic, '📚') }}
+                    </div>
+                    <div class="topic-name">{{ topic }}</div>
+                    <div class="topic-count">{{ topic_counts.get(topic, 0) }} 题可用</div>
+                </div>
+                {% endfor %}
+            </div>
+            <input type="hidden" name="topic" id="selectedTopic">
+        </div>
+
+        <!-- 步骤2: 选择语言 -->
+        <div class="selection-step" id="step2">
+            <div class="language-grid">
+                {% for lang, config in languages.items() %}
+                <div class="language-card" data-lang="{{ lang }}">
+                    <div class="language-icon">
+                        {% if lang == 'python' %}🐍
+                        {% elif lang == 'java' %}☕
+                        {% elif lang == 'c' %}🔧
+                        {% elif lang == 'perl' %}🐪
+                        {% else %}💻{% endif %}
+                    </div>
+                    <div class="language-name">{{ config.display_name }}</div>
+                    <div class="language-ext">.{{ config.ext }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            <input type="hidden" name="language" id="selectedLanguage">
+        </div>
+
+        <!-- 步骤3: 选择难度 -->
+        <div class="selection-step" id="step3">
+            <div class="difficulty-options">
+                <div class="difficulty-card" data-difficulty="1">
+                    <div class="difficulty-stars">★☆☆</div>
+                    <div class="difficulty-name">简单（满分10）</div>
+                    <div class="difficulty-desc">适合初学者练习基础语法</div>
+                </div>
+                <div class="difficulty-card" data-difficulty="2">
+                    <div class="difficulty-stars">★★☆</div>
+                    <div class="difficulty-name">中等（满分20）</div>
+                    <div class="difficulty-desc">需要理解基本算法</div>
+                </div>
+                <div class="difficulty-card" data-difficulty="3">
+                    <div class="difficulty-stars">★★★</div>
+                    <div class="difficulty-name">困难（满分50）</div>
+                    <div class="difficulty-desc">挑战复杂问题解决能力</div>
+                </div>
+            </div>
+            <input type="hidden" name="difficulty" id="selectedDifficulty">
+        </div>
+
+        <div class="navigation-buttons">
+            <button type="button" class="btn secondary" id="prevBtn" disabled>上一步</button>
+            <button type="button" class="btn primary" id="nextBtn">下一步</button>
+            <button type="submit" class="btn primary" id="startBtn" style="display:none;">开始模拟考试</button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentStep = 1;
+    const totalSteps = 3;
+    let selectedTopic = '';
+    let selectedLanguage = '';
+    let selectedDifficulty = '';
+    
+    // 初始化步骤
+    function updateStepDisplay() {
+        // 更新步骤指示器
+        document.querySelectorAll('.step').forEach((step, index) => {
+            if (index + 1 <= currentStep) {
+                step.classList.add('active');
+            } else {
+                step.classList.remove('active');
+            }
+        });
+        
+        // 显示当前步骤内容
+        document.querySelectorAll('.selection-step').forEach(step => {
+            step.style.display = 'none';
+        });
+        document.getElementById(`step${currentStep}`).style.display = 'block';
+        
+        // 更新按钮状态
+        document.getElementById('prevBtn').disabled = currentStep === 1;
+        document.getElementById('nextBtn').style.display = currentStep < totalSteps ? 'block' : 'none';
+        document.getElementById('startBtn').style.display = currentStep === totalSteps ? 'block' : 'none';
+    }
+    
+    // 下一步按钮
+    document.getElementById('nextBtn').addEventListener('click', function() {
+        // 验证当前步骤选择
+        if (currentStep === 1 && !selectedTopic) {
+            alert('请选择一个主题');
+            return;
+        }
+        if (currentStep === 2 && !selectedLanguage) {
+            alert('请选择一种编程语言');
+            return;
+        }
+        if (currentStep === 3 && !selectedDifficulty) {
+            alert('请选择难度级别');
+            return;
+        }
+        
+        currentStep++;
+        updateStepDisplay();
+    });
+    
+    // 上一步按钮
+    document.getElementById('prevBtn').addEventListener('click', function() {
+        currentStep--;
+        updateStepDisplay();
+    });
+    
+    // 主题选择
+    document.querySelectorAll('.topic-card').forEach(card => {
+        card.addEventListener('click', function() {
+            // 移除之前的选择
+            document.querySelectorAll('.topic-card').forEach(c => {
+                c.classList.remove('selected');
+            });
+            
+            // 设置当前选择
+            this.classList.add('selected');
+            selectedTopic = this.dataset.topic;
+            
+            // 更新隐藏字段值
+            document.getElementById('selectedTopic').value = selectedTopic;
+            
+            // 添加视觉反馈
+            this.style.border = "2px solid #4CAF50";
+            this.style.boxShadow = "0 0 10px rgba(76, 175, 80, 0.5)";
+        });
+    });
+    
+    // 语言选择
+    document.querySelectorAll('.language-card').forEach(card => {
+        card.addEventListener('click', function() {
+            // 移除之前的选择
+            document.querySelectorAll('.language-card').forEach(c => {
+                c.classList.remove('selected');
+            });
+            
+            // 设置当前选择
+            this.classList.add('selected');
+            selectedLanguage = this.dataset.lang;
+            
+            // 更新隐藏字段值
+            document.getElementById('selectedLanguage').value = selectedLanguage;
+            
+            // 添加视觉反馈
+            this.style.border = "2px solid #2196F3";
+            this.style.boxShadow = "0 0 10px rgba(33, 150, 243, 0.5)";
+        });
+    });
+    
+    // 难度选择
+    document.querySelectorAll('.difficulty-card').forEach(card => {
+        card.addEventListener('click', function() {
+            // 移除之前的选择
+            document.querySelectorAll('.difficulty-card').forEach(c => {
+                c.classList.remove('selected');
+            });
+            
+            // 设置当前选择
+            this.classList.add('selected');
+            selectedDifficulty = this.dataset.difficulty;
+            
+            // 更新隐藏字段值
+            document.getElementById('selectedDifficulty').value = selectedDifficulty;
+            
+            // 添加视觉反馈
+            this.style.border = "2px solid #FF9800";
+            this.style.boxShadow = "0 0 10px rgba(255, 152, 0, 0.5)";
+        });
+    });
+    
+    // 表单提交前验证
+    document.getElementById('examForm').addEventListener('submit', function(e) {
+        if (!selectedTopic || !selectedLanguage || !selectedDifficulty) {
+            e.preventDefault();
+            alert('请完成所有选择：主题、语言和难度');
+            return false;
+        }
+        
+        // 确保隐藏字段值是最新的
+        document.getElementById('selectedTopic').value = selectedTopic;
+        document.getElementById('selectedLanguage').value = selectedLanguage;
+        document.getElementById('selectedDifficulty').value = selectedDifficulty;
+        
+        return true;
+    });
+    
+    // 初始化
+    updateStepDisplay();
+</script>
+
+{% endblock %}

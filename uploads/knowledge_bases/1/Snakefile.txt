@@ -1,0 +1,160 @@
+# -*- coding: utf-8 -*-
+configfile: "config.yaml"
+
+import os
+import itertools
+from snakemake.utils import min_version
+
+min_version("7.0")
+
+GENOMES = config["genomes"]
+ASSEMBLY_DIR = config["assembly_dir"]
+OUTPUT_DIR = config["output_dir"]
+THREADS = config["threads"]
+WORK_DIR = f"{OUTPUT_DIR}/work"
+
+#PAIRS = [(g1,g2) for i, g1 in enumerate(GENOMES) for g2 in GENOMES[i+1:]]
+#TRIPLE = [(g1, g2, g3) for g1, g2, g3 in itertools.combinations(GENOMES, 3)]
+TRIPLE = list(itertools.combinations(sorted(GENOMES),3))
+PAIRS = list(itertools.combinations(sorted(GENOMES),2))
+rule all:
+    input:
+        expand("WORK_DIR/{g1}_{g2}.lav", g1_g2=PAIRS),
+        expand("WORK_DIR/{g1}_{g2}.psl", g1_g2=PAIRS),
+        expand("WORK_DIR/{g1}_{g2}.chain", g1_g2=PAIRS),
+        expand("WORK_DIR/{g1}_{g2}_{g3}.maf", g1_g2_g3=TRIPLE),
+        f"{OUTPUT_DIR}/alignment.hal",
+        f"{OUTPUT_DIR}/alignment_stats.txt",
+        f"{OUTPUT_DIR}/dag.svg"
+
+rule prepare_genome:
+    input:
+        fa = os.path.join(ASSEMBLY_DIR, "{genome}.fa")
+    output:
+        two_bit = os.path.join(ASSEMBLY_DIR, "{genome}.2bit"),
+        sizes = os.path.join(ASSEMBLY_DIR, "{genome}.sizes")
+    shell:
+        """
+        faToTwoBit {input.fa} {output.two_bit}
+        faSize -detailed {input.fa} > {output.sizes}
+        """
+
+rule pairwise_lastz:
+    input:
+        target = f"{ASSEMBLY_DIR}/{g1}.2bit",
+        query = f"{ASSEMBLY_DIR}/{g2}.2bit"
+    output:
+        lav = f"{WORK_DIR}/{g1}_{g2}.lav"
+    threads: THREADS
+    shell:
+        """
+        lastz {input.target} {input.query} --format=lav --output={output.lav} --notransition --step=20 --nogapped --ambiguous=iupac
+        """
+
+rule lav_to_psl:
+    input:
+        lav = f"{WORK_DIR}/{g1}_{g2}.lav"
+    output:
+        psl = f"{WORK_DIR}/{g1}_{g2}.psl"
+    shell:
+        "lavToPsl {input.lav} {output.psl}"
+
+rule generate_chain:
+    input:
+        psl = f"{WORK_DIR}/{g1}_{g2}.psl",
+        tbit1 = f"{ASSEMBLY_DIR}/{g1}.2bit",
+        tbit2 = f"{ASSEMBLY_DIR}/{g2}.2bit",
+        sizes1 = f"{ASSEMBLY_DIR}/{g1}.sizes",
+        sizes2 = f"{ASSEMBLY_DIR}/{g2}.sizes",
+    output:
+        chain = f"{WORK_DIR}/{g1}_{g2}.chain"
+    params:
+        linearGap = config.get("linearGap", "loose")
+    shell:
+        "axtChain -psl -linearGap={params.linearGap} "
+        "-minScore=5000 {input.psl} {input.tbit1} {input.tbit2} {output.chain}"
+
+rule build_triple_alignment:
+    input:
+        chain12 = f"{WORK_DIR}/{{g1}}_{{g2}}.chain",
+        chain13 = f"{WORK_DIR}/{{g1}}_{{g3}}.chain",
+        chain23 = f"{WORK_DIR}/{{g2}}_{{g3}}.chain",
+        sizes1 = f"{ASSEMBLY_DIR}/{{g1}}.sizes",
+        sizes2 = f"{ASSEMBLY_DIR}/{{g2}}.sizes",
+        sizes3 = f"{ASSEMBLY_DIR}/{{g3}}.sizes",
+    output:
+        maf = "{WORK_DIR}/{{g1}}_{{g2}}_{{g3}}.maf"
+    shell:
+        """
+        chainMergeSort {input.chain12} {input.chain13} {input.chain23} > {output}.chains
+        
+        chainPreNet {output}.chains {input.sizes1} {input.size2} {input.size3} {output}.pre
+        chainNet {output}.pre {input.sizes1} {input.sizes2} {input.sizes3} {output}.net /dev/null
+        
+        netToAxt {output}.net {output}.chains {input.sizes1} {input.sizes2} {input.sizes3} {output}.axt
+        axtSort {output}.axt {output}.axt.sorted
+        mv {output}.axt.sorted {output}.axt
+        
+        axtToMaf {output}.axt {input.sizes1} {input.sizes2} {input.sizes3} {output}.maf.tmp
+        sed '1s/^/#\n/' {output}.maf.tmp | \
+        awk 'BEGIN {{print "##maf version=1"}} /^#/ {{next}} {{print}}' > {output}.maf
+        rm {output}.maf.tmp
+        """
+
+rule merge_triples:
+    input:
+        mafs = f"{WORK_DIR}/{{g1}}_{{g2}}_{{g3}}.maf"
+    output:
+        merged = [f"{WORK_DIR}/all_triples.maf" for (g1,g2,g3) in TRIPLE]
+    shell:
+        """
+        echo "##maf version=1" > {output.merged}
+        for maf in {input.mafs}; do
+            grep -v '^#' $$maf >> {output.merged}
+        done
+        """
+
+rule build_hal:
+    input:
+        maf = f"{WORK_DIR}/all_triples.maf",
+        sizes = expand(f"{ASSEMBLY_DIR}/{g}.sizes" for g in GENOMES)
+    output:
+        hal = f"{OUTPUT_DIR}/alignment.hal"
+    shell:
+        """
+        echo "({GENOMES[0]},{','.join(GENOMES[1:])});" > {output}.tree
+        
+        maf2hal --noAncestors --progress \
+            --inMaf {input.maf} \
+            --outHal {output.hal} \
+            --refGenome {GENOMES[0]} \
+            --root {GENOMES[0]} \
+            --targetGenomes {','.join(GENOMES)} \
+            --halTree {output}.tree
+        """
+
+rule alignment_stats:
+    input:
+        hal = f"{OUTPUT_DIR}/alignment.hal"
+    output:
+        stats = f"{OUTPUT_DIR}/alignment_stats.txt"
+    shell:
+        "halStats {input.hal} > {output.stats}"
+
+rule generate_dag:
+    input:
+        hal = f"{OUTPUT_DIR}/alignment.hal"
+    output:
+        dag = f"{OUTPUT_DIR}/dag.svg"
+    shell:
+        "snakemake --dag | dot -Tsvg > {output.dag}"
+
+rule clean_intermediate:
+    input:
+        f"{OUTPUT_DIR}/alignment.hal"
+    output:
+        touch(f"{OUTPUT_DIR}/cleanup.done")
+    shell:
+        """
+        echo 'Finished!'
+        """

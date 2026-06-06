@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+
+{% block title %}题目详情 - #{{ question.id }}{% endblock %}
+
+{% block content %}
+<div class="question-detail-container">
+    <div class="question-header">
+        <h2>题目详情 <span class="question-id">#{{ question.id }}</span></h2>
+        <div class="header-actions">
+            <a href="{{ url_for('review_questions') }}" class="btn">
+                &larr; 返回题目列表
+            </a>
+            {% if not question.is_approved %}
+            <a href="{{ url_for('approve_question', question_id=question.id) }}" class="btn primary">
+                ✓ 审核通过
+            </a>
+            {% endif %}
+            <a href="{{ url_for('remove_question', question_id=question.id) }}" 
+                class="btn danger"
+                id="deleteBtn"
+                data-question-id = "{{question.id}}">
+                ✗ 删除题目
+            </a>
+
+        </div>
+    </div>
+
+    <!-- 题目基本信息 -->
+    <div class="question-info">
+        <div class="info-row">
+            <div class="info-label">主题:</div>
+            <div class="info-value">{{ question.topic }}</div>
+        </div>
+        
+        <div class="info-row">
+            <div class="info-label">难度:</div>
+            <div class="info-value">
+                {% for i in range(1,4) %}
+                    {% if i <= question.difficulty %}
+                    ★
+                    {% else %}
+                    ☆
+                    {% endif %}
+                {% endfor %}
+                ({{ question.difficulty }}/3)
+            </div>
+        </div>
+        
+        <div class="info-row">
+            <div class="info-label">编程语言:</div>
+            <div class="info-value">
+                {% if question.is_theory %}
+                <span class="language-badge">理论题</span>
+                {% else %}
+                <span class="language-badge">
+                    {{ question.language | upper }}
+                </span>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="info-row">
+            <div class="info-label">创建时间:</div>
+            <div class="info-value">{{ question.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+        </div>
+        
+        <div class="info-row">
+            <div class="info-label">AI模型:</div>
+            <div class="info-value">{{ question.aiModel }}</div>
+        </div>
+        
+        <div class="info-row">
+            <div class="info-label">审核状态:</div>
+            <div class="info-value">
+                {% if question.is_approved %}
+                <span class="status-badge status-approved">✅ 已审核</span>
+                {% else %}
+                <span class="status-badge status-pending">⏳ 待审核</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 题目内容 -->
+    <div class="question-section">
+        <h3>题目内容</h3>
+        <div class="question-content">
+            <pre>{{ question.question_text }}</pre>
+        </div>
+    </div>
+
+    <!-- 参考答案 -->
+    <div class="question-section">
+        <h3>参考答案</h3>
+        <div class="sample-answer">
+            <pre>{{ question.sample_answer }}</pre>
+        </div>
+        
+        <div class="code-actions">
+            <button class="btn" id="commentBtn">💬 评论</button>
+            <button class="btn primary" id="viewDocBtn">📄 查看原始文档</button>
+        </div>
+    </div>
+
+    <!-- 提示信息 -->
+    <div class="question-section">
+        <h3>提示信息</h3>
+        <div class="hints-list">
+            {% if question.is_theory %}
+            <div class="empty-state">理论题暂无提示信息</div>
+            {% elif hints %}
+            <ul>
+                {% for hint in hints %}
+                <li>{{ hint }}</li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <div class="empty-state">无提示信息</div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- 评论区 -->
+    <div class="question-section">
+        <h3>💬 评论</h3>
+        <div class="comments-container">
+            <div class="comment-form">
+                <textarea id="commentContent" placeholder="写下你的评论..." rows="3"></textarea>
+                <button class="btn primary" id="submitCommentBtn">发表评论</button>
+            </div>
+            <div class="comments-list" id="commentsList">
+                <!-- 评论将通过 JavaScript 动态加载 -->
+            </div>
+        </div>
+    </div>
+  
+    <!-- 使用统计 -->
+    <div class="question-section">
+        <h3>使用统计</h3>
+        <div class="usage-stats">
+            {% if question.is_theory %}
+            <div class="empty-state">理论题暂无使用统计</div>
+            {% else %}
+            <div class="stats-row">
+                <div class="stat-item">
+                    <div class="stat-value">{{ usage_stats.exam_count }}</div>
+                    <div class="stat-label">考试使用次数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ usage_stats.exercise_count }}</div>
+                    <div class="stat-label">练习使用次数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ usage_stats.avg_score | round(1) }}</div>
+                    <div class="stat-label">平均得分</div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 查看评论功能
+    document.getElementById('submitCommentBtn').addEventListener('click', async function() {
+        const commentContent = document.getElementById('commentContent').value.trim();
+        
+        if (!commentContent) {
+            alert('请输入评论内容');
+            return;
+        }
+        
+        try {
+            const response = await fetch("{{ url_for('add_comment', question_id=question.id) }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    content: commentContent,
+                    question_id: {{ question.id }}
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                alert('评论发表成功！');
+                document.getElementById('commentContent').value = '';
+                loadComments(); // 重新加载评论
+            } else {
+                alert('评论失败：' + result.message);
+            }
+        } catch (error) {
+            alert('评论出错：' + error.message);
+        }
+    });
+    
+    // 加载评论
+    function loadComments() {
+        fetch("{{ url_for('get_comments', question_id=question.id) }}")
+            .then(response => response.json())
+            .then(comments => {
+                const commentsList = document.getElementById('commentsList');
+                
+                if (comments.length === 0) {
+                    commentsList.innerHTML = '<div class="empty-state">暂无评论</div>';
+                    return;
+                }
+                
+                commentsList.innerHTML = comments.map(comment => `
+                    <div class="comment-item">
+                        <div class="comment-header">
+                            <span class="comment-author">${comment.author_name || '匿名用户'}</span>
+                            <span class="comment-time">${comment.created_at}</span>
+                        </div>
+                        <div class="comment-content">${comment.content}</div>
+                    </div>
+                `).join('');
+            })
+            .catch(error => {
+                console.error('加载评论失败:', error);
+                document.getElementById('commentsList').innerHTML = '<div class="error">加载评论失败</div>';
+            });
+    }
+    
+    // 查看原始文档功能
+    document.getElementById('viewDocBtn').addEventListener('click', async function() {
+        // 首先获取题目关联的文档信息
+        try {
+            const questionId = {{ question.id }};
+            const response = await fetch(`/api/questions/${questionId}/document`);
+            const result = await response.json();
+            
+            if (result.success && result.document) {
+                // 如果有文档，直接跳转到文档详情页
+                if (result.document.id) {
+                    // 获取文档所属知识库信息
+                    const kbResponse = await fetch(`/api/document/${result.document.id}/info`);
+                    const kbResult = await kbResponse.json();
+                    
+                    if (kbResult.success) {
+                        // 直接跳转到具体文档的详情页面（注意路由是 document 不是 documents）
+                        window.location.href = `/teacher/knowledge_bases/${kbResult.knowledge_base_id}/document/${result.document.id}`;
+                    } else {
+                        alert('无法获取知识库信息');
+                    }
+                } else {
+                    alert('文档信息不完整');
+                }
+            } else {
+                alert(result.message || '该题目没有关联的原始文档');
+            }
+        } catch (error) {
+            alert('获取文档失败：' + error.message);
+        }
+    });
+    
+    // 显示文档弹窗
+    function showDocumentModal(document) {
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>${document.title || '原始文档'}</h3>
+                    <button class="close-btn" onclick="this.closest('.modal').remove()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <pre style="white-space: pre-wrap; word-wrap: break-word;">${document.content}</pre>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn" onclick="this.closest('.modal').remove()">关闭</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+    
+    // 删除题目功能
+    document.getElementById('deleteBtn').addEventListener('click', function(e) {
+         e.preventDefault();
+         const questionId = this.dataset.questionId;
+         const confirmMessage = `确定要删除题目 #${questionId}? \n\n此操作不可撤销！！`;
+         if (confirm(confirmMessage)) {
+            window.location.href = this.href;
+        }
+    });
+    
+    // 页面加载时加载评论
+    document.addEventListener('DOMContentLoaded', function() {
+        loadComments();
+    });
+</script>
+{% endblock %}

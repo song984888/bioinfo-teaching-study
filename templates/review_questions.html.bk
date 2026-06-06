@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}题目审核{% endblock %}
+
+{% block content %}
+<div class="review-questions">
+    <h2>待审核题目</h2>
+    
+    {% if not questions %}
+        <div class="empty-state">
+            <p>当前没有待审核的题目</p>
+        </div>
+    {% else %}
+        <table class="questions-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>主题</th>
+                    <th>难度</th>
+                    <th>语言</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for question in questions %}
+                <tr>
+                    <td>{{ question.id }}</td>
+                    <td>{{ question.topic }}</td>
+                    <td>{{ question.difficulty }}</td>
+                    <td>{{ question.language|upper }}</td>
+                    <td>{{ question.created_at }}</td>
+                    <td class="actions">
+                        <a href="{{ url_for('approve_question', question_id=question.id) }}" class="btn small">通过</a>
+                        <a href="{{ url_for('question_detail', question_id=question.id) }}" class="btn small">详情</a>
+                        <a href="{{ url_for('remove_question',question_id=question.id)}}" class="btn small danger">删除</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+</div>
+{% endblock %}

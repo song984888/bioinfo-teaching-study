@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>知识图谱最终测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #4361ee;
+            padding-bottom: 10px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        #graph-container {
+            width: 100%;
+            height: 600px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            margin-top: 20px;
+            position: relative;
+            background: #fafafa;
+        }
+        .node {
+            cursor: pointer;
+        }
+        .node:hover {
+            stroke: #ffd700;
+            stroke-width: 3px;
+        }
+        .link {
+            stroke: #999;
+            stroke-opacity: 0.6;
+        }
+        .label {
+            font-size: 14px;
+            fill: #333;
+            pointer-events: none;
+        }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            font-size: 18px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 知识图谱最终测试</h1>
+        
+        <div id="status-messages"></div>
+        
+        <div id="graph-container">
+            <div id="loading">正在加载知识图谱...</div>
+            <svg id="graph-svg" width="100%" height="100%"></svg>
+        </div>
+    </div>
+    
+    <!-- 引用本地D3.js -->
+    <script src="/static/js/d3.min.js"></script>
+    
+    <script>
+        // 状态消息函数
+        function addStatus(message, type = 'info') {
+            const container = document.getElementById('status-messages');
+            const div = document.createElement('div');
+            div.className = `status ${type}`;
+            div.textContent = message;
+            container.appendChild(div);
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+        
+        // 主测试函数
+        async function runTest() {
+            console.log('=== 开始知识图谱测试 ===');
+            
+            // 1. 检查 D3.js
+            if (typeof d3 === 'undefined') {
+                addStatus('❌ D3.js 未加载！', 'error');
+                return;
+            }
+            addStatus(`✓ D3.js 已加载，版本：${d3.version || '未知'}`, 'success');
+            
+            // 2. 准备测试数据
+            const testData = {
+                concepts: [
+                    { id: 1, concept_name: '算法', description: '基础算法概念', concept_type: 'entity', frequency: 5, size: 35 },
+                    { id: 2, concept_name: '数据结构', description: '基础数据结构', concept_type: 'entity', frequency: 4, size: 30 },
+                    { id: 3, concept_name: '编程语言', description: '编程语言基础', concept_type: 'entity', frequency: 3, size: 25 },
+                    { id: 4, concept_name: '面向对象', description: 'OOP 概念', concept_type: 'entity', frequency: 3, size: 25 },
+                    { id: 5, concept_name: '数据库', description: '数据库系统', concept_type: 'entity', frequency: 2, size: 20 },
+                    { id: 6, concept_name: '网络', description: '计算机网络', concept_type: 'entity', frequency: 2, size: 20 }
+                ],
+                relations: [
+                    { id: 1, from_concept_id: 1, to_concept_id: 2, relation_type: '相关', confidence: 0.9 },
+                    { id: 2, from_concept_id: 2, to_concept_id: 3, relation_type: '依赖', confidence: 0.8 },
+                    { id: 3, from_concept_id: 3, to_concept_id: 4, relation_type: '支持', confidence: 0.7 },
+                    { id: 4, from_concept_id: 4, to_concept_id: 5, relation_type: '应用', confidence: 0.8 },
+                    { id: 5, from_concept_id: 5, to_concept_id: 6, relation_type: '交互', confidence: 0.6 }
+                ]
+            };
+            
+            addStatus(`✓ 测试数据准备完成：${testData.concepts.length}个概念，${testData.relations.length}个关系`, 'success');
+            
+            // 3. 获取容器
+            const container = document.getElementById('graph-container');
+            const svg = d3.select('#graph-svg');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            
+            addStatus(`✓ SVG 容器尺寸：${width} x ${height}`, 'info');
+            
+            // 4. 使用网格布局
+            const gridSize = Math.ceil(Math.sqrt(testData.concepts.length));
+            const cellSize = Math.min(width / (gridSize + 2), height / (gridSize + 2)) * 0.8;
+            
+            // 计算每个概念的位置
+            testData.concepts.forEach((concept, i) => {
+                const row = Math.floor(i / gridSize);
+                const col = i % gridSize;
+                concept.x = width / 2 + (col - gridSize / 2) * cellSize * 1.5;
+                concept.y = height / 2 + (row - gridSize / 2) * cellSize * 1.5;
+            });
+            
+            addStatus('✓ 网格布局计算完成', 'info');
+            
+            // 5. 绘制连线
+            if (testData.relations.length > 0) {
+                const links = svg.selectAll('.link')
+                    .data(testData.relations)
+                    .enter()
+                    .append('line')
+                    .attr('class', 'link')
+                    .attr('x1', d => {
+                        const source = testData.concepts.find(c => c.id === d.from_concept_id);
+                        return source ? source.x : 0;
+                    })
+                    .attr('y1', d => {
+                        const source = testData.concepts.find(c => c.id === d.from_concept_id);
+                        return source ? source.y : 0;
+                    })
+                    .attr('x2', d => {
+                        const target = testData.concepts.find(c => c.id === d.to_concept_id);
+                        return target ? target.x : 0;
+                    })
+                    .attr('y2', d => {
+                        const target = testData.concepts.find(c => c.id === d.to_concept_id);
+                        return target ? target.y : 0;
+                    })
+                    .attr('stroke-width', d => Math.sqrt(d.confidence) * 2);
+                
+                addStatus(`✓ 绘制了 ${testData.relations.length} 条连线`, 'success');
+            }
+            
+            // 6. 绘制节点
+            const nodes = svg.selectAll('.node')
+                .data(testData.concepts)
+                .enter()
+                .append('circle')
+                .attr('class', 'node')
+                .attr('cx', d => d.x)
+                .attr('cy', d => d.y)
+                .attr('r', d => d.size)
+                .attr('fill', d => {
+                    const colors = {
+                        'entity': '#4361ee',
+                        'relation': '#f72585',
+                        'attribute': '#4cc9f0'
+                    };
+                    return colors[d.concept_type] || '#4361ee';
+                })
+                .attr('stroke', '#fff')
+                .attr('stroke-width', 2);
+            
+            addStatus(`✓ 绘制了 ${testData.concepts.length} 个节点`, 'success');
+            
+            // 7. 添加标签
+            const labels = svg.selectAll('.label')
+                .data(testData.concepts)
+                .enter()
+                .append('text')
+                .attr('class', 'label')
+                .attr('x', d => d.x)
+                .attr('y', d => d.y + 5)
+                .attr('text-anchor', 'middle')
+                .text(d => d.concept_name);
+            
+            addStatus(`✓ 添加了 ${testData.concepts.length} 个标签`, 'success');
+            
+            // 8. 隐藏加载指示器
+            document.getElementById('loading').style.display = 'none';
+            addStatus('✅ 知识图谱渲染完成！', 'success');
+        }
+        
+        // 页面加载完成后执行
+        document.addEventListener('DOMContentLoaded', runTest);
+    </script>
+</body>
+</html>

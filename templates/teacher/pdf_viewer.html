@@ -1,0 +1,397 @@
+{% extends "base.html" %}
+
+{% block title %}{{ document.title }} - PDF 预览{% endblock %}
+
+{% block content %}
+<div class="pdf-viewer-container">
+    <!-- 顶部工具栏 -->
+    <div class="pdf-toolbar">
+        <div class="toolbar-left">
+            <a href="{{ url_for('view_knowledge_base', kb_id=document.knowledge_base_id) }}" 
+               class="btn-back" title="返回知识库">
+                <i class="fas fa-arrow-left"></i>
+            </a>
+            <div class="document-title">{{ document.title }}</div>
+        </div>
+        
+        <div class="toolbar-right">
+            <button class="btn-tool" onclick="zoomOut()" title="缩小">
+                <i class="fas fa-search-minus"></i>
+            </button>
+            <button class="btn-tool" onclick="zoomIn()" title="放大">
+                <i class="fas fa-search-plus"></i>
+            </button>
+            <button class="btn-tool" onclick="resetZoom()" title="重置">
+                <i class="fas fa-compress-arrows-alt"></i>
+            </button>
+            <div class="toolbar-divider"></div>
+            <a href="{{ url_for('download_document', kb_id=document.knowledge_base_id, doc_id=document.id) }}" 
+               class="btn-tool" title="下载">
+                <i class="fas fa-download"></i>
+            </a>
+            <button class="btn-tool" onclick="window.print()" title="打印">
+                <i class="fas fa-print"></i>
+            </button>
+        </div>
+    </div>
+    
+    <!-- PDF 内容区域 -->
+    <div class="pdf-content-wrapper">
+        {% if document.file_type == 'pdf' %}
+            <!-- PDF 文件使用 iframe 内嵌显示 -->
+            <div class="pdf-iframe-container">
+                <iframe src="{{ url_for('view_document_pdf', kb_id=document.knowledge_base_id, doc_id=document.id) }}" 
+                        frameborder="0" 
+                        width="100%" 
+                        height="100%"
+                        id="pdfViewer">
+                </iframe>
+            </div>
+        {% elif document.file_type in ['txt', 'md', 'py', 'java', 'c', 'cpp', 'js', 'html'] %}
+            <!-- 文本文件使用代码高亮显示 -->
+            <div class="text-file-container">
+                <pre class="code-display"><code>{{ document.content }}</code></pre>
+            </div>
+        {% else %}
+            <!-- 其他文件格式提示下载 -->
+            <div class="unsupported-file">
+                <div class="file-icon">
+                    <i class="fas fa-file-{{ document.file_type }}"></i>
+                </div>
+                <h3>不支持在线预览</h3>
+                <p>该文件格式 ({{ document.file_type|upper }}) 暂不支持在线预览</p>
+                <a href="{{ url_for('download_document', kb_id=document.knowledge_base_id, doc_id=document.id) }}" 
+                   class="btn-download">
+                    <i class="fas fa-download"></i> 下载查看
+                </a>
+            </div>
+        {% endif %}
+    </div>
+    
+    <!-- 底部信息栏 -->
+    <div class="pdf-footer">
+        <div class="footer-info">
+            <span><i class="fas fa-file-alt"></i> {{ document.file_type|upper }}</span>
+            <span><i class="fas fa-calendar"></i> {{ document.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+            {% if document.tags %}
+                <span><i class="fas fa-tags"></i> 
+                    {% for tag in document.tags.split(',')[:3] %}
+                        <span class="badge-tag">{{ tag.strip() }}</span>
+                    {% endfor %}
+                </span>
+            {% endif %}
+        </div>
+        <div class="footer-stats">
+            <span><i class="fas fa-question-circle"></i> {{ question_count }} 个相关问题</span>
+            <span><i class="fas fa-brain"></i> {{ concept_count }} 个概念</span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+/* PDF 查看器容器 */
+.pdf-viewer-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #f5f5f5;
+    display: flex;
+    flex-direction: column;
+    z-index: 9999;
+}
+
+/* 工具栏样式 */
+.pdf-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    background: #fff;
+    border-bottom: 1px solid #ddd;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.btn-back {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 4px;
+    background: #f8f9fa;
+    color: #333;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+
+.btn-back:hover {
+    background: #e9ecef;
+}
+
+.document-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #333;
+}
+
+.toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-tool {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 4px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: #555;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-decoration: none;
+}
+
+.btn-tool:hover {
+    background: #f8f9fa;
+    border-color: #dee2e6;
+}
+
+.toolbar-divider {
+    width: 1px;
+    height: 24px;
+    background: #dee2e6;
+    margin: 0 8px;
+}
+
+/* PDF 内容区域 */
+.pdf-content-wrapper {
+    flex: 1;
+    overflow: auto;
+    padding: 20px;
+    display: flex;
+    justify-content: center;
+}
+
+.pdf-iframe-container {
+    width: 100%;
+    max-width: 1200px;
+    background: #fff;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    border-radius: 4px;
+}
+
+/* 文本文件显示 */
+.text-file-container {
+    width: 100%;
+    max-width: 1200px;
+    background: #fff;
+    padding: 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    border-radius: 4px;
+}
+
+.code-display {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 4px;
+    border: 1px solid #e9ecef;
+    overflow-x: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* 不支持的文件格式 */
+.unsupported-file {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    text-align: center;
+}
+
+.file-icon {
+    font-size: 80px;
+    color: #dee2e6;
+    margin-bottom: 20px;
+}
+
+.unsupported-file h3 {
+    color: #333;
+    margin-bottom: 10px;
+}
+
+.unsupported-file p {
+    color: #666;
+    margin-bottom: 20px;
+}
+
+.btn-download {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    background: #3498db;
+    color: #fff;
+    border-radius: 4px;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+
+.btn-download:hover {
+    background: #2980b9;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+/* 底部信息栏 */
+.pdf-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    background: #fff;
+    border-top: 1px solid #ddd;
+    font-size: 14px;
+    color: #666;
+}
+
+.footer-info, .footer-stats {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+}
+
+.footer-info span, .footer-stats span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.badge-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #e9ecef;
+    border-radius: 12px;
+    font-size: 12px;
+    margin-left: 4px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .pdf-toolbar {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    
+    .document-title {
+        font-size: 16px;
+    }
+    
+    .pdf-footer {
+        flex-direction: column;
+        gap: 10px;
+        align-items: flex-start;
+    }
+    
+    .footer-info, .footer-stats {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+}
+
+/* 打印样式 */
+@media print {
+    .pdf-toolbar, .pdf-footer {
+        display: none;
+    }
+    
+    .pdf-viewer-container {
+        position: static;
+    }
+    
+    .pdf-content-wrapper {
+        padding: 0;
+    }
+}
+</style>
+
+<script>
+// 缩放功能
+let currentZoom = 100;
+
+function zoomIn() {
+    currentZoom = Math.min(currentZoom + 25, 200);
+    applyZoom();
+}
+
+function zoomOut() {
+    currentZoom = Math.max(currentZoom - 25, 50);
+    applyZoom();
+}
+
+function resetZoom() {
+    currentZoom = 100;
+    applyZoom();
+}
+
+function applyZoom() {
+    const iframe = document.getElementById('pdfViewer');
+    if (iframe) {
+        iframe.style.transform = `scale(${currentZoom / 100})`;
+        iframe.style.transformOrigin = 'top center';
+    }
+}
+
+// 键盘快捷键
+document.addEventListener('keydown', function(e) {
+    // ESC 键返回
+    if (e.key === 'Escape') {
+        window.location.href = "{{ url_for('view_knowledge_base', kb_id=document.knowledge_base_id) }}";
+    }
+    
+    // Ctrl/Cmd + 加号 放大
+    if ((e.ctrlKey || e.metaKey) && e.key === '+') {
+        e.preventDefault();
+        zoomIn();
+    }
+    
+    // Ctrl/Cmd + 减号 缩小
+    if ((e.ctrlKey || e.metaKey) && e.key === '-') {
+        e.preventDefault();
+        zoomOut();
+    }
+    
+    // Ctrl/Cmd + 0 重置缩放
+    if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+        e.preventDefault();
+        resetZoom();
+    }
+});
+
+// 页面加载完成后的初始化
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('PDF 查看器已加载');
+});
+</script>
+{% endblock %}

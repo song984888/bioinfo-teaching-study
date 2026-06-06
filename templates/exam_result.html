@@ -1,0 +1,363 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="container py-5">
+    <div class="grading-details card shadow-lg">
+        <div class="card-header bg-primary text-white">
+            <h2 class="mb-0"><i class="fas fa-clipboard-check me-2"></i>正式考试评分详情</h2>
+        </div>
+        
+        <div class="card-body">
+            <div class="row">
+                <!-- 左侧：考试信息 -->
+                <div class="col-md-6">
+                    <div class="exam-info-section mb-4">
+                        <h3 class="section-title mb-4">
+                            <i class="fas fa-file-alt me-2"></i>正式考试题目情况
+                        </h3>
+                        
+                        <!-- 题目信息 -->
+                        <div class="info-item mb-4">
+                            <div class="d-flex justify-content-between mb-2">
+                                <h5 class="fw-bold"><i class="fas fa-question-circle me-2 text-info"></i>题目信息</h5>
+                                <span class="badge bg-info">{{ exam.question_text }}</span>
+                            </div>
+                            <div class="progress" style="height: 12px;">
+                                <div class="progress-bar bg-info" role="progressbar" 
+                                     style="width: {{ exam.question_text }}%" 
+                                     aria-valuenow="{{ exam.question_text }}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- 考试提示 -->
+                        <div class="info-item mb-4">
+                            <div class="d-flex justify-content-between mb-2">
+                                <h5 class="fw-bold"><i class="fas fa-lightbulb me-2 text-warning"></i>正式考试提示</h5>
+                                <span class="badge bg-warning">{{ exam.hints }}</span>
+                            </div>
+                            <div class="progress" style="height: 12px;">
+                                <div class="progress-bar bg-warning" role="progressbar" 
+                                     style="width: {{ exam.hints }}%" 
+                                     aria-valuenow="{{ exam.hints }}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- 你的答案 - 代码显示 -->
+                        <div class="info-item mb-4">
+                            <h5 class="fw-bold"><i class="fas fa-user-edit me-2 text-success"></i>你的答案</h5>
+                            <div class="code-container mt-3">
+                                <div class="code-header bg-dark text-white p-2 d-flex justify-content-between align-items-center">
+                                </div>
+                                <pre id="student-code" class="code-content">{{ exam.student_answer }}</pre>
+                            </div>
+                        </div>
+                        
+                        <!-- 参考答案 - 代码显示 -->
+                        <div class="info-item mb-4">
+                            <h5 class="fw-bold"><i class="fas fa-lightbulb me-2 text-primary"></i>参考答案</h5>
+                            <div class="code-container mt-3">
+                                <div class="code-header bg-dark text-white p-2 d-flex justify-content-between align-items-center">
+                                </div>
+                                <pre id="sample-code" class="code-content">{{ exam.sample_answer }}</pre>
+                            </div>
+                        </div>
+                        
+                        <!-- 考试难度 -->
+                        <div class="info-item mb-4">
+                            <div class="d-flex justify-content-between mb-2">
+                                <h5 class="fw-bold"><i class="fas fa-chart-line me-2 text-secondary"></i>正式考试难度</h5>
+                                <span class="badge bg-secondary">{{ exam.difficulty }}</span>
+                            </div>
+                            <div class="progress" style="height: 12px;">
+                                <div class="progress-bar bg-secondary" role="progressbar" 
+                                     style="width: {{ exam.difficulty }}%" 
+                                     aria-valuenow="{{ exam.difficulty }}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- 考试主题 -->
+                        <div class="info-item mb-4">
+                            <div class="d-flex justify-content-between mb-2">
+                                <h5 class="fw-bold"><i class="fas fa-bookmark me-2 text-info"></i>正式考试主题</h5>
+                                <span class="badge bg-info">{{ exam.topic }}</span>
+                            </div>
+                            <div class="progress" style="height: 12px;">
+                                <div class="progress-bar bg-info" role="progressbar" 
+                                     style="width: {{ exam.topic }}%" 
+                                     aria-valuenow="{{ exam.topic }}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- 考试时间 -->
+                        <div class="info-item mb-4">
+                            <div class="d-flex justify-content-between mb-2">
+                                <h5 class="fw-bold"><i class="fas fa-clock me-2 text-primary"></i>正式考试时间</h5>
+                                <span class="badge bg-primary">{{ exam.submitted_at }}</span>
+                            </div>
+                            <div class="progress" style="height: 12px;">
+                                <div class="progress-bar bg-primary" role="progressbar" 
+                                     style="width: {{ exam.submitted_at }}%" 
+                                     aria-valuenow="{{ exam.submitted_at }}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 右侧：评分详情 -->
+                <div class="col-md-6">
+                    <div class="grading-section">
+                        <h3 class="section-title mb-4">
+                            <i class="fas fa-star me-2 text-primary"></i>正式评分详情
+                        </h3>
+                        
+                        <div class="score-display text-center mb-4">
+                            <div class="score-circle mx-auto mb-3">
+                                <div class="score-inner">
+                                    <span class="score-value">{{ exam.ai_score }}</span>
+                                    <span class="score-total">总分</span>
+                                </div>
+                            </div>
+                            
+                            <div class="score-status">
+                                <span class="badge bg-primary fs-6 p-2">
+                                    {{ '优秀' if exam.ai_score >= 90 else '良好' if exam.ai_score >= 70 else '及格' if exam.ai_score >= 60 else '需努力' }}
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <div class="ai-comment">
+                            <h4 class="d-flex align-items-center mb-3">
+                                <i class="fas fa-robot me-2 text-info"></i>AI评语
+                            </h4>
+                            <div class="comment-content card bg-light p-3 rounded">
+                                <div class="card-body">
+                                    {{ exam.ai_comment|safe }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 底部按钮 -->
+            <div class="d-flex justify-content-center mt-4">
+                <a href="#" class="btn btn-primary me-3">
+                    <i class="fas fa-download me-2"></i>下载成绩单
+                </a>
+                <a href="#" class="btn btn-outline-primary me-3">
+                    <i class="fas fa-redo-alt me-2"></i>重新测试
+                </a>
+                <a href="#" class="btn btn-success">
+                    <i class="fas fa-book me-2"></i>查看解析
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .section-title {
+        position: relative;
+        padding-bottom: 10px;
+        margin-bottom: 20px;
+        font-weight: 600;
+        color: #4361ee;
+        display: flex;
+        align-items: center;
+    }
+    
+    .section-title:after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 50px;
+        height: 3px;
+        background: #4361ee;
+        border-radius: 3px;
+    }
+    
+    .grading-details {
+        border-radius: 15px;
+        overflow: hidden;
+    }
+    
+    .card-header {
+        border-radius: 0 !important;
+        padding: 20px 30px;
+    }
+    
+    .card-body {
+        padding: 30px;
+    }
+    
+    .info-item {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
+    }
+    
+    .progress {
+        border-radius: 10px;
+        background-color: #e9ecef;
+    }
+    
+    .progress-bar {
+        border-radius: 10px;
+    }
+    
+    .score-circle {
+        width: 150px;
+        height: 150px;
+        border-radius: 50%;
+        background: conic-gradient(#4361ee 0% {{ exam.ai_score }}%, #e9ecef {{ exam.ai_score }}% 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+    }
+    
+    .score-inner {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        background: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+    }
+    
+    .score-value {
+        font-size: 2.2rem;
+        font-weight: bold;
+        color: #4361ee;
+        line-height: 1;
+    }
+    
+    .score-total {
+        font-size: 0.9rem;
+        color: #6c757d;
+    }
+    
+    .comment-content {
+        border-left: 4px solid #4361ee;
+    }
+    
+    .ai-comment h4 {
+        color: #495057;
+    }
+    
+    .btn {
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        display: inline-flex;
+        align-items: center;
+    }
+    
+    .btn:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    
+    /* 代码容器样式 */
+    .code-container {
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+        overflow: hidden;
+        margin-top: 10px;
+    }
+    
+    .code-header {
+        font-family: 'Fira Code', monospace;
+        font-size: 14px;
+    }
+    
+    .code-content {
+        font-family: 'Fira Code', 'Courier New', monospace;
+        font-size: 14px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        background: #f8f9fa;
+        color: #333;
+        padding: 15px;
+        margin: 0;
+        max-height: 300px;
+        overflow-y: auto;
+        tab-size: 4;
+    }
+    
+    
+    @media (max-width: 768px) {
+        .score-circle {
+            width: 130px;
+            height: 130px;
+        }
+        
+        .score-inner {
+            width: 100px;
+            height: 100px;
+        }
+        
+        .score-value {
+            font-size: 1.8rem;
+        }
+        
+        .row {
+            flex-direction: column;
+        }
+        
+        .col-md-6 {
+            width: 100%;
+        }
+    }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 代码复制功能
+    document.querySelectorAll('.copy-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const targetId = this.getAttribute('data-target');
+            const codeElement = document.getElementById(targetId);
+            
+            // 复制代码到剪贴板
+            navigator.clipboard.writeText(codeElement.textContent)
+                .then(() => {
+                    // 显示复制成功反馈
+                    const originalText = this.innerHTML;
+                    this.innerHTML = '<i class="fas fa-check"></i> 已复制';
+                    this.classList.add('btn-success');
+                    
+                    setTimeout(() => {
+                        this.innerHTML = originalText;
+                        this.classList.remove('btn-success');
+                        this.classList.add('btn-outline-light');
+                    }, 2000);
+                })
+                .catch(err => {
+                    console.error('复制失败:', err);
+                    alert('复制失败，请手动复制代码');
+                });
+        });
+    });
+});
+</script>
+{% endblock %}
+
+
+

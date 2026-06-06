@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() if csrf_token else '' }}">
+    <title>《生物信息学课程》教&学系统 - {% block title %}{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/user-profile.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css"rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/perl/perl.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/clike/clike.min.js"></script>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>《生物信息学课程》教&学系统</h1>
+            <nav>
+                {% if session.user_id %}
+                    <span>欢迎, {{ session.name }} ({{ session.role }})</span>
+                    <a href="{{ url_for('dashboard') }}">首页</a>
+                    <a href="{{ url_for('logout') }}">退出</a>
+                {% else %}
+                    <a href="{{ url_for('login') }}">登录</a>
+                {% endif %}
+            </nav>
+        </div>
+    </header>
+
+    <main class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flashes" style="margin-top: 20px;">
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}" style="padding: 15px 20px; margin-bottom: 20px; border-radius: 8px; border-left: 4px solid; font-weight: 500; box-shadow: 0 2px 8px rgba(0,0,0,0.08); {% if category == 'warning' %}background-color: #fff3cd; color: #856404; border-left-color: #ffc107;{% elif category == 'success' %}background-color: #d4edda; color: #155724; border-left-color: #28a745;{% elif category == 'danger' %}background-color: #f8d7da; color: #721c24; border-left-color: #dc3545;{% else %}background-color: #d1ecf1; color: #0c5460; border-left-color: #17a2b8;{% endif %}">
+                            {% if category == 'warning' %}<i class="fas fa-exclamation-triangle"></i>{% elif category == 'success' %}<i class="fas fa-check-circle"></i>{% elif category == 'danger' %}<i class="fas fa-times-circle"></i>{% else %}<i class="fas fa-info-circle"></i>{% endif %}
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2025 计算与分子生物学实验室 生物信息教学团队</p>
+            <p>Email: songhongtao@bnu.edu.cn , pangerli@bnu.edu.cn</p>
+            <p>Addr: College of Life Science@Beijing Normal University</p>
+        </div>
+    </footer>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

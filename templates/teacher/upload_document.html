@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}上传文档到 {{ knowledge_base.name }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('knowledge_bases') }}">知识库管理</a>
+            </li>
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('view_knowledge_base', kb_id=knowledge_base.id) }}">{{ knowledge_base.name }}</a>
+            </li>
+            <li class="breadcrumb-item active">上传文档</li>
+        </ol>
+    </nav>
+
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">
+                        <i class="fas fa-upload"></i> 上传文档到 "{{ knowledge_base.name }}"
+                    </h4>
+                </div>
+                <div class="card-body">
+
+
+                    <form method="POST" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label for="title" class="form-label">文档标题 *</label>
+                            <input type="text" class="form-control" id="title" name="title" 
+                                   placeholder="请输入文档标题" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="document_file" class="form-label">选择文件 *</label>
+                            <input type="file" class="form-control" id="document_file" name="document_file" 
+                                   accept=".pdf,.txt" required>
+                            <div class="form-text">
+                                支持 PDF 和 TXT 格式，文件大小不超过 10MB
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="tags" class="form-label">标签</label>
+                            <input type="text" class="form-control" id="tags" name="tags" 
+                                   placeholder="用逗号分隔多个标签，如：编程,基础,概念">
+                            <div class="form-text">标签有助于文档分类和检索</div>
+                        </div>
+
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-upload"></i> 上传文档
+                            </button>
+                            <a href="{{ url_for('view_knowledge_base', kb_id=knowledge_base.id) }}" 
+                               class="btn btn-secondary">
+                                <i class="fas fa-times"></i> 取消
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 文件上传验证
+    document.getElementById('document_file').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const fileSize = file.size / 1024 / 1024; // MB
+            const fileName = file.name.toLowerCase();
+            
+            if (fileSize > 10) {
+                alert('文件大小不能超过 10MB');
+                e.target.value = '';
+                return;
+            }
+            
+            if (!fileName.endsWith('.pdf') && !fileName.endsWith('.txt')) {
+                alert('只支持 PDF 和 TXT 格式文件');
+                e.target.value = '';
+                return;
+            }
+            
+            // 自动填写标题
+            if (!document.getElementById('title').value) {
+                document.getElementById('title').value = file.name.replace(/\.[^/.]+$/, "");
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

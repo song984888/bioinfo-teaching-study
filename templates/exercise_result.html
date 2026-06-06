@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>练习结果</title>
+</head>
+<body>
+    <div id="result-container"></div>
+    <script>
+        window.onload = function() {
+            var resultData = sessionStorage.getItem('exerciseResult');
+            if (resultData) {
+                var result = JSON.parse(resultData);
+                var container = document.getElementById('result-container');
+                container.innerHTML = `
+                    <h1>练习提交结果</h1>
+                    <p>模拟AI评分: ${result.score}分</p>
+                    <p>模拟评语: ${result.comment}</p>
+                    <p>评论细节: ${result.detailed}</p>
+                `;
+                // 清除sessionStorage，避免重复使用
+                sessionStorage.removeItem('exerciseResult');
+            } else {
+                document.getElementById('result-container').innerHTML = '<p>没有找到结果数据</p>';
+            }
+        };
+    </script>
+</body>
+</html>

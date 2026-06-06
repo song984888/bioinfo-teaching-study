@@ -1,0 +1,368 @@
+{% extends "base.html" %}
+{% block title %}考试详情{% endblock %}
+{% block content %}
+
+<style>
+    :root {
+        --primary: #4361ee;
+        --primary-light: #eef2ff;
+        --secondary: #3f37c9;
+        --success: #4cc9f0;
+        --ai-color: #8b5cf6;
+        --teacher-color: #0ea5e9;
+        --warning: #f72585;
+        --light: #f8f9fa;
+        --dark: #212529;
+        --gray: #6c757d;
+        --light-gray: #e9ecef;
+        --border-radius: 12px;
+        --box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+        --transition: all 0.3s ease;
+    }
+    
+    .exam-container {
+        background: white;
+        border-radius: var(--border-radius);
+        box-shadow: var(--box-shadow);
+        overflow: hidden;
+        margin-bottom: 30px;
+    }
+    
+    .exam-header {
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        color: white;
+        padding: 30px;
+        position: relative;
+    }
+    
+    .exam-header h1 {
+        font-size: 28px;
+        margin-bottom: 15px;
+    }
+    
+    .exam-header h2 {
+        font-size: 36px;
+        font-weight: 700;
+        margin-bottom: 20px;
+    }
+    
+    .submission-time {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 16px;
+        opacity: 0.9;
+    }
+    
+    .exam-status {
+        position: absolute;
+        top: 30px;
+        right: 30px;
+        background: rgba(255, 255, 255, 0.2);
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-weight: 500;
+    }
+    
+    .scores {
+        display: flex;
+        gap: 20px;
+        padding: 30px;
+        background: var(--light);
+    }
+    
+    .score-card {
+        flex: 1;
+        background: white;
+        border-radius: var(--border-radius);
+        padding: 25px;
+        box-shadow: var(--box-shadow);
+        transition: var(--transition);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .score-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    .score-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 5px;
+    }
+    
+    .ai-score::before {
+        background: var(--ai-color);
+    }
+    
+    .teacher-score::before {
+        background: var(--teacher-color);
+    }
+    
+    .score-card h3 {
+        font-size: 20px;
+        margin-bottom: 15px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .ai-score h3 {
+        color: var(--ai-color);
+    }
+    
+    .teacher-score h3 {
+        color: var(--teacher-color);
+    }
+    
+    .score-card p {
+        margin-bottom: 10px;
+    }
+    
+    .score-card strong {
+        font-size: 36px;
+        display: block;
+        margin: 15px 0;
+    }
+    
+    .ai-score strong {
+        color: var(--ai-color);
+    }
+    
+    .teacher-score strong {
+        color: var(--teacher-color);
+    }
+    
+    .section-divider {
+        border: none;
+        height: 1px;
+        background: var(--light-gray);
+        margin: 0;
+    }
+    
+    .question-section, .answer-section {
+        padding: 30px;
+    }
+    
+    .question-section {
+        background: var(--primary-light);
+        border-bottom: 1px solid var(--light-gray);
+    }
+    
+    .answer-section {
+        border-bottom: 1px solid var(--light-gray);
+    }
+    
+    .answer-section:last-child {
+        border-bottom: none;
+    }
+    
+    .question-section h3, .answer-section h3 {
+        font-size: 22px;
+        margin-bottom: 20px;
+        color: var(--primary);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .question-content, .student-answer, .sample-answer {
+        background: white;
+        border-radius: var(--border-radius);
+        padding: 20px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        margin-top: 15px;
+    }
+    
+    .question-content {
+        font-size: 17px;
+        line-height: 1.8;
+    }
+    
+    .student-answer, .sample-answer {
+        font-family: 'Courier New', monospace;
+        font-size: 15px;
+        white-space: pre-wrap;
+        overflow-x: auto;
+    }
+    
+    .answer-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    
+    .answer-title {
+        font-weight: 600;
+        color: var(--dark);
+    }
+    
+    .copy-btn {
+        background: rgba(67, 97, 238, 0.1);
+        color: var(--primary);
+        border: none;
+        padding: 6px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: var(--transition);
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 14px;
+    }
+    
+    .copy-btn:hover {
+        background: var(--primary);
+        color: white;
+    }
+    
+    /* 响应式设计 */
+    @media (max-width: 768px) {
+        .scores {
+            flex-direction: column;
+        }
+        
+        .exam-header h2 {
+            font-size: 28px;
+            padding-right: 100px;
+        }
+        
+        .exam-status {
+            top: 20px;
+            right: 20px;
+        }
+    }
+    
+    @media (max-width: 480px) {
+        .exam-header {
+            padding: 20px;
+        }
+        
+        .exam-header h1 {
+            font-size: 24px;
+        }
+        
+        .exam-header h2 {
+            font-size: 24px;
+        }
+        
+        .question-section, .answer-section {
+            padding: 20px;
+        }
+        
+        .score-card {
+            padding: 20px;
+        }
+    }
+</style>
+
+<article class="exam-container">
+    <header class="exam-header">
+        <h1>考试详情</h1>
+        <h2>{{ exam.topic }}</h2>
+        <p class="submission-time">
+            <i class="far fa-clock"></i> 提交时间: {{ exam.submitted_at.strftime('%Y-%m-%d %H:%M') }}
+        </p>
+        <div class="exam-status">
+            {% if exam.is_reviewed %}
+                <i class="fas fa-check-circle"></i> 已批改
+            {% else %}
+                <i class="fas fa-clock"></i> 待批改
+            {% endif %}
+        </div>
+    </header>
+
+    <section class="scores">
+        <article class="score-card ai-score">
+            <h3><i class="fas fa-robot"></i> AI评分</h3>
+            <p>代码质量与功能实现评分</p>
+            <strong>{{ exam.ai_score }}/100</strong>
+            <p>{{ exam.ai_comment }}</p>
+        </article>
+        
+        {% if exam.is_reviewed %}
+        <article class="score-card teacher-score">
+            <h3><i class="fas fa-user-graduate"></i> 教师评分</h3>
+            <p>综合评估与专业点评</p>
+            <strong>{{ exam.teacher_score }}/100</strong>
+            <p>{{ exam.teacher_comment }}</p>
+        </article>
+        {% endif %}
+    </section>
+
+    <hr class="section-divider">
+
+    <article class="question-section">
+        <h3><i class="fas fa-question-circle"></i> 题目要求</h3>
+        <div class="question-content">
+            {{ exam.question_text|safe }}
+        </div>
+    </article>
+
+    <article class="answer-section">
+        <div class="answer-header">
+            <h3><i class="fas fa-user-edit"></i> 你的答案</h3>
+            <button class="copy-btn" id="copyStudentBtn">
+                <i class="far fa-copy"></i> 复制代码
+            </button>
+        </div>
+        <pre class="student-answer"><code>{{ exam.student_answer }}</code></pre>
+    </article>
+
+    {% if exam.sample_answer %}
+    <article class="answer-section">
+        <div class="answer-header">
+            <h3><i class="fas fa-lightbulb"></i> 参考答案</h3>
+            <button class="copy-btn" id="copySampleBtn">
+                <i class="far fa-copy"></i> 复制代码
+            </button>
+        </div>
+        <pre class="sample-answer"><code>{{ exam.sample_answer }}</code></pre>
+    </article>
+    {% endif %}
+</article>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 复制功能
+        document.getElementById('copyStudentBtn').addEventListener('click', function() {
+            const code = document.querySelector('.student-answer code').innerText;
+            copyToClipboard(code, this);
+        });
+        
+        {% if exam.sample_answer %}
+        document.getElementById('copySampleBtn').addEventListener('click', function() {
+            const code = document.querySelector('.sample-answer code').innerText;
+            copyToClipboard(code, this);
+        });
+        {% endif %}
+        
+        function copyToClipboard(text, button) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            
+            // 显示复制反馈
+            const originalText = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-check"></i> 已复制';
+            button.style.background = '#4CAF50';
+            button.style.color = 'white';
+            
+            setTimeout(() => {
+                button.innerHTML = originalText;
+                button.style.background = '';
+                button.style.color = '';
+            }, 2000);
+        }
+    });
+</script>
+
+{% endblock %}

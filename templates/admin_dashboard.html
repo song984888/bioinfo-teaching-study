@@ -190,7 +190,9 @@
     <div class="tab-content" id="tab-knowledge">
         <div class="section-header">
             <h2>题库管理</h2>
-            <a href="{{ url_for('knowledge_bases') }}" class="btn btn-primary">知识库管理</a>
+            <div class="action-buttons">
+                <a href="{{ url_for('knowledge_bases') }}" class="btn btn-primary">知识库管理</a>
+            </div>
         </div>
         
         <div class="table-container">
@@ -210,6 +212,55 @@
                     <tr><td colspan="7" class="loading-cell">加载中...</td></tr>
                 </tbody>
             </table>
+        </div>
+    </div>
+    
+    <!-- ====== Tab 4: 快捷导航 ====== -->
+    <div class="admin-tabs">
+        <button class="tab-btn" data-tab="tab-shortcuts">🔗 快捷导航</button>
+    </div>
+    <div class="tab-content" id="tab-shortcuts">
+        <div class="dashboard-cards" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-top: 10px;">
+            <a href="{{ url_for('generate_theory_questions') }}" class="card card-theory">
+                <div class="card-icon">📚</div>
+                <h3>理论题生成</h3>
+                <p>基于课件生成名词/简答等题目</p>
+            </a>
+            <a href="{{ url_for('teacher_generate_questions') }}" class="card card-ai">
+                <div class="card-icon">💻</div>
+                <h3>程序设计题目生成</h3>
+                <p>基于 AI 生成编程实践题目</p>
+            </a>
+            <a href="{{ url_for('question_bank') }}" class="card card-question">
+                <div class="card-icon">📚</div>
+                <h3>题库浏览</h3>
+                <p>查看已通过的题目</p>
+            </a>
+            <a href="{{ url_for('create_exam_paper') }}" class="card card-exam">
+                <div class="card-icon">📋</div>
+                <h3>智能组卷</h3>
+                <p>从题库生成 A/B 卷</p>
+            </a>
+            <a href="{{ url_for('paper_management') }}" class="card card-exam-manage">
+                <div class="card-icon">🗂️</div>
+                <h3>试卷管理</h3>
+                <p>查看和管理历史试卷</p>
+            </a>
+            <a href="{{ url_for('view_exam_records') }}" class="card card-record">
+                <div class="card-icon">📝</div>
+                <h3>考试记录</h3>
+                <p>查看学生考试情况</p>
+            </a>
+            <a href="{{ url_for('view_background_tasks') }}" class="card card-task">
+                <div class="card-icon">⚙️</div>
+                <h3>后台任务</h3>
+                <p>管理题目生成任务</p>
+            </a>
+            <a href="{{ url_for('question_summary') }}" class="card card-stat">
+                <div class="card-icon">📊</div>
+                <h3>试题库统计</h3>
+                <p>查看题库分析报告</p>
+            </a>
         </div>
     </div>
 </div>
@@ -473,6 +524,7 @@ async function loadKnowledgeBases() {
                 <td>${kb.created_at || '-'}</td>
                 <td class="action-btns">
                     <a href="/teacher/knowledge_bases/${kb.id}" class="btn btn-sm btn-primary">查看</a>
+                    <a href="/teacher/knowledge_bases/${kb.id}/graph" class="btn btn-sm" style="background:#6f42c1;color:#fff;">图谱</a>
                     <button class="btn btn-sm btn-danger" onclick="deleteKnowledgeBase(${kb.id})">删除</button>
                 </td>
             </tr>

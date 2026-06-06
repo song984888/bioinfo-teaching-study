@@ -68,10 +68,14 @@ def create_app():
         session['role'] = user['role']
 
         flash(f'Welcome, {user["name"]}!', 'success')
+        role = user['role']
         if role == 'student':
             return redirect(url_for('student_dashboard'))
-        else:
+        elif role == 'teacher':
             return redirect(url_for('teacher_dashboard'))
+        elif role == 'admin':
+            return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('index'))
 
     @app.route('/logout')
     def logout():

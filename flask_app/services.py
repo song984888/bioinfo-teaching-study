@@ -1,6 +1,7 @@
 import json
 import models
 from ai_service import auto_grade as ai_auto_grade
+from config import Config
 
 
 def authenticate_user(name, employee_id, role):
@@ -22,7 +23,7 @@ def grade_submission(student_id, question_id, question_text, sample_answer, stud
         comment = result.get('comment', '')
     except Exception as e:
         score = 0
-        comment = f'Grading failed: {str(e)}'
+        comment = f'AI grading unavailable: auto-assigned score 0. ({str(e)[:60]})'
 
     models.insert_exam(student_id, question_id, student_code, score, comment)
     return {'score': score, 'comment': comment}
@@ -45,10 +46,11 @@ def save_review(exam_id, score, comment):
 
 
 def generate_questions_bulk(topic, difficulty, language, count):
-    """Generate multiple questions via AI. Returns (success_count, total_count)."""
+    """Generate multiple questions via AI. Returns (success_count, total_count, errors)."""
     from ai_service import QuestionGenerator
     generator = QuestionGenerator()
     success = 0
+    errors = []
 
     for i in range(count):
         try:
@@ -59,10 +61,11 @@ def generate_questions_bulk(topic, difficulty, language, count):
                 question['sample_answer'],
                 json.dumps(question['hints'], ensure_ascii=False),
                 language,
-                'codellama:7b'
+                Config.MODEL_NAME
             )
             success += 1
         except Exception as e:
+            errors.append(str(e)[:80])
             continue
 
-    return success, count
+    return success, count, errors
