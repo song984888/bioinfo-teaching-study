@@ -2989,6 +2989,8 @@ def remove_question(question_id):
 
 @app.route('/teacher/question_summary')
 def question_summary():
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
+        return redirect(url_for('login'))
     try:
         # 连接数据库
         conn = get_db_connection()
