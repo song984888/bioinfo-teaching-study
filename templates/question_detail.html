@@ -224,52 +224,76 @@
     // ===== 调试运行功能 =====
     {% if not question.is_theory %}
     document.addEventListener('DOMContentLoaded', function() {
-    document.getElementById('debugRunBtn').addEventListener('click', async function() {
-        const commentContent = document.getElementById('commentContent').value.trim();
-        
-        if (!commentContent) {
-            alert('请输入评论内容');
-            return;
-        }
-        
-        try {
-            const response = await fetch("{{ url_for('add_comment', question_id=question.id) }}", {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    content: commentContent,
-                    question_id: {{ question.id }}
-                })
-            });
+        const debugBtn = document.getElementById('debugRunBtn');
+        if (!debugBtn) return;
+        debugBtn.addEventListener('click', async function() {
+            const btn = this;
+            const output = document.getElementById('debugOutput');
+            const stdout = document.getElementById('debugStdout');
+            const stderrDiv = document.getElementById('debugStderr');
+            const stderrText = document.getElementById('debugStderrText');
+            const statusElem = document.getElementById('debugStatus');
+            const timeElem = document.getElementById('debugTime');
+            const exitCode = document.getElementById('debugExitCode');
             
-            const result = await response.json();
+            output.style.display = 'block';
+            stdout.textContent = '正在运行代码...';
+            stderrDiv.style.display = 'none';
+            statusElem.innerHTML = '<span style="color:#17a2b8;">⏳ 运行中...</span>';
+            timeElem.textContent = '';
+            exitCode.textContent = '';
+            btn.disabled = true;
+            btn.textContent = '⏳ 运行中...';
             
-            if (result.success) {
-                alert('评论发表成功！');
-                document.getElementById('commentContent').value = '';
-                loadComments(); // 重新加载评论
-            } else {
-                alert('评论失败：' + result.message);
+            const startTime = Date.now();
+            try {
+                const resp = await fetch('/run_sample_code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        language: '{{ question.language | default("python") }}',
+                        code: {{ question.sample_answer | tojson }},
+                        args: [],
+                        inputs: ''
+                    })
+                });
+                const result = await resp.json();
+                const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+                stdout.textContent = result.stdout || '(无输出)';
+                if (result.stderr) {
+                    stderrDiv.style.display = 'block';
+                    stderrText.textContent = result.stderr;
+                } else {
+                    stderrDiv.style.display = 'none';
+                }
+                if (result.returncode === 0) {
+                    statusElem.innerHTML = '<span style="color:#28a745;">✅ 运行成功</span>';
+                } else {
+                    statusElem.innerHTML = '<span style="color:#dc3545;">❌ 运行失败</span>';
+                }
+                timeElem.textContent = `耗时: ${elapsed}s`;
+                exitCode.textContent = `退出码: ${result.returncode}`;
+            } catch (err) {
+                stdout.textContent = '请求失败: ' + err.message;
+                statusElem.innerHTML = '<span style="color:#dc3545;">❌ 网络错误</span>';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🔧 调试运行';
             }
-        } catch (error) {
-            alert('评论出错：' + error.message);
-        }
+        });
     });
+    {% endif %}
     
-    // 加载评论
+    // ===== 评论功能 =====
     function loadComments() {
         fetch("{{ url_for('get_comments', question_id=question.id) }}")
             .then(response => response.json())
             .then(comments => {
                 const commentsList = document.getElementById('commentsList');
-                
                 if (comments.length === 0) {
                     commentsList.innerHTML = '<div class="empty-state">暂无评论</div>';
                     return;
                 }
-                
                 commentsList.innerHTML = comments.map(comment => `
                     <div class="comment-item">
                         <div class="comment-header">
@@ -286,29 +310,41 @@
             });
     }
     
-    // 查看原始文档功能
-    document.getElementById('viewDocBtn').addEventListener('click', async function() {
-        // 首先获取题目关联的文档信息
+    // ===== 评论功能 =====
+    document.getElementById('submitCommentBtn').addEventListener('click', async function() {
+        const commentContent = document.getElementById('commentContent').value.trim();
+        if (!commentContent) { alert('请输入评论内容'); return; }
         try {
-            const questionId = {{ question.id }};
-            const response = await fetch(`/api/questions/${questionId}/document`);
+            const response = await fetch("{{ url_for('add_comment', question_id=question.id) }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: commentContent, question_id: {{ question.id }} })
+            });
             const result = await response.json();
-            
-            if (result.success && result.document) {
-                // 如果有文档，直接跳转到文档详情页
-                if (result.document.id) {
-                    // 获取文档所属知识库信息
-                    const kbResponse = await fetch(`/api/document/${result.document.id}/info`);
-                    const kbResult = await kbResponse.json();
-                    
-                    if (kbResult.success) {
-                        // 直接跳转到具体文档的详情页面（注意路由是 document 不是 documents）
-                        window.location.href = `/teacher/knowledge_bases/${kbResult.knowledge_base_id}/document/${result.document.id}`;
-                    } else {
-                        alert('无法获取知识库信息');
-                    }
+            if (result.success) {
+                alert('评论发表成功！');
+                document.getElementById('commentContent').value = '';
+                loadComments();
+            } else {
+                alert('评论失败：' + result.message);
+            }
+        } catch (error) {
+            alert('评论出错：' + error.message);
+        }
+    });
+    
+    // ===== 查看原始文档 =====
+    document.getElementById('viewDocBtn').addEventListener('click', async function() {
+        try {
+            const resp = await fetch(`/api/questions/{{ question.id }}/document`);
+            const result = await resp.json();
+            if (result.success && result.document && result.document.id) {
+                const kbResp = await fetch(`/api/document/${result.document.id}/info`);
+                const kbResult = await kbResp.json();
+                if (kbResult.success) {
+                    window.location.href = `/teacher/knowledge_bases/${kbResult.knowledge_base_id}/document/${result.document.id}`;
                 } else {
-                    alert('文档信息不完整');
+                    alert('无法获取知识库信息');
                 }
             } else {
                 alert(result.message || '该题目没有关联的原始文档');
@@ -318,125 +354,32 @@
         }
     });
     
-    // 显示文档弹窗
-    function showDocumentModal(document) {
-        const modal = document.createElement('div');
-        modal.className = 'modal';
-        modal.innerHTML = `
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>${document.title || '原始文档'}</h3>
-                    <button class="close-btn" onclick="this.closest('.modal').remove()">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <pre style="white-space: pre-wrap; word-wrap: break-word;">${document.content}</pre>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn" onclick="this.closest('.modal').remove()">关闭</button>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(modal);
-    }
-    
-    // 删除题目功能
+    // ===== 删除题目 =====
     document.getElementById('deleteBtn').addEventListener('click', function(e) {
-         e.preventDefault();
-         const questionId = this.dataset.questionId;
-         const confirmMessage = `确定要删除题目 #${questionId}? \n\n此操作不可撤销！！`;
-         if (confirm(confirmMessage)) {
+        e.preventDefault();
+        if (confirm(`确定要删除题目 #${this.dataset.questionId}?\n\n此操作不可撤销！！`)) {
             window.location.href = this.href;
         }
     });
     
-    // 页面加载时加载评论
-    document.addEventListener('DOMContentLoaded', function() {
-        loadComments();
-    });
-    
-    // ===== Reject Modal =====
+    // ===== 驳回题目 =====
     function rejectQuestion(id) {
         const reason = prompt('请输入驳回原因（可选）：');
         if (reason === null) return;
         const form = document.createElement('form');
         form.method = 'POST';
         form.action = '/teacher/reject_question/' + id;
-        const reasonInput = document.createElement('input');
-        reasonInput.type = 'hidden';
-        reasonInput.name = 'reason';
-        reasonInput.value = reason;
-        form.appendChild(reasonInput);
+        const input = document.createElement('input');
+        input.type = 'hidden'; input.name = 'reason'; input.value = reason;
+        form.appendChild(input);
         document.body.appendChild(form);
         form.submit();
     }
     
-    // ===== 调试运行功能 =====
-    {% if not question.is_theory %}
-    document.getElementById('debugRunBtn').addEventListener('click', async function() {
-        const btn = this;
-        const output = document.getElementById('debugOutput');
-        const stdout = document.getElementById('debugStdout');
-        const stderrDiv = document.getElementById('debugStderr');
-        const stderrText = document.getElementById('debugStderrText');
-        const status = document.getElementById('debugStatus');
-        const timeElem = document.getElementById('debugTime');
-        const exitCode = document.getElementById('debugExitCode');
-        
-        // 显示输出区域 + 加载状态
-        output.style.display = 'block';
-        stdout.textContent = '正在运行代码...';
-        stderrDiv.style.display = 'none';
-        status.innerHTML = '<span style="color:#17a2b8;">⏳ 运行中...</span>';
-        timeElem.textContent = '';
-        exitCode.textContent = '';
-        btn.disabled = true;
-        btn.textContent = '⏳ 运行中...';
-        
-        const startTime = Date.now();
-        
-        try {
-            const resp = await fetch('/run_sample_code', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    language: '{{ question.language | default("python") }}',
-                    code: {{ question.sample_answer | tojson }},
-                    args: [],
-                    inputs: ''
-                })
-            });
-            const result = await resp.json();
-            const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-            
-            // 显示输出
-            stdout.textContent = result.stdout || '(无输出)';
-            
-            // 错误信息
-            if (result.stderr) {
-                stderrDiv.style.display = 'block';
-                stderrText.textContent = result.stderr;
-            } else {
-                stderrDiv.style.display = 'none';
-            }
-            
-            // 状态
-            if (result.returncode === 0) {
-                status.innerHTML = '<span style="color:#28a745;">✅ 运行成功</span>';
-            } else {
-                status.innerHTML = '<span style="color:#dc3545;">❌ 运行失败</span>';
-            }
-            
-            timeElem.textContent = `耗时: ${elapsed}s`;
-            exitCode.textContent = `退出码: ${result.returncode}`;
-            
-        } catch (err) {
-            stdout.textContent = '请求失败: ' + err.message;
-            status.innerHTML = '<span style="color:#dc3545;">❌ 网络错误</span>';
-        } finally {
-        btn.textContent = '🔧 调试运行';
-        }
+    document.addEventListener('DOMContentLoaded', function() {
+        loadComments();
     });
-    });
-    {% endif %}
+</script>
+{% endblock %}
 </script>
 {% endblock %}
