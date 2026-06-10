@@ -125,6 +125,18 @@
         </div>
         
         {% if not question.is_theory %}
+        <!-- 调试输入区域 -->
+        <div id="debugInput" class="debug-input" style="display:none; margin-top:15px;">
+            <div class="form-group">
+                <label for="debugStdinInput">标准输入 (stdin)</label>
+                <textarea id="debugStdinInput" rows="3" placeholder="程序标准输入，每行一个值。例如：&#10;3&#10;Apple, 2020&#10;Banana, 2019&#10;Cherry, 2021&#10;apple" style="width:100%; font-family:monospace; font-size:13px;"></textarea>
+            </div>
+            <div class="form-group" style="margin-top:10px;">
+                <label for="debugFileInput">测试文件内容 (保存为 test_input.txt)</label>
+                <textarea id="debugFileInput" rows="3" placeholder="可选：程序可读取的文件内容（保存到 test_input.txt）" style="width:100%; font-family:monospace; font-size:13px;"></textarea>
+            </div>
+        </div>
+        
         <!-- 调试运行输出区域 -->
         <div id="debugOutput" class="debug-output" style="display:none; margin-top:15px;">
             <div class="debug-header">
@@ -228,6 +240,7 @@
         if (!debugBtn) return;
         debugBtn.addEventListener('click', async function() {
             const btn = this;
+            const debugInput = document.getElementById('debugInput');
             const output = document.getElementById('debugOutput');
             const stdout = document.getElementById('debugStdout');
             const stderrDiv = document.getElementById('debugStderr');
@@ -235,8 +248,11 @@
             const statusElem = document.getElementById('debugStatus');
             const timeElem = document.getElementById('debugTime');
             const exitCode = document.getElementById('debugExitCode');
+            const stdinInput = document.getElementById('debugStdinInput').value;
+            const fileContent = document.getElementById('debugFileInput').value;
             
             output.style.display = 'block';
+            debugInput.style.display = 'block';
             stdout.textContent = '正在运行代码...';
             stderrDiv.style.display = 'none';
             statusElem.innerHTML = '<span style="color:#17a2b8;">⏳ 运行中...</span>';
@@ -254,7 +270,8 @@
                     language: '{{ question.language | default("python") }}',
                     code: {{ question.sample_answer | tojson | safe }},
                     args: [],
-                    inputs: ''
+                    inputs: stdinInput,
+                    file_content: fileContent
                 })
                 });
                 const result = await resp.json();

@@ -1909,6 +1909,7 @@ def run_code():
     code = data['code']
     args = data.get('args', [])
     inputs = data.get('inputs', '')
+    file_content = data.get('file_content', '')
     
     # 清理代码
     code = clean_code(code,language)
@@ -1918,6 +1919,13 @@ def run_code():
     with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=f'.{ext}') as f:
         f.write(code)
         file_path = f.name
+    
+    # 创建测试文件（供代码 read_file/open('test_input.txt') 读取）
+    test_file = None
+    if file_content:
+        test_file = os.path.join(os.path.dirname(file_path), 'test_input.txt')
+        with open(test_file, 'w') as tf:
+            tf.write(file_content)
     
     # 构建运行命令（编译型语言先编译再执行）
     runner = CONFIG["LANGUAGE_CONFIG"][language]["runner"]
@@ -1973,6 +1981,9 @@ def run_code():
         return jsonify({'error': '运行超时'}), 408
     finally:
         os.remove(file_path)
+        if test_file and os.path.exists(test_file):
+            try: os.remove(test_file)
+            except OSError: pass
         if exe_path and os.path.exists(exe_path):
             try: os.remove(exe_path)
             except OSError: pass
@@ -2354,6 +2365,7 @@ def run_sample_code():
     language = data['language']
     args = data.get('args', [])
     inputs = data.get('inputs', '')
+    file_content = data.get('file_content', '')
     
     # 清理代码
     code = clean_code(code)
@@ -2363,6 +2375,13 @@ def run_sample_code():
     with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=f'.{ext}') as f:
         f.write(code)
         file_path = f.name
+    
+    # 创建测试文件（供代码 read_file/open('test_input.txt') 读取）
+    test_file = None
+    if file_content:
+        test_file = os.path.join(os.path.dirname(file_path), 'test_input.txt')
+        with open(test_file, 'w') as tf:
+            tf.write(file_content)
     
     # 构建运行命令（编译型语言先编译再执行）
     runner = CONFIG["LANGUAGE_CONFIG"][language]["runner"]
@@ -2418,6 +2437,9 @@ def run_sample_code():
         return jsonify({'error': '运行超时'}), 408
     finally:
         os.remove(file_path)
+        if test_file and os.path.exists(test_file):
+            try: os.remove(test_file)
+            except OSError: pass
         if exe_path and os.path.exists(exe_path):
             try: os.remove(exe_path)
             except OSError: pass
