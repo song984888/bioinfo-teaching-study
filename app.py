@@ -2576,7 +2576,35 @@ def teacher_generate_questions():
         return redirect(url_for('login'))
     
     if request.method == 'POST':
-        topic = request.form['topic']
+        # 处理三种主题来源
+        topic_source = request.form.get('topic_source', 'template')
+        if topic_source == 'template':
+            topic = request.form['topic']
+        elif topic_source == 'knowledge_base':
+            kb_id = request.form.get('kb_id')
+            if kb_id:
+                kb_conn = get_db_connection()
+                kb_cursor = kb_conn.cursor()
+                kb_cursor.execute("""
+                    SELECT DISTINCT concept_name FROM knowledge_concepts kc 
+                    JOIN knowledge_documents kd ON kc.knowledge_document_id = kd.id 
+                    WHERE kd.knowledge_base_id = %s AND kc.concept_name IS NOT NULL
+                    LIMIT 20
+                """, (kb_id,))
+                concepts = [row[0] for row in kb_cursor.fetchall()]
+                kb_cursor.close()
+                kb_conn.close()
+                topic = '、'.join(concepts) if concepts else '通用编程主题'
+            else:
+                topic = '通用编程主题'
+        elif topic_source == 'custom':
+            topic = request.form.get('custom_topic', '').strip()
+            if not topic:
+                flash('请输入自定义主题', 'warning')
+                return redirect(url_for('teacher_generate_questions'))
+        else:
+            topic = request.form['topic']
+        
         difficulty = int(request.form['difficulty'])
         language = request.form['language']
         count = int(request.form['count'])
@@ -2699,7 +2727,14 @@ def teacher_generate_questions():
         flash(f'已启动题目生成任务 #{task_id}，将在后台生成{count}道题目', 'success')
         return redirect(url_for('view_background_tasks'))
     
-    return render_template('generate_questions.html',topicList=topicList)
+    # GET: 加载用户自己的知识库列表
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT id, name, description FROM knowledge_bases WHERE owner_id = %s ORDER BY name", (session['user_id'],))
+    user_kbs = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return render_template('generate_questions.html', topicList=topicList, user_kbs=user_kbs)
 
 @app.route('/teacher/review_questions')
 def review_questions():

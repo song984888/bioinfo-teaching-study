@@ -4,15 +4,66 @@
 
 {% block content %}
 <div class="generate-questions">
-    <h2>AI出题</h2>
+    <h2>程序设计题目生成</h2>
     <form method="POST" id="questionForm">
+        <!-- 主题来源选择 -->
         <div class="form-group">
-            <label for="topic">主题</label>
-            <select id="topic" name="topic" required>
-                {% for topic in topicList %}
-                   <option value="{{topic}}">{{topic}}</option>
-                {% endfor %}
-            </select>
+            <label>主题来源</label>
+            <div class="topic-source-options" style="display:flex; gap:20px; padding:8px 0;">
+                <label style="cursor:pointer; display:flex; align-items:center; gap:6px;">
+                    <input type="radio" name="topic_source" value="template" checked onchange="toggleTopicSource()"> 模版题库
+                </label>
+                <label style="cursor:pointer; display:flex; align-items:center; gap:6px;">
+                    <input type="radio" name="topic_source" value="knowledge_base" onchange="toggleTopicSource()"> 我的知识库
+                </label>
+                <label style="cursor:pointer; display:flex; align-items:center; gap:6px;">
+                    <input type="radio" name="topic_source" value="custom" onchange="toggleTopicSource()"> 自定义主题
+                </label>
+            </div>
+        </div>
+
+        <!-- 模版题库 -->
+        <div id="section-template">
+            <div class="form-group">
+                <label for="topic">选择主题</label>
+                <select id="topic" name="topic">
+                    {% for topic in topicList %}
+                       <option value="{{topic}}">{{topic}}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <!-- 我的知识库 -->
+        <div id="section-kb" style="display:none;">
+            <div class="form-group">
+                <label for="kb_id">选择知识库</label>
+                {% if user_kbs %}
+                <select id="kb_id" name="kb_id">
+                    {% for kb in user_kbs %}
+                    <option value="{{ kb.id }}">{{ kb.name }} {% if kb.description %}({{ kb.description }}){% endif %}</option>
+                    {% endfor %}
+                </select>
+                <p style="color:#888; font-size:13px; margin-top:4px;">
+                    将从知识库的概念中提取主题（取前20个概念）
+                </p>
+                {% else %}
+                <p style="color:#e67e22;">
+                    您还没有自己的知识库，请先<a href="{{ url_for('knowledge_bases') }}">创建知识库</a>并上传文档提取概念。
+                </p>
+                <input type="hidden" name="kb_id" value="">
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 自定义主题 -->
+        <div id="section-custom" style="display:none;">
+            <div class="form-group">
+                <label for="custom_topic">输入主题</label>
+                <input type="text" id="custom_topic" name="custom_topic" 
+                       placeholder="例如：数据结构与算法、生物信息学、Web开发..." 
+                       style="width:100%;">
+            </div>
         </div>
         
         <div class="form-group">
@@ -88,9 +139,20 @@
     text-align: center;
     margin: 5px 0;
 }
+
+.topic-source-options label:hover {
+    color: #4a90d9;
+}
 </style>
 
 <script>
+function toggleTopicSource() {
+    const source = document.querySelector('input[name="topic_source"]:checked').value;
+    document.getElementById('section-template').style.display = source === 'template' ? 'block' : 'none';
+    document.getElementById('section-kb').style.display = source === 'knowledge_base' ? 'block' : 'none';
+    document.getElementById('section-custom').style.display = source === 'custom' ? 'block' : 'none';
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('questionForm');
     const progressContainer = document.getElementById('progressContainer');
@@ -100,34 +162,45 @@ document.addEventListener('DOMContentLoaded', function() {
     form.addEventListener('submit', function(e) {
         e.preventDefault();
         
-        // 获取题目数量
-        const count = parseInt(document.getElementById('count').value);
+        // 验证：如果是自定义主题，必须有输入
+        const topicSource = document.querySelector('input[name="topic_source"]:checked').value;
+        if (topicSource === 'custom') {
+            const customTopic = document.getElementById('custom_topic').value.trim();
+            if (!customTopic) {
+                alert('请输入自定义主题！');
+                return;
+            }
+        }
         
-        // 显示进度容器
+        // 验证：如果是知识库，必须有知识库可选
+        if (topicSource === 'knowledge_base') {
+            const kbSelect = document.getElementById('kb_id');
+            if (!kbSelect || !kbSelect.value) {
+                alert('您还没有知识库，请先创建知识库！');
+                return;
+            }
+        }
+        
+        const count = parseInt(document.getElementById('count').value);
         progressContainer.style.display = 'block';
         
-        // 禁用提交按钮防止重复提交
         const submitButton = form.querySelector('button[type="submit"]');
         submitButton.disabled = true;
         
-        // 模拟进度更新（实际项目中应使用AJAX与后端通信）
         let current = 0;
         const interval = setInterval(() => {
             current++;
             const progress = (current / count) * 100;
-            
             progressBar.style.width = progress + '%';
             progressText.textContent = `正在提交生成第 ${current} 道题目，共 ${count} 道（${Math.round(progress)}%）`;
             if (current >= count) {
                 clearInterval(interval);
-                
-                // 延迟一下让用户看到100%进度，然后实际提交表单
                 setTimeout(() => {
                     form.submit();
                 }, 500);
             }
-        }, 1000); // 模拟每道题生成需要1秒钟
-        alert('AI出题任务已经提交至后台运行，可到后台任务菜单栏查看详情') 
+        }, 1000);
+        alert('AI出题任务已经提交至后台运行，可到后台任务菜单栏查看详情');
     });
 });
 </script>
