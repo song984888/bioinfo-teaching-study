@@ -191,7 +191,69 @@
         <div class="section-header">
             <h2>题库管理</h2>
             <div class="action-buttons">
+                <button class="btn btn-success" onclick="showKbCreateForm()">+ 创建知识库</button>
                 <a href="{{ url_for('knowledge_bases') }}" class="btn btn-primary">知识库管理</a>
+            </div>
+        </div>
+        
+        <!-- 创建知识库表单 (默认隐藏) -->
+        <div id="kb-create-form" class="feature-card" style="display:none; margin-bottom: 20px;">
+            <h3>创建知识库</h3>
+            <form id="admin-kb-create-form">
+                <div class="form-row">
+                    <div class="form-group" style="flex:1;">
+                        <label>知识库名称</label>
+                        <input type="text" name="name" class="styled-input" required placeholder="输入知识库名称">
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label>所有者</label>
+                        <select name="owner_id" id="kb-owner-select" class="styled-select" required></select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex:2;">
+                        <label>描述</label>
+                        <textarea name="description" class="styled-input" rows="2" placeholder="可选描述" style="width:100%;"></textarea>
+                    </div>
+                    <div class="form-group" style="flex:0 0 auto; display:flex; align-items:center; padding-top:20px;">
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                            <input type="checkbox" name="is_public" value="1" style="width:18px; height:18px;">
+                            公开可见
+                        </label>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-success">创建</button>
+                    <button type="button" class="btn btn-secondary" onclick="hideKbCreateForm()">取消</button>
+                </div>
+            </form>
+        </div>
+        
+        <!-- 编辑知识库模态框 -->
+        <div id="kb-edit-modal" class="modal-overlay" style="display:none;">
+            <div class="modal-box">
+                <h3>编辑知识库</h3>
+                <form id="admin-kb-edit-form">
+                    <input type="hidden" name="kb_id" id="edit-kb-id">
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <label>知识库名称</label>
+                        <input type="text" name="name" id="edit-kb-name" class="styled-input" required style="width:100%;">
+                    </div>
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <label>描述</label>
+                        <textarea name="description" id="edit-kb-desc" class="styled-input" rows="2" style="width:100%;"></textarea>
+                    </div>
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                            <input type="checkbox" name="is_public" id="edit-kb-public" value="1" style="width:18px; height:18px;">
+                            公开可见
+                        </label>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-success">保存</button>
+                        <button type="button" class="btn btn-secondary" onclick="hideKbEditModal()">取消</button>
+                    </div>
+                </form>
             </div>
         </div>
         
@@ -525,6 +587,8 @@ async function loadKnowledgeBases() {
                 <td class="action-btns">
                     <a href="/teacher/knowledge_bases/${kb.id}" class="btn btn-sm btn-primary">查看</a>
                     <a href="/teacher/knowledge_bases/${kb.id}/graph" class="btn btn-sm" style="background:#6f42c1;color:#fff;">图谱</a>
+                    <button class="btn btn-sm btn-secondary" onclick="editKnowledgeBase(${kb.id}, '${escapeHtml(kb.name || '')}', '${escapeHtml(kb.description || '')}', ${kb.is_public || false})">编辑</button>
+                    <a href="/teacher/knowledge_bases/${kb.id}/upload" class="btn btn-sm btn-success">上传</a>
                     <button class="btn btn-sm btn-danger" onclick="deleteKnowledgeBase(${kb.id})">删除</button>
                 </td>
             </tr>
@@ -549,6 +613,94 @@ async function deleteKnowledgeBase(id) {
         alert('删除失败: ' + err.message);
     }
 }
+
+// ===== 知识库创建 =====
+function showKbCreateForm() {
+    document.getElementById('kb-create-form').style.display = 'block';
+    loadOwnerOptions(); // 加载所有者下拉选项
+}
+
+function hideKbCreateForm() {
+    document.getElementById('kb-create-form').style.display = 'none';
+    document.getElementById('admin-kb-create-form').reset();
+}
+
+async function loadOwnerOptions() {
+    const select = document.getElementById('kb-owner-select');
+    if (select.options.length > 0) return; // 已加载
+    
+    try {
+        const resp = await fetch('/admin/accounts/list');
+        const data = await resp.json();
+        const users = data.users || [];
+        select.innerHTML = users
+            .filter(u => u.role === 'teacher' || u.role === 'admin')
+            .map(u => `<option value="${escapeHtml(u.employee_id)}">${escapeHtml(u.name)} (${escapeHtml(u.employee_id)}) - ${roleLabel(u.role)}</option>`)
+            .join('');
+    } catch (err) {
+        select.innerHTML = '<option value="">加载失败</option>';
+    }
+}
+
+document.getElementById('admin-kb-create-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    
+    try {
+        const resp = await fetch('/admin/knowledge_bases/create', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content },
+            body: formData
+        });
+        const data = await resp.json();
+        if (data.success) {
+            alert('知识库创建成功！');
+            hideKbCreateForm();
+            loadKnowledgeBases();
+        } else {
+            alert('创建失败: ' + data.message);
+        }
+    } catch (err) {
+        alert('网络错误: ' + err.message);
+    }
+});
+
+// ===== 知识库编辑 =====
+function editKnowledgeBase(id, name, description, isPublic) {
+    document.getElementById('edit-kb-id').value = id;
+    document.getElementById('edit-kb-name').value = name;
+    document.getElementById('edit-kb-desc').value = description || '';
+    document.getElementById('edit-kb-public').checked = isPublic;
+    document.getElementById('kb-edit-modal').style.display = 'flex';
+}
+
+function hideKbEditModal() {
+    document.getElementById('kb-edit-modal').style.display = 'none';
+}
+
+document.getElementById('admin-kb-edit-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    
+    try {
+        const kbId = formData.get('kb_id');
+        const resp = await fetch(`/admin/knowledge_bases/edit/${kbId}`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content },
+            body: formData
+        });
+        const data = await resp.json();
+        if (data.success) {
+            alert('知识库更新成功！');
+            hideKbEditModal();
+            loadKnowledgeBases();
+        } else {
+            alert('更新失败: ' + data.message);
+        }
+    } catch (err) {
+        alert('网络错误: ' + err.message);
+    }
+});
 
 // ===== 工具函数 =====
 function escapeHtml(str) {
@@ -805,5 +957,31 @@ loadUsers();
 }
 
 .action-btns .btn { white-space: nowrap; }
+
+/* Modal */
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal-box {
+    background: #fff;
+    border-radius: 10px;
+    padding: 30px;
+    width: 480px;
+    max-width: 90%;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+}
+
+.modal-box h3 {
+    margin: 0 0 20px 0;
+    color: #333;
+    font-size: 18px;
+}
 </style>
 {% endblock %}

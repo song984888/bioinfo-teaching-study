@@ -3420,7 +3420,7 @@ def admin_knowledge_bases_list():
     
     try:
         cursor.execute("""
-            SELECT kb.id, kb.name, kb.owner_id, kb.created_at,
+            SELECT kb.id, kb.name, kb.description, kb.owner_id, kb.is_public, kb.created_at,
                    COALESCE(u.name, '未知') AS owner_name,
                    (SELECT COUNT(*) FROM knowledge_documents kd WHERE kd.knowledge_base_id = kb.id) AS doc_count,
                    (SELECT COUNT(*) FROM knowledge_questions kq 
@@ -3443,7 +3443,10 @@ def admin_knowledge_bases_list():
             'id': kb['id'],
             'name': kb.get('name', ''),
             'title': kb.get('title', kb.get('name', '')),
+            'description': kb.get('description', ''),
+            'is_public': bool(kb.get('is_public', False)),
             'owner_name': kb.get('owner_name', ''),
+            'owner_id': kb.get('owner_id', ''),
             'doc_count': kb.get('doc_count', 0),
             'question_count': kb.get('question_count', 0),
             'created_at': str(kb.get('created_at', ''))
@@ -3466,6 +3469,66 @@ def admin_delete_knowledge_base(kb_id):
         return jsonify({'success': True, 'message': '知识库已删除'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/admin/knowledge_bases/create', methods=['POST'])
+def admin_create_knowledge_base():
+    """管理员创建知识库（可指定所有者）"""
+    if 'user_id' not in session or session['role'] != 'admin':
+        return jsonify({'success': False, 'message': '权限不足'}), 403
+    
+    name = request.form.get('name', '').strip()
+    description = request.form.get('description', '').strip()
+    owner_id = request.form.get('owner_id', session['user_id']).strip()
+    is_public = request.form.get('is_public', '0') == '1'
+    
+    if not name:
+        return jsonify({'success': False, 'message': '知识库名称不能为空'}), 400
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO knowledge_bases (name, description, owner_id, is_public)
+            VALUES (%s, %s, %s, %s)
+        """, (name, description, owner_id, is_public))
+        conn.commit()
+        kb_id = cursor.lastrowid
+        return jsonify({'success': True, 'kb_id': kb_id, 'message': '知识库创建成功'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/admin/knowledge_bases/edit/<int:kb_id>', methods=['POST'])
+def admin_edit_knowledge_base(kb_id):
+    """管理员编辑知识库"""
+    if 'user_id' not in session or session['role'] != 'admin':
+        return jsonify({'success': False, 'message': '权限不足'}), 403
+    
+    name = request.form.get('name', '').strip()
+    description = request.form.get('description', '').strip()
+    is_public = request.form.get('is_public', '0') == '1'
+    
+    if not name:
+        return jsonify({'success': False, 'message': '知识库名称不能为空'}), 400
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            UPDATE knowledge_bases SET name = %s, description = %s, is_public = %s
+            WHERE id = %s
+        """, (name, description, is_public, kb_id))
+        if cursor.rowcount == 0:
+            return jsonify({'success': False, 'message': '知识库不存在'}), 404
+        conn.commit()
+        return jsonify({'success': True, 'message': '知识库更新成功'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
     finally:
         cursor.close()
         conn.close()
@@ -5275,11 +5338,14 @@ def delete_knowledge_base(kb_id):
     cursor = conn.cursor()
     
     try:
-        # 验证权限：只有所有者才能删除
-        cursor.execute("""
-            SELECT name FROM knowledge_bases 
-            WHERE id = %s AND owner_id = %s
-        """, (kb_id, session['user_id']))
+        # 验证权限：管理员或所有者才能删除
+        if session['role'] == 'admin':
+            cursor.execute("SELECT name FROM knowledge_bases WHERE id = %s", (kb_id,))
+        else:
+            cursor.execute("""
+                SELECT name FROM knowledge_bases 
+                WHERE id = %s AND owner_id = %s
+            """, (kb_id, session['user_id']))
         
         knowledge_base = cursor.fetchone()
         
