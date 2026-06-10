@@ -300,20 +300,28 @@ def clean_code(code, language=None):
     
     # 语言特定的清理
     if language == 'python':
-        # Python特定清理
-        code = re.sub(r'#.*|\n\s*\n|```.*', '\n', code).strip()
+        # Python特定清理（修复：# 注释不应跨行匹配）
+        code = re.sub(r'#[^\n]*', '', code)
+        code = re.sub(r'```.*?```|```.*', '', code, flags=re.DOTALL).strip()
     elif language == 'java':
-        # Java特定清理
-        code = re.sub(r'//.*|/\*.*?\*/|\n\s*\n|```.*', '\n', code, flags=re.DOTALL).strip()
+        # Java特定清理（修复：// 注释不应跨行匹配）
+        code = re.sub(r'/\*.*?\*/', '', code, flags=re.DOTALL)  # 块注释先去掉
+        code = re.sub(r'//[^\n]*', '', code)  # 单行注释不跨行
+        code = re.sub(r'```.*?```|```.*', '', code, flags=re.DOTALL).strip()
     elif language == 'c':
-        # C语言特定清理
-        code = re.sub(r'//.*|/\*.*?\*/|\n\s*\n|```.*', '\n', code, flags=re.DOTALL).strip()
+        # C语言特定清理（#include 等预处理器指令不是注释，不能删除）
+        code = re.sub(r'/\*.*?\*/', '', code, flags=re.DOTALL)  # 块注释先去掉
+        code = re.sub(r'//[^\n]*', '', code)  # 单行注释
+        code = re.sub(r'```.*?```|```.*', '', code, flags=re.DOTALL).strip()
     elif language == 'perl':
-        # Perl特定清理 - 更保守的清理，避免破坏Perl的特殊语法
-        code = re.sub(r'#.*|\n\s*\n|```.*', '\n', code).strip()
+        # Perl特定清理（修复：# 注释不应跨行匹配）
+        code = re.sub(r'#[^\n]*', '', code)
+        code = re.sub(r'```.*?```|```.*', '', code, flags=re.DOTALL).strip()
     else:
         # 默认清理策略
-        code = re.sub(r'#.*|//.*|/\*.*?\*/|\n\s*\n|```.*', '\n', code, flags=re.DOTALL).strip()
+        code = re.sub(r'/\*.*?\*/', '', code, flags=re.DOTALL)
+        code = re.sub(r'//[^\n]*', '', code)
+        code = re.sub(r'```.*?```|```.*', '', code, flags=re.DOTALL).strip()
     
     # 通用安全过滤（防止代码注入和恶意操作）
     dangerous_patterns = [
@@ -1911,9 +1919,40 @@ def run_code():
         f.write(code)
         file_path = f.name
     
-    # 构建运行命令
+    # 构建运行命令（编译型语言先编译再执行）
     runner = CONFIG["LANGUAGE_CONFIG"][language]["runner"]
-    cmd = [runner, file_path] + args
+    exe_path = None
+    
+    if language == 'java':
+        class_dir = os.path.dirname(file_path)
+        compile_cmd = ['javac', file_path, '-d', class_dir]
+        try:
+            cp = subprocess.Popen(compile_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            cout, cerr = cp.communicate(timeout=30)
+            if cp.returncode != 0:
+                return jsonify({'stdout': '', 'stderr': cerr, 'returncode': cp.returncode})
+        except subprocess.TimeoutExpired:
+            cp.kill(); return jsonify({'error': '编译超时'}), 408
+        except FileNotFoundError:
+            return jsonify({'error': 'javac 未安装'}), 500
+        class_name = os.path.splitext(os.path.basename(file_path))[0]
+        cmd = ['java', '-cp', class_dir, class_name] + args
+        exe_path = os.path.join(class_dir, class_name + '.class')
+    elif language == 'c':
+        exe_path = file_path + '.out'
+        compile_cmd = ['gcc', file_path, '-o', exe_path, '-lm']
+        try:
+            cp = subprocess.Popen(compile_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            cout, cerr = cp.communicate(timeout=30)
+            if cp.returncode != 0:
+                return jsonify({'stdout': '', 'stderr': cerr, 'returncode': cp.returncode})
+        except subprocess.TimeoutExpired:
+            cp.kill(); return jsonify({'error': '编译超时'}), 408
+        except FileNotFoundError:
+            return jsonify({'error': 'gcc 未安装'}), 500
+        cmd = [exe_path] + args
+    else:
+        cmd = [runner, file_path] + args
     
     try:
         process = subprocess.Popen(
@@ -1934,6 +1973,9 @@ def run_code():
         return jsonify({'error': '运行超时'}), 408
     finally:
         os.remove(file_path)
+        if exe_path and os.path.exists(exe_path):
+            try: os.remove(exe_path)
+            except OSError: pass
 
 @app.route('/submit_exam', methods=['POST'])
 def submit_exam():
@@ -2322,9 +2364,40 @@ def run_sample_code():
         f.write(code)
         file_path = f.name
     
-    # 构建运行命令
+    # 构建运行命令（编译型语言先编译再执行）
     runner = CONFIG["LANGUAGE_CONFIG"][language]["runner"]
-    cmd = [runner, file_path] + args
+    exe_path = None
+    
+    if language == 'java':
+        class_dir = os.path.dirname(file_path)
+        compile_cmd = ['javac', file_path, '-d', class_dir]
+        try:
+            cp = subprocess.Popen(compile_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            cout, cerr = cp.communicate(timeout=30)
+            if cp.returncode != 0:
+                return jsonify({'stdout': '', 'stderr': cerr, 'returncode': cp.returncode})
+        except subprocess.TimeoutExpired:
+            cp.kill(); return jsonify({'error': '编译超时'}), 408
+        except FileNotFoundError:
+            return jsonify({'error': 'javac 未安装'}), 500
+        class_name = os.path.splitext(os.path.basename(file_path))[0]
+        cmd = ['java', '-cp', class_dir, class_name] + args
+        exe_path = os.path.join(class_dir, class_name + '.class')
+    elif language == 'c':
+        exe_path = file_path + '.out'
+        compile_cmd = ['gcc', file_path, '-o', exe_path, '-lm']
+        try:
+            cp = subprocess.Popen(compile_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            cout, cerr = cp.communicate(timeout=30)
+            if cp.returncode != 0:
+                return jsonify({'stdout': '', 'stderr': cerr, 'returncode': cp.returncode})
+        except subprocess.TimeoutExpired:
+            cp.kill(); return jsonify({'error': '编译超时'}), 408
+        except FileNotFoundError:
+            return jsonify({'error': 'gcc 未安装'}), 500
+        cmd = [exe_path] + args
+    else:
+        cmd = [runner, file_path] + args
     
     try:
         process = subprocess.Popen(
@@ -2345,6 +2418,9 @@ def run_sample_code():
         return jsonify({'error': '运行超时'}), 408
     finally:
         os.remove(file_path)
+        if exe_path and os.path.exists(exe_path):
+            try: os.remove(exe_path)
+            except OSError: pass
 
 
 @app.route('/student/study_suggestion',methods=['GET','POST'])
@@ -2751,15 +2827,18 @@ def review_questions():
     
     # 构建基础查询（待审核题目）- 同时查询 questions 和 theory_questions 两个表
     query = """
-        (SELECT id, topic, difficulty, question_text, sample_answer, 
-                NULL as grading_criteria, NULL as score,
-                language, aiModel, is_approved, question_type, created_at
-         FROM questions WHERE is_approved = FALSE)
-        UNION ALL
-        (SELECT id, topic, difficulty, question_text, sample_answer, 
-                grading_criteria, score,
-                'theoretical' as language, aiModel, is_approved, question_type, created_at
-         FROM theory_questions WHERE is_approved = FALSE)
+        SELECT * FROM (
+            (SELECT id, topic, difficulty, question_text, sample_answer, 
+                    NULL as grading_criteria, NULL as score,
+                    language, aiModel, is_approved, question_type, created_at
+             FROM questions WHERE is_approved = FALSE)
+            UNION ALL
+            (SELECT id, topic, difficulty, question_text, sample_answer, 
+                    grading_criteria, score,
+                    'theoretical' as language, aiModel, is_approved, question_type, created_at
+             FROM theory_questions WHERE is_approved = FALSE)
+        ) AS combined
+        WHERE 1=1
     """
     params = []
     
