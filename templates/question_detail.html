@@ -203,45 +203,28 @@
         </div>
     </div>
 </div>
-{% endblock %}
 
-{% block scripts %}
 <style>
 /* 调试运行样式 */
 .debug-output {
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    background: #f8f9fa;
-    padding: 15px;
+    border: 1px solid #ddd; border-radius: 8px; background: #f8f9fa; padding: 15px;
 }
-.debug-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-}
-.debug-header h4 {
-    margin: 0;
-    color: #333;
-}
+.debug-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.debug-header h4 { margin: 0; color: #333; }
 .debug-content pre, .debug-stderr pre {
-    background: #2d2d2d;
-    color: #f8f8f2;
-    padding: 12px;
-    border-radius: 6px;
-    font-family: 'Courier New', monospace;
-    font-size: 13px;
-    white-space: pre-wrap;
-    word-break: break-all;
+    background: #2d2d2d; color: #f8f8f2; padding: 12px; border-radius: 6px;
+    font-family: 'Courier New', monospace; font-size: 13px; white-space: pre-wrap; word-break: break-all;
 }
-.debug-stderr pre {
-    background: #fff5f5;
-    color: #dc3545;
-}
+.debug-stderr pre { background: #fff5f5; color: #dc3545; }
 </style>
+{% endblock %}
+
+{% block scripts %}
 <script>
-    // 查看评论功能
-    document.getElementById('submitCommentBtn').addEventListener('click', async function() {
+    // ===== 调试运行功能 =====
+    {% if not question.is_theory %}
+    document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('debugRunBtn').addEventListener('click', async function() {
         const commentContent = document.getElementById('commentContent').value.trim();
         
         if (!commentContent) {
@@ -450,9 +433,9 @@
             stdout.textContent = '请求失败: ' + err.message;
             status.innerHTML = '<span style="color:#dc3545;">❌ 网络错误</span>';
         } finally {
-            btn.disabled = false;
-            btn.textContent = '🔧 调试运行';
+        btn.textContent = '🔧 调试运行';
         }
+    });
     });
     {% endif %}
 </script>
