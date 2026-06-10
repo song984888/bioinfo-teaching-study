@@ -132,8 +132,8 @@
                 
                 <!-- 输入区域 -->
                 <div class="form-group" style="margin-bottom:12px;">
-                    <label for="debugStdinInput" style="display:block; margin-bottom:4px; font-weight:500;">标准输入 (stdin)</label>
-                    <textarea id="debugStdinInput" rows="3" placeholder="程序标准输入，每行一个值&#10;例如：&#10;3&#10;Apple, 2020&#10;Banana, 2019&#10;Cherry, 2021&#10;apple" style="width:100%; font-family:monospace; font-size:13px; padding:8px; border:1px solid #ddd; border-radius:4px;"></textarea>
+                    <label for="debugStdinInput" style="display:block; margin-bottom:4px; font-weight:500;">标准输入 / 依次传入变量 (stdin)</label>
+                    <textarea id="debugStdinInput" rows="4" placeholder="每行代表一次 input() 读取的值&#10;例如程序需要依次读取：数量、书名+年份、关键字&#10;则输入：&#10;3&#10;Apple, 2020&#10;Banana, 2019&#10;apple" style="width:100%; font-family:monospace; font-size:13px; padding:8px; border:1px solid #ddd; border-radius:4px;"></textarea>
                 </div>
                 <div class="form-group" style="margin-bottom:12px;">
                     <label for="debugFileInput" style="display:block; margin-bottom:4px; font-weight:500;">测试文件 (保存为 test_input.txt)</label>
