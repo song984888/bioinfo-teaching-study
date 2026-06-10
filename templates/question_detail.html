@@ -120,7 +120,7 @@
             <button class="btn" id="commentBtn">💬 评论</button>
             <button class="btn primary" id="viewDocBtn">📄 查看原始文档</button>
             {% if not question.is_theory %}
-            <button class="btn" id="debugRunBtn" style="background:#17a2b8; color:#fff;">🔧 调试运行</button>
+            <button class="btn" id="debugRunBtn" style="background:#17a2b8; color:#fff;" onclick="runDebugCode()">🔧 调试运行</button>
             {% endif %}
         </div>
         
@@ -250,12 +250,12 @@
                 const resp = await fetch('/run_sample_code', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        language: '{{ question.language | default("python") }}',
-                        code: {{ question.sample_answer | tojson }},
-                        args: [],
-                        inputs: ''
-                    })
+                body: JSON.stringify({
+                    language: '{{ question.language | default("python") }}',
+                    code: {{ question.sample_answer | tojson | safe }},
+                    args: [],
+                    inputs: ''
+                })
                 });
                 const result = await resp.json();
                 const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
