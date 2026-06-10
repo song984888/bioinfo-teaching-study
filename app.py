@@ -2581,22 +2581,21 @@ def teacher_generate_questions():
         if topic_source == 'template':
             topic = request.form['topic']
         elif topic_source == 'knowledge_base':
-            kb_id = request.form.get('kb_id')
-            if kb_id:
-                kb_conn = get_db_connection()
-                kb_cursor = kb_conn.cursor()
-                kb_cursor.execute("""
-                    SELECT DISTINCT concept_name FROM knowledge_concepts kc 
-                    JOIN knowledge_documents kd ON kc.knowledge_document_id = kd.id 
-                    WHERE kd.knowledge_base_id = %s AND kc.concept_name IS NOT NULL
-                    LIMIT 20
-                """, (kb_id,))
-                concepts = [row[0] for row in kb_cursor.fetchall()]
-                kb_cursor.close()
-                kb_conn.close()
-                topic = '、'.join(concepts) if concepts else '通用编程主题'
+            # 获取用户选择的概念
+            selected_concepts = request.form.getlist('selected_concepts')
+            kb_supplement = request.form.get('kb_supplement', '').strip()
+            
+            if not selected_concepts:
+                flash('请至少选择一个概念', 'warning')
+                return redirect(url_for('teacher_generate_questions'))
+            
+            # 组合主题：选中的概念 + 补充说明
+            concept_str = '、'.join(selected_concepts)
+            if kb_supplement:
+                topic = f"{concept_str}。{kb_supplement}"
             else:
-                topic = '通用编程主题'
+                topic = concept_str
+            
         elif topic_source == 'custom':
             topic = request.form.get('custom_topic', '').strip()
             if not topic:

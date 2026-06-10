@@ -39,20 +39,44 @@
             <div class="form-group">
                 <label for="kb_id">选择知识库</label>
                 {% if user_kbs %}
-                <select id="kb_id" name="kb_id">
+                <select id="kb_id" name="kb_id" onchange="loadKBConcepts()">
+                    <option value="">-- 请选择知识库 --</option>
                     {% for kb in user_kbs %}
                     <option value="{{ kb.id }}">{{ kb.name }} {% if kb.description %}({{ kb.description }}){% endif %}</option>
                     {% endfor %}
                 </select>
-                <p style="color:#888; font-size:13px; margin-top:4px;">
-                    将从知识库的概念中提取主题（取前20个概念）
-                </p>
                 {% else %}
                 <p style="color:#e67e22;">
                     您还没有自己的知识库，请先<a href="{{ url_for('knowledge_bases') }}">创建知识库</a>并上传文档提取概念。
                 </p>
                 <input type="hidden" name="kb_id" value="">
                 {% endif %}
+            </div>
+            
+            <!-- 概念选择区域 -->
+            <div id="kb-concepts-section" style="display:none;">
+                <div class="form-group">
+                    <label>选择概念（可多选）</label>
+                    <div id="kb-concepts-checkboxes" style="max-height:200px; overflow-y:auto; border:1px solid #ddd; border-radius:6px; padding:10px; background:#fafafa;">
+                        <p style="color:#999; text-align:center; padding:10px;" id="concepts-loading">加载概念中...</p>
+                    </div>
+                    <div style="margin-top:6px; display:flex; gap:10px;">
+                        <a href="javascript:void(0)" onclick="selectAllConcepts()" style="font-size:12px; color:#4a90d9;">全选</a>
+                        <a href="javascript:void(0)" onclick="deselectAllConcepts()" style="font-size:12px; color:#999;">取消全选</a>
+                        <span id="concepts-count" style="font-size:12px; color:#888; margin-left:auto;"></span>
+                    </div>
+                </div>
+                
+                <!-- 补充说明 -->
+                <div class="form-group">
+                    <label for="kb_supplement">补充说明</label>
+                    <textarea id="kb_supplement" name="kb_supplement" rows="3" 
+                              style="width:100%; resize:vertical;"
+                              placeholder="请基于相关概念，生成程序设计题目，体现对概念的理解或者实现">请基于相关概念，生成程序设计题目，体现对概念的理解或者实现</textarea>
+                    <p style="color:#888; font-size:12px; margin-top:2px;">
+                        选中的概念名称会和补充说明一起作为主题发送给AI生成题目
+                    </p>
+                </div>
             </div>
         </div>
 
@@ -153,6 +177,66 @@ function toggleTopicSource() {
     document.getElementById('section-custom').style.display = source === 'custom' ? 'block' : 'none';
 }
 
+// ===== 知识库概念加载 =====
+let allConcepts = [];
+
+async function loadKBConcepts() {
+    const kbId = document.getElementById('kb_id').value;
+    const section = document.getElementById('kb-concepts-section');
+    const container = document.getElementById('kb-concepts-checkboxes');
+    
+    if (!kbId) {
+        section.style.display = 'none';
+        return;
+    }
+    
+    section.style.display = 'block';
+    container.innerHTML = '<p style="color:#999; text-align:center; padding:10px;">加载概念中...</p>';
+    
+    try {
+        const resp = await fetch(`/teacher/knowledge_bases/${kbId}/concepts`);
+        const data = await resp.json();
+        allConcepts = data.concepts || [];
+        
+        if (allConcepts.length === 0) {
+            container.innerHTML = '<p style="color:#e67e22; text-align:center; padding:10px;">该知识库暂无概念，请先上传文档并提取概念</p>';
+            document.getElementById('concepts-count').textContent = '';
+            return;
+        }
+        
+        container.innerHTML = allConcepts.map((c, i) => `
+            <label style="display:inline-flex; align-items:center; gap:5px; margin:3px 8px 3px 0; cursor:pointer; font-size:13px;">
+                <input type="checkbox" name="selected_concepts" value="${escapeHtmlAttr(c.concept_name)}" checked onchange="updateConceptCount()">
+                ${escapeHtml(c.concept_name)}
+                <span style="color:#aaa; font-size:11px;">(${c.total_frequency || 0})</span>
+            </label>
+        `).join('');
+        updateConceptCount();
+    } catch (err) {
+        container.innerHTML = '<p style="color:#dc3545; text-align:center; padding:10px;">加载失败: ' + err.message + '</p>';
+    }
+}
+
+function updateConceptCount() {
+    const checked = document.querySelectorAll('input[name="selected_concepts"]:checked').length;
+    document.getElementById('concepts-count').textContent = `已选 ${checked}/${allConcepts.length} 个概念`;
+}
+
+function selectAllConcepts() {
+    document.querySelectorAll('input[name="selected_concepts"]').forEach(cb => cb.checked = true);
+    updateConceptCount();
+}
+
+function deselectAllConcepts() {
+    document.querySelectorAll('input[name="selected_concepts"]').forEach(cb => cb.checked = false);
+    updateConceptCount();
+}
+
+function escapeHtmlAttr(str) {
+    if (!str) return '';
+    return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('questionForm');
     const progressContainer = document.getElementById('progressContainer');
@@ -172,11 +256,16 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        // 验证：如果是知识库，必须有知识库可选
+        // 验证：如果是知识库，必须有知识库可选且至少选一个概念
         if (topicSource === 'knowledge_base') {
             const kbSelect = document.getElementById('kb_id');
             if (!kbSelect || !kbSelect.value) {
-                alert('您还没有知识库，请先创建知识库！');
+                alert('请先选择知识库！');
+                return;
+            }
+            const checkedConcepts = document.querySelectorAll('input[name="selected_concepts"]:checked');
+            if (checkedConcepts.length === 0) {
+                alert('请至少选择一个概念！');
                 return;
             }
         }
