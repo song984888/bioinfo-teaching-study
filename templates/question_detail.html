@@ -99,7 +99,31 @@
         <div class="code-actions">
             <button class="btn" id="commentBtn">💬 评论</button>
             <button class="btn primary" id="viewDocBtn">📄 查看原始文档</button>
+            {% if not question.is_theory %}
+            <button class="btn" id="debugRunBtn" style="background:#17a2b8; color:#fff;">🔧 调试运行</button>
+            {% endif %}
         </div>
+        
+        {% if not question.is_theory %}
+        <!-- 调试运行输出区域 -->
+        <div id="debugOutput" class="debug-output" style="display:none; margin-top:15px;">
+            <div class="debug-header">
+                <h4>运行结果</h4>
+                <span id="debugStatus"></span>
+            </div>
+            <div class="debug-content">
+                <pre id="debugStdout" style="max-height:300px; overflow-y:auto;"></pre>
+            </div>
+            <div id="debugStderr" class="debug-stderr" style="display:none;">
+                <h5>错误信息</h5>
+                <pre id="debugStderrText" style="background:#fff5f5; color:#dc3545;"></pre>
+            </div>
+            <div class="debug-meta" style="margin-top:8px; font-size:12px; color:#888;">
+                <span id="debugTime"></span>
+                <span id="debugExitCode" style="margin-left:10px;"></span>
+            </div>
+        </div>
+        {% endif %}
     </div>
 
     <!-- 提示信息 -->
@@ -162,6 +186,39 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+/* 调试运行样式 */
+.debug-output {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background: #f8f9fa;
+    padding: 15px;
+}
+.debug-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+.debug-header h4 {
+    margin: 0;
+    color: #333;
+}
+.debug-content pre, .debug-stderr pre {
+    background: #2d2d2d;
+    color: #f8f8f2;
+    padding: 12px;
+    border-radius: 6px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.debug-stderr pre {
+    background: #fff5f5;
+    color: #dc3545;
+}
+</style>
 <script>
     // 查看评论功能
     document.getElementById('submitCommentBtn').addEventListener('click', async function() {
@@ -293,5 +350,74 @@
     document.addEventListener('DOMContentLoaded', function() {
         loadComments();
     });
+    
+    // ===== 调试运行功能 =====
+    {% if not question.is_theory %}
+    document.getElementById('debugRunBtn').addEventListener('click', async function() {
+        const btn = this;
+        const output = document.getElementById('debugOutput');
+        const stdout = document.getElementById('debugStdout');
+        const stderrDiv = document.getElementById('debugStderr');
+        const stderrText = document.getElementById('debugStderrText');
+        const status = document.getElementById('debugStatus');
+        const timeElem = document.getElementById('debugTime');
+        const exitCode = document.getElementById('debugExitCode');
+        
+        // 显示输出区域 + 加载状态
+        output.style.display = 'block';
+        stdout.textContent = '正在运行代码...';
+        stderrDiv.style.display = 'none';
+        status.innerHTML = '<span style="color:#17a2b8;">⏳ 运行中...</span>';
+        timeElem.textContent = '';
+        exitCode.textContent = '';
+        btn.disabled = true;
+        btn.textContent = '⏳ 运行中...';
+        
+        const startTime = Date.now();
+        
+        try {
+            const resp = await fetch('/run_sample_code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    language: '{{ question.language | default("python") }}',
+                    code: {{ question.sample_answer | tojson }},
+                    args: [],
+                    inputs: ''
+                })
+            });
+            const result = await resp.json();
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+            
+            // 显示输出
+            stdout.textContent = result.stdout || '(无输出)';
+            
+            // 错误信息
+            if (result.stderr) {
+                stderrDiv.style.display = 'block';
+                stderrText.textContent = result.stderr;
+            } else {
+                stderrDiv.style.display = 'none';
+            }
+            
+            // 状态
+            if (result.returncode === 0) {
+                status.innerHTML = '<span style="color:#28a745;">✅ 运行成功</span>';
+            } else {
+                status.innerHTML = '<span style="color:#dc3545;">❌ 运行失败</span>';
+            }
+            
+            timeElem.textContent = `耗时: ${elapsed}s`;
+            exitCode.textContent = `退出码: ${result.returncode}`;
+            
+        } catch (err) {
+            stdout.textContent = '请求失败: ' + err.message;
+            status.innerHTML = '<span style="color:#dc3545;">❌ 网络错误</span>';
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '🔧 调试运行';
+        }
+    });
+    {% endif %}
 </script>
 {% endblock %}
