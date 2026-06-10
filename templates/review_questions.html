@@ -4,11 +4,32 @@
 
 {% block content %}
 <div class="review-questions">
-    <h2>待审核题目</h2>
+    <!-- 状态标签导航 -->
+    <div class="status-tabs">
+        <a href="{{ url_for('review_questions', status='pending') }}" 
+           class="tab {% if current_status == 'pending' %}active{% endif %}">
+            ⏳ 待审核 ({{ status_counts.pending_count }})
+        </a>
+        <a href="{{ url_for('review_questions', status='approved') }}" 
+           class="tab {% if current_status == 'approved' %}active{% endif %}">
+            ✅ 已通过 ({{ status_counts.approved_count }})
+        </a>
+        <a href="{{ url_for('review_questions', status='rejected') }}" 
+           class="tab {% if current_status == 'rejected' %}active{% endif %}">
+            ❌ 已驳回 ({{ status_counts.rejected_count }})
+        </a>
+    </div>
+
+    <h2>
+        {% if current_status == 'pending' %}待审核题目
+        {% elif current_status == 'approved' %}已通过题目
+        {% else %}已驳回题目{% endif %}
+    </h2>
     
     <!-- 筛选表单 -->
     <div class="filter-section">
         <form method="GET" action="{{ url_for('review_questions') }}" class="filter-form">
+            <input type="hidden" name="status" value="{{ current_status }}">
             <div class="filter-row">
                 <div class="filter-group">
                     <label for="topic">主题:</label>
@@ -54,7 +75,7 @@
                 
                 <div class="filter-actions">
                     <button type="submit" class="btn primary">应用筛选</button>
-                    <a href="{{ url_for('review_questions') }}" class="btn">清除筛选</a>
+                    <a href="{{ url_for('review_questions', status=current_status) }}" class="btn">清除筛选</a>
                 </div>
             </div>
         </form>
@@ -62,7 +83,11 @@
     
     {% if not questions %}
         <div class="empty-state">
-            <p>当前没有待审核的题目</p>
+            <p>
+            {% if current_status == 'pending' %}当前没有待审核的题目
+            {% elif current_status == 'approved' %}当前没有已通过的题目
+            {% else %}当前没有已驳回的题目{% endif %}
+            </p>
         </div>
     {% else %}
         <table class="questions-table">
@@ -73,31 +98,46 @@
                     <th>题目内容</th>
                     <th>难度</th>
                     <th>语言</th>
+                    {% if current_status != 'pending' %}<th>审核人</th><th>审核时间</th>{% endif %}
+                    {% if current_status == 'rejected' %}<th>驳回原因</th>{% endif %}
                     <th>创建时间</th>
                     <th>操作</th>
                 </tr>
             </thead>
             <tbody>
                 {% for question in questions %}
-                <tr>
+                <tr class="{% if current_status == 'rejected' %}rejected-row{% elif current_status == 'approved' %}approved-row{% endif %}">
                     <td>{{ question.id }}</td>
                     <td>{{ question.topic }}</td>
-                    <td>{{ question.question_text[:100] }}{% if question.question_text|length > 100 %}...{% endif %}</td>
+                    <td class="question-preview">{{ question.question_text[:100] }}{% if question.question_text|length > 100 %}...{% endif %}</td>
                     <td>
                         {% for i in range(1,4) %}
-                            {% if i <= question.difficulty %}
-                            ★
-                            {% else %}
-                            ☆
-                            {% endif %}
+                            {% if i <= question.difficulty %}&#9733;{% else %}&#9734;{% endif %}
                         {% endfor %}
                     </td>
                     <td>{{ question.language|upper }}</td>
+                    {% if current_status != 'pending' %}
+                    <td>{{ question.reviewed_by or '-' }}</td>
+                    <td>{{ question.reviewed_at.strftime('%Y-%m-%d %H:%M') if question.reviewed_at else '-' }}</td>
+                    {% endif %}
+                    {% if current_status == 'rejected' %}
+                    <td class="reject-reason">{{ question.review_comment or '(无说明)' }}</td>
+                    {% endif %}
                     <td>{{ question.created_at.strftime('%Y-%m-%d') }}</td>
                     <td class="actions">
-                        <a href="{{ url_for('approve_question', question_id=question.id) }}" class="btn small">通过</a>
                         <a href="{{ url_for('question_detail', question_id=question.id) }}" class="btn small">详情</a>
+                        {% if current_status == 'pending' %}
+                        <form method="POST" action="{{ url_for('approve_question', question_id=question.id) }}" style="display:inline;">
+                            <button type="submit" class="btn small primary">通过</button>
+                        </form>
+                        <button onclick="rejectQuestion({{ question.id }})" class="btn small warning">驳回</button>
                         <a href="{{ url_for('remove_question',question_id=question.id)}}" class="btn small danger">删除</a>
+                        {% elif current_status == 'rejected' %}
+                        <form method="POST" action="{{ url_for('approve_question', question_id=question.id) }}" style="display:inline;">
+                            <button type="submit" class="btn small primary">通过</button>
+                        </form>
+                        <a href="{{ url_for('remove_question',question_id=question.id)}}" class="btn small danger">删除</a>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -106,75 +146,102 @@
     {% endif %}
 </div>
 
+<!-- 驳回原因输入对话框 -->
+<div id="reject-modal" style="display:none; position:fixed; top:0;left:0;right:0;bottom:0; background:rgba(0,0,0,0.5); z-index:1000; justify-content:center; align-items:center;">
+    <div style="background:#fff; border-radius:10px; padding:30px; width:450px; max-width:90%;">
+        <h3 style="margin:0 0 15px 0;">驳回题目</h3>
+        <form id="reject-form" method="POST">
+            <div style="margin-bottom:12px;">
+                <label for="reject-reason" style="display:block; margin-bottom:5px; font-weight:500;">驳回原因（可选）</label>
+                <textarea id="reject-reason" name="reason" rows="3" placeholder="请输入驳回原因..." style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;"></textarea>
+            </div>
+            <div style="display:flex; gap:10px;">
+                <button type="submit" class="btn primary">确认驳回</button>
+                <button type="button" class="btn" onclick="closeRejectModal()">取消</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function rejectQuestion(id) {
+    const modal = document.getElementById('reject-modal');
+    modal.style.display = 'flex';
+    document.getElementById('reject-form').action = '/teacher/reject_question/' + id;
+}
+function closeRejectModal() {
+    document.getElementById('reject-modal').style.display = 'none';
+    document.getElementById('reject-reason').value = '';
+}
+</script>
+
 <style>
+.status-tabs {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #e0e0e0;
+}
+.status-tabs .tab {
+    padding: 10px 20px;
+    text-decoration: none;
+    color: #666;
+    font-size: 15px;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.2s;
+}
+.status-tabs .tab:hover {
+    color: #333;
+    background: #f5f5f5;
+}
+.status-tabs .tab.active {
+    color: #4a90d9;
+    border-bottom-color: #4a90d9;
+    font-weight: 600;
+}
+.question-preview {
+    max-width: 300px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.rejected-row { background: #fff8f8; }
+.approved-row { background: #f8fff8; }
+.reject-reason {
+    max-width: 150px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #dc3545;
+    font-size: 13px;
+}
 .filter-section {
     background-color: #f8f9fa;
     padding: 20px;
     border-radius: 8px;
     margin-bottom: 20px;
 }
-
-.filter-form {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
-
-.filter-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 15px;
-    align-items: end;
-}
-
-.filter-group {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-}
-
-.filter-group label {
-    font-weight: 500;
-    font-size: 14px;
-    color: #495057;
-}
-
-.filter-group select,
-.filter-group input {
+.filter-form { display: flex; flex-direction: column; gap: 15px; }
+.filter-row { display: flex; flex-wrap: wrap; gap: 15px; align-items: end; }
+.filter-group { display: flex; flex-direction: column; gap: 5px; }
+.filter-group label { font-weight: 500; font-size: 14px; color: #495057; }
+.filter-group select, .filter-group input {
     padding: 8px 12px;
     border: 1px solid #ced4da;
     border-radius: 4px;
     font-size: 14px;
 }
-
-.filter-actions {
-    display: flex;
-    gap: 10px;
-    margin-left: auto;
-}
-
-.questions-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-.questions-table th,
-.questions-table td {
-    padding: 12px;
+.filter-actions { display: flex; gap: 10px; margin-left: auto; }
+.questions-table { width: 100%; border-collapse: collapse; }
+.questions-table th, .questions-table td {
+    padding: 10px 8px;
     text-align: left;
     border-bottom: 1px solid #dee2e6;
+    font-size: 13px;
 }
-
-.questions-table th {
-    background-color: #f8f9fa;
-    font-weight: 600;
-}
-
-.actions {
-    display: flex;
-    gap: 5px;
-}
-
+.questions-table th { background-color: #f8f9fa; font-weight: 600; }
+.actions { display: flex; gap: 4px; white-space: nowrap; }
 .btn {
     display: inline-block;
     padding: 6px 12px;
@@ -186,28 +253,11 @@
     border: none;
     cursor: pointer;
 }
-
-.btn.small {
-    padding: 4px 8px;
-    font-size: 12px;
-}
-
-.btn.primary {
-    background-color: #007bff;
-}
-
-.btn.danger {
-    background-color: #dc3545;
-}
-
-.btn:hover {
-    opacity: 0.9;
-}
-
-.empty-state {
-    text-align: center;
-    padding: 40px;
-    color: #6c757d;
-}
+.btn.small { padding: 4px 8px; font-size: 12px; }
+.btn.primary { background-color: #007bff; }
+.btn.warning { background-color: #e67e22; color: #fff; }
+.btn.danger { background-color: #dc3545; }
+.btn:hover { opacity: 0.9; }
+.empty-state { text-align: center; padding: 40px; color: #6c757d; }
 </style>
 {% endblock %}

@@ -3109,26 +3109,43 @@ def reject_question(question_id):
         return redirect(url_for('login'))
     
     reason = request.form.get('reason', '').strip()
+    is_resubmit = request.form.get('resubmit') == '1'
     
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    cursor.execute("""
-        UPDATE questions SET review_status = 'rejected', review_comment = %s, 
-        reviewed_by = %s, reviewed_at = NOW() WHERE id = %s
-    """, (reason, session.get('name', session.get('user_id', '')), question_id))
-    
-    if cursor.rowcount == 0:
+    if is_resubmit:
+        # 重新提交审核：将状态改回 pending
         cursor.execute("""
-            UPDATE theory_questions SET review_status = 'rejected', review_comment = %s,
+            UPDATE questions SET review_status = 'pending', review_comment = NULL,
+            reviewed_by = NULL, reviewed_at = NULL WHERE id = %s
+        """, (question_id,))
+        if cursor.rowcount == 0:
+            cursor.execute("""
+                UPDATE theory_questions SET review_status = 'pending', review_comment = NULL,
+                reviewed_by = NULL, reviewed_at = NULL WHERE id = %s
+            """, (question_id,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        flash('题目已重新提交审核', 'success')
+    else:
+        cursor.execute("""
+            UPDATE questions SET review_status = 'rejected', review_comment = %s, 
             reviewed_by = %s, reviewed_at = NOW() WHERE id = %s
         """, (reason, session.get('name', session.get('user_id', '')), question_id))
+        
+        if cursor.rowcount == 0:
+            cursor.execute("""
+                UPDATE theory_questions SET review_status = 'rejected', review_comment = %s,
+                reviewed_by = %s, reviewed_at = NOW() WHERE id = %s
+            """, (reason, session.get('name', session.get('user_id', '')), question_id))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        flash('题目已驳回' + ('，驳回原因已记录' if reason else ''), 'warning')
     
-    conn.commit()
-    cursor.close()
-    conn.close()
-    
-    flash('题目已驳回' + ('，驳回原因已记录' if reason else ''), 'warning')
     return redirect(url_for('review_questions'))
 
 

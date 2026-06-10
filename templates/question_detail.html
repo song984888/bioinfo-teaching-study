@@ -10,9 +10,14 @@
             <a href="{{ url_for('review_questions') }}" class="btn">
                 &larr; 返回题目列表
             </a>
-            {% if not question.is_approved %}
+            {% if question.review_status != 'approved' %}
             <a href="{{ url_for('approve_question', question_id=question.id) }}" class="btn primary">
                 ✓ 审核通过
+            </a>
+            {% endif %}
+            {% if question.review_status == 'pending' %}
+            <a href="javascript:void(0)" class="btn warn" onclick="rejectQuestion({{ question.id }})">
+                ✗ 驳回
             </a>
             {% endif %}
             <a href="{{ url_for('remove_question', question_id=question.id) }}" 
@@ -72,13 +77,28 @@
         <div class="info-row">
             <div class="info-label">审核状态:</div>
             <div class="info-value">
-                {% if question.is_approved %}
-                <span class="status-badge status-approved">✅ 已审核</span>
+                {% set status = question.review_status if question.review_status is defined else ('approved' if question.is_approved else 'pending') %}
+                {% if status == 'approved' %}
+                <span class="status-badge status-approved">✅ 已通过</span>
+                {% elif status == 'rejected' %}
+                <span class="status-badge status-rejected">❌ 已驳回</span>
                 {% else %}
                 <span class="status-badge status-pending">⏳ 待审核</span>
                 {% endif %}
             </div>
         </div>
+        {% if question.review_status == 'approved' or question.review_status == 'rejected' %}
+        <div class="info-row">
+            <div class="info-label">审核人:</div>
+            <div class="info-value">{{ question.reviewed_by or '-' }}</div>
+        </div>
+        {% endif %}
+        {% if question.review_status == 'rejected' and question.review_comment %}
+        <div class="info-row">
+            <div class="info-label">驳回原因:</div>
+            <div class="info-value" style="color:#dc3545;">{{ question.review_comment }}</div>
+        </div>
+        {% endif %}
     </div>
 
     <!-- 题目内容 -->
