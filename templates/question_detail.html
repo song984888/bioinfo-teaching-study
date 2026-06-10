@@ -247,37 +247,49 @@
 <script>
     // ===== 调试运行功能 =====
     {% if not question.is_theory %}
-    document.addEventListener('DOMContentLoaded', function() {
-        const debugBtn = document.getElementById('debugRunBtn');
-        if (!debugBtn) return;
-        debugBtn.addEventListener('click', async function() {
-            const btn = this;
-            const debugInput = document.getElementById('debugInput');
-            const output = document.getElementById('debugOutput');
-            const stdout = document.getElementById('debugStdout');
-            const stderrDiv = document.getElementById('debugStderr');
-            const stderrText = document.getElementById('debugStderrText');
-            const statusElem = document.getElementById('debugStatus');
-            const timeElem = document.getElementById('debugTime');
-            const exitCode = document.getElementById('debugExitCode');
-            const stdinInput = document.getElementById('debugStdinInput').value;
-            const fileContent = document.getElementById('debugFileInput').value;
-            
-            output.style.display = 'block';
-            debugInput.style.display = 'block';
-            stdout.textContent = '正在运行代码...';
-            stderrDiv.style.display = 'none';
-            statusElem.innerHTML = '<span style="color:#17a2b8;">⏳ 运行中...</span>';
-            timeElem.textContent = '';
-            exitCode.textContent = '';
-            btn.disabled = true;
-            btn.textContent = '⏳ 运行中...';
-            
-            const startTime = Date.now();
-            try {
-                const resp = await fetch('/run_sample_code', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+    function openDebugModal() {
+        document.getElementById('debugModal').style.display = 'flex';
+        document.getElementById('debugOutput').style.display = 'none';
+        document.getElementById('debugStdout').textContent = '';
+        document.getElementById('debugStderr').style.display = 'none';
+        document.getElementById('debugStatus').innerHTML = '';
+        document.getElementById('debugTime').textContent = '';
+        document.getElementById('debugExitCode').textContent = '';
+        document.getElementById('debugRunStatus').innerHTML = '';
+        document.getElementById('debugRunExecuteBtn').disabled = false;
+    }
+    
+    function closeDebugModal() {
+        document.getElementById('debugModal').style.display = 'none';
+    }
+    
+    async function executeDebugCode() {
+        const btn = document.getElementById('debugRunExecuteBtn');
+        const statusSpan = document.getElementById('debugRunStatus');
+        const output = document.getElementById('debugOutput');
+        const stdout = document.getElementById('debugStdout');
+        const stderrDiv = document.getElementById('debugStderr');
+        const stderrText = document.getElementById('debugStderrText');
+        const statusElem = document.getElementById('debugStatus');
+        const timeElem = document.getElementById('debugTime');
+        const exitCode = document.getElementById('debugExitCode');
+        const stdinInput = document.getElementById('debugStdinInput').value;
+        const fileContent = document.getElementById('debugFileInput').value;
+        
+        output.style.display = 'block';
+        stdout.textContent = '正在运行代码...';
+        stderrDiv.style.display = 'none';
+        statusElem.innerHTML = '';
+        timeElem.textContent = '';
+        exitCode.textContent = '';
+        btn.disabled = true;
+        statusSpan.innerHTML = '<span style="color:#17a2b8;">⏳ 运行中...</span>';
+        
+        const startTime = Date.now();
+        try {
+            const resp = await fetch('/run_sample_code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     language: '{{ question.language | default("python") }}',
                     code: {{ question.sample_answer | tojson | safe }},
@@ -285,31 +297,38 @@
                     inputs: stdinInput,
                     file_content: fileContent
                 })
-                });
-                const result = await resp.json();
-                const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-                stdout.textContent = result.stdout || '(无输出)';
-                if (result.stderr) {
-                    stderrDiv.style.display = 'block';
-                    stderrText.textContent = result.stderr;
-                } else {
-                    stderrDiv.style.display = 'none';
-                }
-                if (result.returncode === 0) {
-                    statusElem.innerHTML = '<span style="color:#28a745;">✅ 运行成功</span>';
-                } else {
-                    statusElem.innerHTML = '<span style="color:#dc3545;">❌ 运行失败</span>';
-                }
-                timeElem.textContent = `耗时: ${elapsed}s`;
-                exitCode.textContent = `退出码: ${result.returncode}`;
-            } catch (err) {
-                stdout.textContent = '请求失败: ' + err.message;
-                statusElem.innerHTML = '<span style="color:#dc3545;">❌ 网络错误</span>';
-            } finally {
-                btn.disabled = false;
-                btn.textContent = '🔧 调试运行';
+            });
+            const result = await resp.json();
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+            stdout.textContent = result.stdout || '(无输出)';
+            if (result.stderr) {
+                stderrDiv.style.display = 'block';
+                stderrText.textContent = result.stderr;
+            } else {
+                stderrDiv.style.display = 'none';
             }
-        });
+            if (result.returncode === 0) {
+                statusElem.innerHTML = '<span style="color:#28a745;">✅ 运行成功</span>';
+            } else {
+                statusElem.innerHTML = '<span style="color:#dc3545;">❌ 运行失败</span>';
+            }
+            timeElem.textContent = '耗时: ' + elapsed + 's';
+            exitCode.textContent = '退出码: ' + result.returncode;
+            statusSpan.innerHTML = '<span style="color:#28a745;">✅ 完成</span>';
+        } catch (err) {
+            stdout.textContent = '请求失败: ' + err.message;
+            statusElem.innerHTML = '<span style="color:#dc3545;">❌ 网络错误</span>';
+            statusSpan.innerHTML = '<span style="color:#dc3545;">❌ 失败</span>';
+        } finally {
+            btn.disabled = false;
+            statusSpan.innerHTML = '';
+        }
+    }
+    
+    // 点击调试运行按钮打开弹窗
+    document.addEventListener('DOMContentLoaded', function() {
+        const debugBtn = document.getElementById('debugRunBtn');
+        if (debugBtn) debugBtn.addEventListener('click', openDebugModal);
     });
     {% endif %}
     
