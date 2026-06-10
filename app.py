@@ -1910,6 +1910,7 @@ def run_code():
     args = data.get('args', [])
     inputs = data.get('inputs', '')
     file_content = data.get('file_content', '')
+    file_content = data.get('file_content', '')
     
     # 清理代码
     code = clean_code(code,language)
@@ -1930,12 +1931,13 @@ def run_code():
     # 构建运行命令（编译型语言先编译再执行）
     runner = CONFIG["LANGUAGE_CONFIG"][language]["runner"]
     exe_path = None
+    cwd_dir = os.path.dirname(file_path)
     
     if language == 'java':
         class_dir = os.path.dirname(file_path)
         compile_cmd = ['javac', file_path, '-d', class_dir]
         try:
-            cp = subprocess.Popen(compile_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            cp = subprocess.Popen(compile_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=cwd_dir)
             cout, cerr = cp.communicate(timeout=30)
             if cp.returncode != 0:
                 return jsonify({'stdout': '', 'stderr': cerr, 'returncode': cp.returncode})
@@ -1950,7 +1952,7 @@ def run_code():
         exe_path = file_path + '.out'
         compile_cmd = ['gcc', file_path, '-o', exe_path, '-lm']
         try:
-            cp = subprocess.Popen(compile_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            cp = subprocess.Popen(compile_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=cwd_dir)
             cout, cerr = cp.communicate(timeout=30)
             if cp.returncode != 0:
                 return jsonify({'stdout': '', 'stderr': cerr, 'returncode': cp.returncode})
@@ -1968,7 +1970,8 @@ def run_code():
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
+            cwd=cwd_dir
         )
         
         stdout, stderr = process.communicate(input=inputs, timeout=30)
@@ -2386,12 +2389,13 @@ def run_sample_code():
     # 构建运行命令（编译型语言先编译再执行）
     runner = CONFIG["LANGUAGE_CONFIG"][language]["runner"]
     exe_path = None
+    cwd_dir = os.path.dirname(file_path)
     
     if language == 'java':
         class_dir = os.path.dirname(file_path)
         compile_cmd = ['javac', file_path, '-d', class_dir]
         try:
-            cp = subprocess.Popen(compile_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            cp = subprocess.Popen(compile_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=cwd_dir)
             cout, cerr = cp.communicate(timeout=30)
             if cp.returncode != 0:
                 return jsonify({'stdout': '', 'stderr': cerr, 'returncode': cp.returncode})
@@ -2406,7 +2410,7 @@ def run_sample_code():
         exe_path = file_path + '.out'
         compile_cmd = ['gcc', file_path, '-o', exe_path, '-lm']
         try:
-            cp = subprocess.Popen(compile_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            cp = subprocess.Popen(compile_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=cwd_dir)
             cout, cerr = cp.communicate(timeout=30)
             if cp.returncode != 0:
                 return jsonify({'stdout': '', 'stderr': cerr, 'returncode': cp.returncode})
@@ -2424,7 +2428,8 @@ def run_sample_code():
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
+            cwd=cwd_dir
         )
         
         stdout, stderr = process.communicate(input=inputs, timeout=30)
