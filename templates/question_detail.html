@@ -371,6 +371,22 @@
         loadComments();
     });
     
+    // ===== Reject Modal =====
+    function rejectQuestion(id) {
+        const reason = prompt('请输入驳回原因（可选）：');
+        if (reason === null) return;
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/teacher/reject_question/' + id;
+        const reasonInput = document.createElement('input');
+        reasonInput.type = 'hidden';
+        reasonInput.name = 'reason';
+        reasonInput.value = reason;
+        form.appendChild(reasonInput);
+        document.body.appendChild(form);
+        form.submit();
+    }
+    
     // ===== 调试运行功能 =====
     {% if not question.is_theory %}
     document.getElementById('debugRunBtn').addEventListener('click', async function() {
