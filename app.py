@@ -891,8 +891,8 @@ def get_teacher_dashboard_stats():
         # 待审核题目 - 同时统计 questions 和 theory_questions 两个表
         cursor.execute("""
             SELECT 
-                (SELECT COUNT(*) FROM questions WHERE is_approved = FALSE) +
-                (SELECT COUNT(*) FROM theory_questions WHERE is_approved = FALSE) AS pending
+                (SELECT COUNT(*) FROM questions WHERE review_status = 'pending') +
+                (SELECT COUNT(*) FROM theory_questions WHERE review_status = 'pending') AS pending
         """)
         stats['pending_reviews'] = cursor.fetchone()['pending']
         
@@ -1008,15 +1008,15 @@ def get_admin_dashboard_stats():
         cursor.execute("SELECT COUNT(*) AS total FROM questions")
         stats['total_questions'] = cursor.fetchone()['total']
         
-        cursor.execute("SELECT COUNT(*) AS cnt FROM questions WHERE is_approved = FALSE")
+        cursor.execute("SELECT COUNT(*) AS cnt FROM questions WHERE review_status = 'pending'")
         p1 = cursor.fetchone()['cnt']
-        cursor.execute("SELECT COUNT(*) AS cnt2 FROM theory_questions WHERE is_approved = FALSE")
+        cursor.execute("SELECT COUNT(*) AS cnt2 FROM theory_questions WHERE review_status = 'pending'")
         p2 = cursor.fetchone()['cnt2']
         stats['pending_questions'] = p1 + p2
         
-        cursor.execute("SELECT COUNT(*) AS cnt FROM questions WHERE is_approved = TRUE")
+        cursor.execute("SELECT COUNT(*) AS cnt FROM questions WHERE review_status = 'approved'")
         a1 = cursor.fetchone()['cnt']
-        cursor.execute("SELECT COUNT(*) AS cnt2 FROM theory_questions WHERE is_approved = TRUE")
+        cursor.execute("SELECT COUNT(*) AS cnt2 FROM theory_questions WHERE review_status = 'approved'")
         a2 = cursor.fetchone()['cnt2']
         stats['approved_questions'] = a1 + a2
         
@@ -1711,7 +1711,7 @@ def exam_with_samples():
        # 随机获取一道题目
        cursor.execute("""
           SELECT * FROM questions 
-          WHERE topic = %s AND language = %s AND difficulty = %s AND is_approved = TRUE 
+          WHERE topic = %s AND language = %s AND difficulty = %s AND review_status = 'approved' 
           ORDER BY RAND() LIMIT 1
        """,(topic, language, difficulty))
        question = cursor.fetchone()
@@ -1741,7 +1741,7 @@ def student_exam():
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
         SELECT * FROM questions 
-        WHERE is_approved = TRUE 
+        WHERE review_status = 'approved' 
         ORDER BY RAND() LIMIT 1
     """)
     question = cursor.fetchone()
@@ -2165,7 +2165,7 @@ def exam_selection():
     
     try:
         # 获取所有主题的题目数量
-        cursor.execute("SELECT topic, COUNT(*) as count FROM questions WHERE is_approved = TRUE GROUP BY topic")
+        cursor.execute("SELECT topic, COUNT(*) as count FROM questions WHERE review_status = 'approved' GROUP BY topic")
         topic_counts = {row['topic']: row['count'] for row in cursor.fetchall()}
         
         # 从配置中获取主题列表
@@ -2816,31 +2816,51 @@ def review_questions():
     if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     # 获取筛选参数
+    status_filter = request.args.get('status', 'pending')  # pending/approved/rejected
     topic_filter = request.args.get('topic', '')
     difficulty_filter = request.args.get('difficulty', '')
     language_filter = request.args.get('language', '')
     start_date_filter = request.args.get('start_date', '')
     end_date_filter = request.args.get('end_date', '')
     
+    # 状态标签映射
+    status_map = {'pending': '待审核', 'approved': '已通过', 'rejected': '已驳回'}
+    current_status = status_filter if status_filter in status_map else 'pending'
+    
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     
-    # 构建基础查询（待审核题目）- 同时查询 questions 和 theory_questions 两个表
+    # 获取各状态数量统计
+    cursor.execute("""
+        SELECT COALESCE(SUM(CASE WHEN review_status='pending' THEN 1 ELSE 0 END), 0) as pending_count,
+               COALESCE(SUM(CASE WHEN review_status='approved' THEN 1 ELSE 0 END), 0) as approved_count,
+               COALESCE(SUM(CASE WHEN review_status='rejected' THEN 1 ELSE 0 END), 0) as rejected_count
+        FROM (
+            SELECT review_status FROM questions WHERE review_status IN ('pending','approved','rejected')
+            UNION ALL
+            SELECT review_status FROM theory_questions WHERE review_status IN ('pending','approved','rejected')
+        ) AS all_reviews
+    """)
+    status_counts = cursor.fetchone()
+    
+    # 构建基础查询（包含 review_status, review_comment, reviewed_by, reviewed_at）
     query = """
         SELECT * FROM (
             (SELECT id, topic, difficulty, question_text, sample_answer, 
                     NULL as grading_criteria, NULL as score,
-                    language, aiModel, is_approved, question_type, created_at
-             FROM questions WHERE is_approved = FALSE)
+                    language, aiModel, is_approved, review_status, review_comment, 
+                    reviewed_by, reviewed_at, question_type, created_at
+             FROM questions WHERE review_status = %s)
             UNION ALL
             (SELECT id, topic, difficulty, question_text, sample_answer, 
                     grading_criteria, score,
-                    'theoretical' as language, aiModel, is_approved, question_type, created_at
-             FROM theory_questions WHERE is_approved = FALSE)
+                    'theoretical' as language, aiModel, is_approved, review_status, review_comment,
+                    reviewed_by, reviewed_at, question_type, created_at
+             FROM theory_questions WHERE review_status = %s)
         ) AS combined
         WHERE 1=1
     """
-    params = []
+    params = [current_status, current_status]
     
     # 添加筛选条件
     if topic_filter:
@@ -2872,17 +2892,17 @@ def review_questions():
     
     # 获取所有可用的主题和语言（用于筛选下拉框）
     cursor.execute("""
-        (SELECT DISTINCT topic FROM questions WHERE is_approved = FALSE)
+        (SELECT DISTINCT topic FROM questions WHERE review_status = 'pending')
         UNION
-        (SELECT DISTINCT topic FROM theory_questions WHERE is_approved = FALSE)
+        (SELECT DISTINCT topic FROM theory_questions WHERE review_status = 'pending')
         ORDER BY topic
     """)
     all_topics = [row['topic'] for row in cursor.fetchall()]
     
     cursor.execute("""
-        (SELECT DISTINCT language FROM questions WHERE is_approved = FALSE)
+        (SELECT DISTINCT language FROM questions WHERE review_status = 'pending')
         UNION
-        (SELECT DISTINCT 'theoretical' as language FROM theory_questions WHERE is_approved = FALSE)
+        (SELECT DISTINCT 'theoretical' as language FROM theory_questions WHERE review_status = 'pending')
         ORDER BY language
     """)
     all_languages = [row['language'] for row in cursor.fetchall()]
@@ -2895,7 +2915,9 @@ def review_questions():
         questions=questions,
         all_topics=all_topics,
         all_languages=all_languages,
-        request_args=request.args  # 传递请求参数以便在前端保持筛选状态
+        request_args=request.args,
+        current_status=current_status,
+        status_counts=status_counts
     )
 
 
@@ -2923,12 +2945,12 @@ def question_bank():
         (SELECT id, topic, difficulty, question_text, sample_answer, 
                 NULL as grading_criteria, NULL as score,
                 language, aiModel, is_approved, 'programming' as question_type, created_at
-         FROM questions WHERE is_approved = TRUE)
+         FROM questions WHERE review_status = 'approved')
         UNION ALL
         (SELECT id, topic, difficulty, question_text, sample_answer, 
                 grading_criteria, score,
                 'theoretical' as language, aiModel, is_approved, question_type, created_at
-         FROM theory_questions WHERE is_approved = TRUE)
+         FROM theory_questions WHERE review_status = 'approved')
     """
     params = []
     
@@ -2967,10 +2989,10 @@ def question_bank():
     count_query = """
         SELECT COUNT(*) as total FROM (
             (SELECT id, topic, difficulty, language, question_type, created_at 
-             FROM questions WHERE is_approved = TRUE)
+             FROM questions WHERE review_status = 'approved')
             UNION ALL
             (SELECT id, topic, difficulty, 'theoretical' AS language, question_type, created_at 
-             FROM theory_questions WHERE is_approved = TRUE)
+             FROM theory_questions WHERE review_status = 'approved')
         ) AS all_questions
     """
     
@@ -3010,25 +3032,25 @@ def question_bank():
     
     # 获取所有可用的主题、语言和题目类型（用于筛选下拉框）
     cursor.execute("""
-        (SELECT DISTINCT topic FROM questions WHERE is_approved = TRUE)
+        (SELECT DISTINCT topic FROM questions WHERE review_status = 'approved')
         UNION
-        (SELECT DISTINCT topic FROM theory_questions WHERE is_approved = TRUE)
+        (SELECT DISTINCT topic FROM theory_questions WHERE review_status = 'approved')
         ORDER BY topic
     """)
     all_topics = [row['topic'] for row in cursor.fetchall()]
     
     cursor.execute("""
-        (SELECT DISTINCT language FROM questions WHERE is_approved = TRUE)
+        (SELECT DISTINCT language FROM questions WHERE review_status = 'approved')
         UNION
-        (SELECT DISTINCT 'theoretical' as language FROM theory_questions WHERE is_approved = TRUE)
+        (SELECT DISTINCT 'theoretical' as language FROM theory_questions WHERE review_status = 'approved')
         ORDER BY language
     """)
     all_languages = [row['language'] for row in cursor.fetchall()]
     
     cursor.execute("""
-        (SELECT DISTINCT question_type FROM questions WHERE is_approved = TRUE)
+        (SELECT DISTINCT question_type FROM questions WHERE review_status = 'approved')
         UNION
-        (SELECT DISTINCT question_type FROM theory_questions WHERE is_approved = TRUE)
+        (SELECT DISTINCT question_type FROM theory_questions WHERE review_status = 'approved')
         ORDER BY question_type
     """)
     all_question_types = [row['question_type'] for row in cursor.fetchall()]
@@ -3053,7 +3075,7 @@ def question_bank():
     )    
 
 
-@app.route('/teacher/approve_question/<int:question_id>')
+@app.route('/teacher/approve_question/<int:question_id>', methods=['GET', 'POST'])
 def approve_question(question_id):
     if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
@@ -3062,17 +3084,51 @@ def approve_question(question_id):
     cursor = conn.cursor()
     
     # 尝试在 questions 表中更新
-    cursor.execute("UPDATE questions SET is_approved = TRUE WHERE id = %s", (question_id,))
+    cursor.execute("""
+        UPDATE questions SET review_status = 'approved', reviewed_by = %s, reviewed_at = NOW() 
+        WHERE id = %s
+    """, (session.get('name', session.get('user_id', '')), question_id))
     
     # 如果 questions 表没有影响行，则更新 theory_questions 表
     if cursor.rowcount == 0:
-        cursor.execute("UPDATE theory_questions SET is_approved = TRUE WHERE id = %s", (question_id,))
+        cursor.execute("""
+            UPDATE theory_questions SET review_status = 'approved', reviewed_by = %s, reviewed_at = NOW() 
+            WHERE id = %s
+        """, (session.get('name', session.get('user_id', '')), question_id))
     
     conn.commit()
     cursor.close()
     conn.close()
     
     flash('题目已审核通过', 'success')
+    return redirect(url_for('review_questions'))
+
+@app.route('/teacher/reject_question/<int:question_id>', methods=['POST'])
+def reject_question(question_id):
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
+        return redirect(url_for('login'))
+    
+    reason = request.form.get('reason', '').strip()
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        UPDATE questions SET review_status = 'rejected', review_comment = %s, 
+        reviewed_by = %s, reviewed_at = NOW() WHERE id = %s
+    """, (reason, session.get('name', session.get('user_id', '')), question_id))
+    
+    if cursor.rowcount == 0:
+        cursor.execute("""
+            UPDATE theory_questions SET review_status = 'rejected', review_comment = %s,
+            reviewed_by = %s, reviewed_at = NOW() WHERE id = %s
+        """, (reason, session.get('name', session.get('user_id', '')), question_id))
+    
+    conn.commit()
+    cursor.close()
+    conn.close()
+    
+    flash('题目已驳回' + ('，驳回原因已记录' if reason else ''), 'warning')
     return redirect(url_for('review_questions'))
 
 
@@ -3085,11 +3141,11 @@ def remove_question(question_id):
     cursor = conn.cursor()
     
     # 尝试在 questions 表中删除
-    cursor.execute("DELETE FROM questions WHERE is_approved = FALSE AND id = %s", (question_id,))
+    cursor.execute("DELETE FROM questions WHERE review_status != 'approved' AND id = %s", (question_id,))
     
     # 如果 questions 表没有影响行，则从 theory_questions 表删除
     if cursor.rowcount == 0:
-        cursor.execute("DELETE FROM theory_questions WHERE is_approved = FALSE AND id = %s", (question_id,))
+        cursor.execute("DELETE FROM theory_questions WHERE review_status != 'approved' AND id = %s", (question_id,))
     
     conn.commit()
     cursor.close()
@@ -3467,7 +3523,7 @@ def admin_questions_list():
         if status == 'pending':
             sql += " AND is_approved = FALSE"
         elif status == 'approved':
-            sql += " AND is_approved = TRUE"
+            sql += " AND review_status = 'approved'"
         if qtype == 'programming':
             sql += " AND question_type = 'programming'"
         elif qtype == 'theory':
@@ -3487,7 +3543,7 @@ def admin_questions_list():
         if status == 'pending':
             sql2 += " AND is_approved = FALSE"
         elif status == 'approved':
-            sql2 += " AND is_approved = TRUE"
+            sql2 += " AND review_status = 'approved'"
         sql2 += " ORDER BY id DESC LIMIT 200"
         cursor.execute(sql2, params2)
         questions += cursor.fetchall()
