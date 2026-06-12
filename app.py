@@ -302,26 +302,31 @@ def clean_code(code, language=None):
     if language == 'python':
         # Python特定清理（修复：# 注释不应跨行匹配）
         code = re.sub(r'#[^\n]*', '', code)
-        code = re.sub(r'```.*?```|```.*', '', code, flags=re.DOTALL).strip()
+        code = re.sub(r'^```\w*\s*\n', '', code)
+        code = re.sub(r'\n```\s*$', '', code).strip()
     elif language == 'java':
         # Java特定清理（修复：// 注释不应跨行匹配）
         code = re.sub(r'/\*.*?\*/', '', code, flags=re.DOTALL)  # 块注释先去掉
         code = re.sub(r'//[^\n]*', '', code)  # 单行注释不跨行
-        code = re.sub(r'```.*?```|```.*', '', code, flags=re.DOTALL).strip()
+        code = re.sub(r'^```\w*\s*\n', '', code)
+        code = re.sub(r'\n```\s*$', '', code).strip()
     elif language == 'c':
         # C语言特定清理（#include 等预处理器指令不是注释，不能删除）
         code = re.sub(r'/\*.*?\*/', '', code, flags=re.DOTALL)  # 块注释先去掉
         code = re.sub(r'//[^\n]*', '', code)  # 单行注释
-        code = re.sub(r'```.*?```|```.*', '', code, flags=re.DOTALL).strip()
+        code = re.sub(r'^```\w*\s*\n', '', code)
+        code = re.sub(r'\n```\s*$', '', code).strip()
     elif language == 'perl':
         # Perl特定清理（修复：# 注释不应跨行匹配）
         code = re.sub(r'#[^\n]*', '', code)
-        code = re.sub(r'```.*?```|```.*', '', code, flags=re.DOTALL).strip()
+        code = re.sub(r'^```\w*\s*\n', '', code)
+        code = re.sub(r'\n```\s*$', '', code).strip()
     else:
         # 默认清理策略
         code = re.sub(r'/\*.*?\*/', '', code, flags=re.DOTALL)
         code = re.sub(r'//[^\n]*', '', code)
-        code = re.sub(r'```.*?```|```.*', '', code, flags=re.DOTALL).strip()
+        code = re.sub(r'^```\w*\s*\n', '', code)
+        code = re.sub(r'\n```\s*$', '', code).strip()
     
     # 通用安全过滤（防止代码注入和恶意操作）
     dangerous_patterns = [
