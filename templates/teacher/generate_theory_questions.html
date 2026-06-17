@@ -136,7 +136,7 @@
         </div>
 
         <!-- 第三步：题目配置 -->
-        <div class="form-section" id="section_default_template">
+        <div class="form-section">
             <div class="section-header">
                 <span class="step-badge">3</span>
                 <h2 class="section-title">题目配置</h2>
@@ -186,16 +186,11 @@
                           placeholder="例如：1. 概念准确 2 分；2. 举例说明 2 分；3. 语言表达清晰 1 分"></textarea>
             </div>
                     
-            <!-- 出题模版 -->
+            <!-- 其他要求 -->
             <div class="form-group full-width">
-                <label for="custom_prompt" class="form-label">
-                    出题 Prompt 模版
-                    <button type="button" class="btn-sm" onclick="togglePromptTemplate()" style="margin-left:10px; font-size:12px;">
-                        <span id="promptToggleText">展开模版 ▼</span>
-                    </button>
-                </label>
-                <textarea class="form-textarea" id="custom_prompt" name="custom_prompt" rows="8" style="display:none; font-family:monospace; font-size:12px;">{{ default_prompt }}</textarea>
-                <p class="form-hint">可以修改上方模版来定制出题风格。变量 {content}、{question_type}、{difficulty}、{count} 等将在生成时自动替换。</p>
+                <label for="user_prompt" class="form-label">其他特殊要求（可选）</label>
+                <textarea class="form-textarea" id="user_prompt" name="user_prompt" rows="3"
+                          placeholder="例如：侧重实际应用、避免过于偏题、答案控制在 200 字以内..."></textarea>
             </div>
         </div>
 
@@ -232,20 +227,6 @@
 <script>
 // 内容源切换
 document.addEventListener('DOMContentLoaded', function() {
-
-    // 出题模版展开/收起
-    window.togglePromptTemplate = function() {
-        const ta = document.getElementById('custom_prompt');
-        const btn = document.getElementById('promptToggleText');
-        if (ta.style.display === 'none') {
-            ta.style.display = 'block';
-            btn.textContent = '收起模版 ▲';
-        } else {
-            ta.style.display = 'none';
-            btn.textContent = '展开模版 ▼';
-        }
-    };
-
     const sourcePdf = document.getElementById('source_pdf');
     const sourceKnowledgeBase = document.getElementById('source_knowledge_base');
     const pdfOption = document.getElementById('pdf_option');
@@ -853,43 +834,6 @@ document.addEventListener('DOMContentLoaded', function() {
 .was-validated .form-input:invalid,
 .was-validated .form-textarea:invalid {
     border-color: #dc3545;
-}
-
-/* 出题模版选择器 */
-.template-selector {
-    display: flex;
-    gap: 16px;
-    flex-wrap: wrap;
-}
-
-/* 题型数量网格 */
-.count-grid {
-    display: flex;
-    gap: 16px;
-    flex-wrap: wrap;
-    margin-top: 8px;
-}
-.count-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    padding: 10px 16px;
-    background: #f8f9fa;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-}
-.count-item label {
-    font-size: 13px;
-    font-weight: 500;
-    color: #555;
-}
-
-/* 提示文字 */
-.form-hint {
-    color: #888;
-    font-size: 12px;
-    margin-top: 4px;
 }
 </style>
 {% endblock %}
