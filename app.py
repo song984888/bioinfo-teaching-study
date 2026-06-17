@@ -7146,7 +7146,6 @@ def generate_theory_questions():
                 'selected_concepts': selected_concepts,
                 'user_prompt': user_prompt
             }
-            }
             
             if custom_prompt and custom_prompt != BIOINFO_EXAM_PROMPT:
                 task_params['custom_prompt'] = custom_prompt
