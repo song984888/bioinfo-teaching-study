@@ -60,13 +60,68 @@
     
     <!-- Tab 导航 -->
     <div class="admin-tabs">
-        <button class="tab-btn active" data-tab="tab-accounts">👥 账号管理</button>
+        <button class="tab-btn active" data-tab="tab-shortcuts">🔗 快捷导航</button>
+        <button class="tab-btn" data-tab="tab-accounts">👥 账号管理</button>
         <button class="tab-btn" data-tab="tab-questions">📝 试题管理</button>
         <button class="tab-btn" data-tab="tab-knowledge">📚 知识库管理</button>
     </div>
     
-    <!-- ====== Tab 1: 账号管理 ====== -->
-    <div class="tab-content active" id="tab-accounts">
+    <!-- ====== Tab 1: 快捷导航 ====== -->
+    <div class="tab-content active" id="tab-shortcuts">
+        <div class="section-header">
+            <h2>快捷导航</h2>
+        </div>
+        <div class="dashboard-cards" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-top: 10px;">
+            <a href="{{ url_for('generate_theory_questions') }}" class="card card-theory">
+                <div class="card-icon">📚</div>
+                <h3>理论题生成</h3>
+                <p>基于课件生成名词/简答等题目</p>
+            </a>
+            <a href="{{ url_for('teacher_generate_questions') }}" class="card card-ai">
+                <div class="card-icon">💻</div>
+                <h3>程序设计题目生成</h3>
+                <p>基于 AI 生成编程实践题目</p>
+            </a>
+            <a href="{{ url_for('question_bank') }}" class="card card-question">
+                <div class="card-icon">📚</div>
+                <h3>题库浏览</h3>
+                <p>查看已通过的题目</p>
+            </a>
+            <a href="{{ url_for('create_exam_paper') }}" class="card card-exam">
+                <div class="card-icon">📋</div>
+                <h3>智能组卷</h3>
+                <p>从题库生成 A/B 卷</p>
+            </a>
+            <a href="{{ url_for('paper_management') }}" class="card card-exam-manage">
+                <div class="card-icon">🗂️</div>
+                <h3>试卷管理</h3>
+                <p>查看和管理历史试卷</p>
+            </a>
+            <a href="{{ url_for('view_exam_records') }}" class="card card-record">
+                <div class="card-icon">📝</div>
+                <h3>考试记录</h3>
+                <p>查看学生考试情况</p>
+            </a>
+            <a href="{{ url_for('view_background_tasks') }}" class="card card-task">
+                <div class="card-icon">⚙️</div>
+                <h3>后台任务</h3>
+                <p>管理题目生成任务</p>
+            </a>
+            <a href="{{ url_for('question_summary') }}" class="card card-stat">
+                <div class="card-icon">📊</div>
+                <h3>试题库统计</h3>
+                <p>查看题库分析报告</p>
+            </a>
+            <a href="{{ url_for('admin_prompts') }}" class="card card-prompt">
+                <div class="card-icon">📝</div>
+                <h3>Prompt 管理</h3>
+                <p>管理 AI 出题模版配置</p>
+            </a>
+        </div>
+    </div>
+    
+    <!-- ====== Tab 2: 账号管理 ====== -->
+    <div class="tab-content" id="tab-accounts">
         <div class="section-header">
             <h2>账号管理</h2>
             <button class="btn btn-primary" onclick="showRegisterForm()">+ 注册新用户</button>
@@ -274,60 +329,6 @@
                     <tr><td colspan="7" class="loading-cell">加载中...</td></tr>
                 </tbody>
             </table>
-        </div>
-    </div>
-    
-    <!-- ====== Tab 4: 快捷导航 ====== -->
-    <div class="admin-tabs">
-        <button class="tab-btn" data-tab="tab-shortcuts">🔗 快捷导航</button>
-    </div>
-    <div class="tab-content" id="tab-shortcuts">
-        <div class="dashboard-cards" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-top: 10px;">
-            <a href="{{ url_for('generate_theory_questions') }}" class="card card-theory">
-                <div class="card-icon">📚</div>
-                <h3>理论题生成</h3>
-                <p>基于课件生成名词/简答等题目</p>
-            </a>
-            <a href="{{ url_for('teacher_generate_questions') }}" class="card card-ai">
-                <div class="card-icon">💻</div>
-                <h3>程序设计题目生成</h3>
-                <p>基于 AI 生成编程实践题目</p>
-            </a>
-            <a href="{{ url_for('question_bank') }}" class="card card-question">
-                <div class="card-icon">📚</div>
-                <h3>题库浏览</h3>
-                <p>查看已通过的题目</p>
-            </a>
-            <a href="{{ url_for('create_exam_paper') }}" class="card card-exam">
-                <div class="card-icon">📋</div>
-                <h3>智能组卷</h3>
-                <p>从题库生成 A/B 卷</p>
-            </a>
-            <a href="{{ url_for('paper_management') }}" class="card card-exam-manage">
-                <div class="card-icon">🗂️</div>
-                <h3>试卷管理</h3>
-                <p>查看和管理历史试卷</p>
-            </a>
-            <a href="{{ url_for('view_exam_records') }}" class="card card-record">
-                <div class="card-icon">📝</div>
-                <h3>考试记录</h3>
-                <p>查看学生考试情况</p>
-            </a>
-            <a href="{{ url_for('view_background_tasks') }}" class="card card-task">
-                <div class="card-icon">⚙️</div>
-                <h3>后台任务</h3>
-                <p>管理题目生成任务</p>
-            </a>
-            <a href="{{ url_for('question_summary') }}" class="card card-stat">
-                <div class="card-icon">📊</div>
-                <h3>试题库统计</h3>
-                <p>查看题库分析报告</p>
-            </a>
-            <a href="{{ url_for('admin_prompts') }}" class="card card-prompt">
-                <div class="card-icon">📝</div>
-                <h3>Prompt 管理</h3>
-                <p>管理 AI 出题模版配置</p>
-            </a>
         </div>
     </div>
 </div>
@@ -714,7 +715,7 @@ function escapeHtml(str) {
 }
 
 // ===== 初始加载 =====
-loadUsers();
+// 默认显示快捷导航，无需加载数据
 </script>
 
 <style>
