@@ -135,10 +135,40 @@
             </div>
         </div>
 
-        <!-- 第三步：题目配置 -->
+        <!-- 出题模版选择 -->
         <div class="form-section">
             <div class="section-header">
                 <span class="step-badge">3</span>
+                <h2 class="section-title">出题模版</h2>
+            </div>
+            <div class="template-selector">
+                <label class="source-option-card" style="width:48%;">
+                    <input type="radio" name="template_source" value="default" checked onchange="toggleTemplate()">
+                    <div class="option-card">
+                        <div class="option-icon"><i class="fas fa-pen"></i></div>
+                        <div class="option-content">
+                            <h3 class="option-title">通用模版</h3>
+                            <p class="option-desc">选择单一题型，自定义数量和分值</p>
+                        </div>
+                    </div>
+                </label>
+                <label class="source-option-card" style="width:48%;">
+                    <input type="radio" name="template_source" value="bioinfo_professor" onchange="toggleTemplate()">
+                    <div class="option-card">
+                        <div class="option-icon"><i class="fas fa-microscope"></i></div>
+                        <div class="option-content">
+                            <h3 class="option-title">生物信息学命题专家</h3>
+                            <p class="option-desc">基于核心概念，一次生成5种题型</p>
+                        </div>
+                    </div>
+                </label>
+            </div>
+        </div>
+
+        <!-- 第三步：题目配置 - 通用模版 -->
+        <div class="form-section" id="section_default_template">
+            <div class="section-header">
+                <span class="step-badge">4</span>
                 <h2 class="section-title">题目配置</h2>
             </div>
                     
@@ -194,10 +224,61 @@
             </div>
         </div>
 
+        <!-- 第三步：题目配置 - 生物信息学命题专家模版 -->
+        <div class="form-section" id="section_bioinfo_template" style="display:none;">
+            <div class="section-header">
+                <span class="step-badge">4</span>
+                <h2 class="section-title">命题参数配置</h2>
+            </div>
+            
+            <div class="form-group">
+                <label for="core_concept" class="form-label">核心概念 <span class="required">*</span></label>
+                <input type="text" class="form-input" id="core_concept" name="core_concept" 
+                       placeholder="例如：动态规划序列比对 / Hidden Markov Model / RNA-seq 差异表达分析">
+                <p class="form-hint">AI 将围绕该概念生成所有题目</p>
+            </div>
+            
+            <div class="form-group">
+                <label for="difficulty_level" class="form-label">难度级别</label>
+                <select class="form-select" id="difficulty_level" name="difficulty_level">
+                    <option value="本科生入门">本科生入门</option>
+                    <option value="本科生进阶" selected>本科生进阶</option>
+                    <option value="研究生">研究生</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">每种题型数量</label>
+                <div class="count-grid">
+                    <div class="count-item">
+                        <label>单选题</label>
+                        <input type="number" name="choice_count" value="2" min="0" max="10" class="form-input" style="width:80px;">
+                    </div>
+                    <div class="count-item">
+                        <label>判断题</label>
+                        <input type="number" name="tf_count" value="2" min="0" max="10" class="form-input" style="width:80px;">
+                    </div>
+                    <div class="count-item">
+                        <label>名词解释</label>
+                        <input type="number" name="term_count" value="2" min="0" max="10" class="form-input" style="width:80px;">
+                    </div>
+                    <div class="count-item">
+                        <label>简答题</label>
+                        <input type="number" name="short_count" value="1" min="0" max="5" class="form-input" style="width:80px;">
+                    </div>
+                    <div class="count-item">
+                        <label>论述题</label>
+                        <input type="number" name="essay_count" value="1" min="0" max="3" class="form-input" style="width:80px;">
+                    </div>
+                </div>
+                <p class="form-hint">每题至少1题，总计不超过30题。题型包括：单选、判断、名词解释、简答、论述。</p>
+            </div>
+        </div>
+
         <!-- 第四步：AI 模型与提交 -->
         <div class="form-section">
             <div class="section-header">
-                <span class="step-badge">4</span>
+                <span class="step-badge">5</span>
                 <h2 class="section-title">AI 模型选择</h2>
             </div>
             
@@ -227,6 +308,14 @@
 <script>
 // 内容源切换
 document.addEventListener('DOMContentLoaded', function() {
+
+    // 模版切换
+    window.toggleTemplate = function() {
+        const source = document.querySelector('input[name="template_source"]:checked').value;
+        document.getElementById('section_default_template').style.display = source === 'default' ? 'block' : 'none';
+        document.getElementById('section_bioinfo_template').style.display = source === 'bioinfo_professor' ? 'block' : 'none';
+    };
+
     const sourcePdf = document.getElementById('source_pdf');
     const sourceKnowledgeBase = document.getElementById('source_knowledge_base');
     const pdfOption = document.getElementById('pdf_option');
@@ -834,6 +923,43 @@ document.addEventListener('DOMContentLoaded', function() {
 .was-validated .form-input:invalid,
 .was-validated .form-textarea:invalid {
     border-color: #dc3545;
+}
+
+/* 出题模版选择器 */
+.template-selector {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+/* 题型数量网格 */
+.count-grid {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+.count-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 16px;
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+}
+.count-item label {
+    font-size: 13px;
+    font-weight: 500;
+    color: #555;
+}
+
+/* 提示文字 */
+.form-hint {
+    color: #888;
+    font-size: 12px;
+    margin-top: 4px;
 }
 </style>
 {% endblock %}
