@@ -311,6 +311,15 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='教师组卷表'""",
+        """CREATE TABLE IF NOT EXISTS prompt_configs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            prompt_key VARCHAR(100) UNIQUE NOT NULL COMMENT 'Prompt标识键',
+            prompt_name VARCHAR(100) COMMENT 'Prompt显示名称',
+            prompt_content LONGTEXT NOT NULL COMMENT 'Prompt内容',
+            category VARCHAR(50) DEFAULT 'theory' COMMENT '分类: theory/coding',
+            updated_by VARCHAR(191) COMMENT '更新者',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Prompt模版配置表'""",
     ]
 
     for table in tables:

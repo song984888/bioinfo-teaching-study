@@ -408,95 +408,108 @@ Output format为严格的JSON数组：
 - 置信度反映概念的重要程度
 """
 
-BIOINFO_EXAM_PROMPT = """# Role
-你是一位资深的生物信息学教授及课程出题专家，精通计算生物学、序列分析、结构生物学及组学数据分析。
+# ===== 题型专属 Prompt 模版 =====
 
-# Task
-请围绕用户指定的【核心概念】，设计一套符合大学本科/研究生水平的生物信息学理论课程试题。
+THEORY_PROMPT_名词解释 = """{base_template}
+【题型要求 - 名词解释】
+- 要求学生给出精准的学术定义
+- 简述该概念在生物信息学/计算机科学中的核心作用
+- 可结合实际应用场景说明
+- 输出包含 "question" 和 "sample_answer" 字段
+"""
 
-# Style & Tone
-学术、严谨、准确。题目需结合实际的生物学场景或计算应用，避免纯死记硬背的题目，侧重考察学生对算法原理、生物学意义及数据处理流程的理解。
+THEORY_PROMPT_填空题 = """{base_template}
+【题型要求 - 填空题】
+- 题目中留出空白位置，用 ______ 表示
+- 每个空对应一个关键概念或关键词
+- 答案应唯一且明确
+- 输出包含 "question" 和 "sample_answer" 字段（答案即填空内容）
+"""
 
-# Core Concept
-{core_concept}
+THEORY_PROMPT_判断题 = """{base_template}
+【题型要求 - 判断题】
+- 陈述一个关于关键概念的论断
+- 错误选项应在核心原理或边界条件上出错
+- 答案明确：正确 或 错误，并附解析
+- 输出包含 "question" 和 "sample_answer"（正确/错误+解析）字段
+"""
 
-# Difficulty Level
-{difficulty_level}
+THEORY_PROMPT_单选题 = """{base_template}
+【题型要求 - 单选题】
+- 4个选项，干扰项应具有迷惑性（概念混淆或算法误区）
+- 结合实际应用场景
+- sample_answer 中包含正确选项和解析
+- 输出包含 "question" 和 "sample_answer" 字段
+"""
 
-# Output Format
-请严格按照以下规定的题型格式输出。每道题均需附带【标准答案】与【解析】。
-输出严格的 JSON 数组格式，每个元素代表一道题目：
+THEORY_PROMPT_多选题 = """{base_template}
+【题型要求 - 多选题】
+- 4-5个选项，至少2个正确答案
+- 干扰项应常见于学生的典型错误
+- sample_answer 中列出所有正确选项及解析
+- 输出包含 "question" 和 "sample_answer" 字段
+"""
 
----
+THEORY_PROMPT_简答题 = """{base_template}
+【题型要求 - 简答题】
+- 侧重于算法步骤推导、公式应用或流程设计
+- 可给出小型模拟数据或具体应用场景
+- sample_answer 应包含推导步骤和最终答案
+- 输出包含 "question", "sample_answer", "grading_criteria" 字段
+"""
 
-## 一、 单项选择题 (Multiple Choice) — 共 {choice_count} 题
-* **出题要求**：每题 4 个选项，干扰项应具有迷惑性（例如常见的概念混淆或算法误区）。
-* **JSON格式**：
-  {{
-    "question_type": "单选题",
-    "question": "题目内容，需结合实际应用场景或算法细节",
-    "options": ["A. 选项A", "B. 选项B", "C. 选项C", "D. 选项D"],
-    "sample_answer": "正确选项字母（如：B）",
-    "grading_criteria": "解析：解释为什么正确，以及各干扰项为什么错误",
-    "difficulty": {difficulty},
-    "score": 5
-  }}
+THEORY_PROMPT_论述题 = """{base_template}
+【题型要求 - 论述题】
+- 提供复杂的科学问题或多组学研究背景
+- 要求学生设计生物信息学分析流水线（Pipeline）
+- 考察方法选择的合理性、偏差分析的深度、结果解读的逻辑性
+- 输出包含 "question", "sample_answer", "grading_criteria" 字段
+"""
 
-## 二、 判断题 (True/False) — 共 {tf_count} 题
-* **出题要求**：陈述一个关于该概念的深入论断，错题须错在核心原理或边界条件上。
-* **JSON格式**：
-  {{
-    "question_type": "判断题",
-    "question": "题目内容",
-    "sample_answer": "正确 或 错误",
-    "grading_criteria": "解析：如果是错误，请明确指出错在哪里",
-    "difficulty": {difficulty},
-    "score": 3
-  }}
+THEORY_PROMPT_案例分析题 = """{base_template}
+【题型要求 - 案例分析题】
+- 提供具体的生物信息学实际案例
+- 要求学生分析案例中的方法选择、数据处理流程
+- sample_answer 中应包含分析步骤和结论
+- 输出包含 "question", "sample_answer", "grading_criteria" 字段
+"""
 
-## 三、 名词解释 (Term Explanation) — 共 {term_count} 题
-* **出题要求**：要求学生给出精准定义，并简述其在生物信息学中的核心作用。
-* **JSON格式**：
-  {{
-    "question_type": "名词解释",
-    "question": "请解释以下概念/名词",
-    "sample_answer": "定义：...；应用/意义：...",
-    "grading_criteria": "评分要点：1. 准确定义 2. 核心作用 3. 实际应用举例",
-    "difficulty": {difficulty},
-    "score": 5
-  }}
+THEORY_PROMPT_综合题 = """{base_template}
+【题型要求 - 综合题】
+- 融合多个知识点，考察综合运用能力
+- 可包含计算、分析、论述等多个子问题
+- sample_answer 中应对每个子问题进行详细解答
+- 输出包含 "question", "sample_answer", "grading_criteria" 字段
+"""
 
-## 四、 简答与计算题 (Short Answer & Calculation) — 共 {short_count} 题
-* **出题要求**：侧重于算法步骤推导、公式应用或流程设计（如动态规划矩阵填充、得分计算、概率评估等）。
-* **JSON格式**：
-  {{
-    "question_type": "简答题",
-    "question": "题目内容，可给出小型模拟数据或具体应用场景",
-    "sample_answer": "详细解答步骤和最终答案",
-    "grading_criteria": "推导步骤：...；关键公式：...；最终结果：...",
-    "difficulty": {difficulty},
-    "score": 10
-  }}
+# 题型 → Prompt 映射表
+THEORY_TYPE_PROMPTS = {
+    '名词解释': THEORY_PROMPT_名词解释,
+    '填空题': THEORY_PROMPT_填空题,
+    '判断题': THEORY_PROMPT_判断题,
+    '单选题': THEORY_PROMPT_单选题,
+    '多选题': THEORY_PROMPT_多选题,
+    '简答题': THEORY_PROMPT_简答题,
+    '论述题': THEORY_PROMPT_论述题,
+    '案例分析题': THEORY_PROMPT_案例分析题,
+    '综合题': THEORY_PROMPT_综合题,
+}
 
-## 五、 综合分析与论述题 (Comprehensive Analysis) — 共 {essay_count} 题
-* **出题要求**：提供一个复杂的科学问题或多组学研究背景，要求学生设计生物信息学分析流水线（Pipeline），并阐述如何解读结果。
-* **JSON格式**：
-  {{
-    "question_type": "论述题",
-    "question": "场景描述及科学问题...(1) 子问题1：方法选择与依据 (2) 子问题2：潜在的偏差与解决策略",
-    "sample_answer": "要点1：...；要点2：...；要点3：...",
-    "grading_criteria": "考察点：1. 方法选择的合理性 2. 偏差分析的深度 3. 结果解读的逻辑性",
-    "difficulty": {difficulty},
-    "score": 20
-  }}
-
----
-
-# Important Rules
-1. 只输出一个合法的 JSON 数组，不要包含任何 Markdown 标记或解释性文字
-2. 所有字符串使用双引号，确保 JSON 格式严格合法
-3. 总题数 = {choice_count}+{tf_count}+{term_count}+{short_count}+{essay_count} = {total_count} 题
-4. 题目必须围绕【{core_concept}】展开，难度适合{level_label}
-
-请生成以上题目。"""
+# 所有可用 Prompt 的默认值列表（供管理后台使用）
+ALL_PROMPT_DEFAULTS = {
+    'THEORY_QUESTION_PROMPT': {
+        'name': '理论题通用模版（默认）',
+        'content': THEORY_QUESTION_PROMPT,
+        'category': 'theory'
+    },
+    'CODING_PROMPT': {
+        'name': '程序设计题目生成模版',
+        'content': CODING_PROMPT,
+        'category': 'coding'
+    },
+} | {f'THEORY_PROMPT_{k}': {
+        'name': f'理论题 - {k}',
+        'content': v,
+        'category': 'theory'
+    } for k, v in THEORY_TYPE_PROMPTS.items()}
 

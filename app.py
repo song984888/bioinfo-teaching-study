@@ -24,7 +24,7 @@ from flask_session import Session
 from collections import defaultdict
 import jieba  # 添加中文分词支持
 from my_config import *
-from prompt_templates import CODING_PROMPT, GRADE_PROMPT, SUGGESTION_PROMPT, THEORY_QUESTION_PROMPT
+from prompt_templates import CODING_PROMPT, GRADE_PROMPT, SUGGESTION_PROMPT, THEORY_QUESTION_PROMPT, THEORY_TYPE_PROMPTS, ALL_PROMPT_DEFAULTS
 
 
 app = Flask(__name__)
@@ -37,6 +37,22 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 init_db()
+
+# ===== Prompt 管理辅助函数 =====
+def get_prompt_content(prompt_key, default_content):
+    """获取 prompt 内容（优先数据库覆盖，否则使用默认值）"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT prompt_content FROM prompt_configs WHERE prompt_key = %s", (prompt_key,))
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        if row:
+            return row[0]
+    except:
+        pass
+    return default_content
 
 
 @app.context_processor
@@ -3684,7 +3700,63 @@ def admin_delete_knowledge_base(kb_id):
         cursor.close()
         conn.close()
 
-@app.route('/admin/knowledge_bases/create', methods=['POST'])
+# ===== Admin Prompt 管理 =====
+@app.route('/admin/prompts')
+def admin_prompts():
+    """管理员 Prompt 管理页面"""
+    if 'user_id' not in session or session['role'] != 'admin':
+        return redirect(url_for('login'))
+    
+    prompts_data = {}
+    for key, info in ALL_PROMPT_DEFAULTS.items():
+        current = get_prompt_content(key, info['content'])
+        prompts_data[key] = {
+            'name': info['name'],
+            'content': current,
+            'default_content': info['content'],
+            'category': info['category'],
+            'modified': current != info['content']
+        }
+    
+    return render_template('admin/prompts.html', prompts=prompts_data)
+
+@app.route('/admin/prompts/save', methods=['POST'])
+def admin_save_prompt():
+    """保存 Prompt"""
+    if 'user_id' not in session or session['role'] != 'admin':
+        return jsonify({'success': False, 'message': '权限不足'}), 403
+    
+    prompt_key = request.form.get('prompt_key')
+    prompt_content = request.form.get('prompt_content', '')
+    
+    if not prompt_key:
+        return jsonify({'success': False, 'message': '缺少 prompt_key'})
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        if prompt_content.strip() == '__RESET__':
+            cursor.execute("DELETE FROM prompt_configs WHERE prompt_key = %s", (prompt_key,))
+            conn.commit()
+            return jsonify({'success': True, 'message': '已恢复默认'})
+        
+        info = ALL_PROMPT_DEFAULTS.get(prompt_key, {})
+        cursor.execute("""
+            INSERT INTO prompt_configs (prompt_key, prompt_name, prompt_content, category, updated_by)
+            VALUES (%s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE prompt_content=%s, updated_by=%s
+        """, (prompt_key, info.get('name', prompt_key), prompt_content,
+              info.get('category', 'theory'), session.get('name', 'admin'),
+              prompt_content, session.get('name', 'admin')))
+        conn.commit()
+        return jsonify({'success': True, 'message': '保存成功'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+    finally:
+        cursor.close()
+        conn.close()
+
+# ===== Admin 知识库 CRUD =====
 def admin_create_knowledge_base():
     """管理员创建知识库（可指定所有者）"""
     if 'user_id' not in session or session['role'] != 'admin':
