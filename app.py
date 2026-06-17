@@ -24,7 +24,7 @@ from flask_session import Session
 from collections import defaultdict
 import jieba  # 添加中文分词支持
 from my_config import *
-from prompt_templates import CODING_PROMPT, GRADE_PROMPT, SUGGESTION_PROMPT, THEORY_QUESTION_PROMPT
+from prompt_templates import CODING_PROMPT, GRADE_PROMPT, SUGGESTION_PROMPT, THEORY_QUESTION_PROMPT, BIOINFO_EXAM_PROMPT
 
 
 app = Flask(__name__)
@@ -3115,18 +3115,13 @@ def approve_question(question_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # 尝试在 questions 表中更新
+    # 同时更新两张表（解决ID冲突导致旧状态残留）
     cursor.execute("""
-        UPDATE questions SET review_status = 'approved', reviewed_by = %s, reviewed_at = NOW() 
-        WHERE id = %s
+        UPDATE questions SET review_status = 'approved', reviewed_by = %s, reviewed_at = NOW() WHERE id = %s
     """, (session.get('name', session.get('user_id', '')), question_id))
-    
-    # 如果 questions 表没有影响行，则更新 theory_questions 表
-    if cursor.rowcount == 0:
-        cursor.execute("""
-            UPDATE theory_questions SET review_status = 'approved', reviewed_by = %s, reviewed_at = NOW() 
-            WHERE id = %s
-        """, (session.get('name', session.get('user_id', '')), question_id))
+    cursor.execute("""
+        UPDATE theory_questions SET review_status = 'approved', reviewed_by = %s, reviewed_at = NOW() WHERE id = %s
+    """, (session.get('name', session.get('user_id', '')), question_id))
     
     conn.commit()
     cursor.close()
@@ -3147,31 +3142,17 @@ def reject_question(question_id):
     cursor = conn.cursor()
     
     if is_resubmit:
-        # 重新提交审核：将状态改回 pending
-        cursor.execute("""
-            UPDATE questions SET review_status = 'pending', review_comment = NULL,
-            reviewed_by = NULL, reviewed_at = NULL WHERE id = %s
-        """, (question_id,))
-        if cursor.rowcount == 0:
-            cursor.execute("""
-                UPDATE theory_questions SET review_status = 'pending', review_comment = NULL,
-                reviewed_by = NULL, reviewed_at = NULL WHERE id = %s
-            """, (question_id,))
+        # 重新提交审核：同时更新两张表
+        cursor.execute("UPDATE questions SET review_status='pending', review_comment=NULL, reviewed_by=NULL, reviewed_at=NULL WHERE id=%s", (question_id,))
+        cursor.execute("UPDATE theory_questions SET review_status='pending', review_comment=NULL, reviewed_by=NULL, reviewed_at=NULL WHERE id=%s", (question_id,))
         conn.commit()
         cursor.close()
         conn.close()
         flash('题目已重新提交审核', 'success')
     else:
-        cursor.execute("""
-            UPDATE questions SET review_status = 'rejected', review_comment = %s, 
-            reviewed_by = %s, reviewed_at = NOW() WHERE id = %s
-        """, (reason, session.get('name', session.get('user_id', '')), question_id))
-        
-        if cursor.rowcount == 0:
-            cursor.execute("""
-                UPDATE theory_questions SET review_status = 'rejected', review_comment = %s,
-                reviewed_by = %s, reviewed_at = NOW() WHERE id = %s
-            """, (reason, session.get('name', session.get('user_id', '')), question_id))
+        # 同时更新两张表（解决ID冲突）
+        cursor.execute("UPDATE questions SET review_status='rejected', review_comment=%s, reviewed_by=%s, reviewed_at=NOW() WHERE id=%s", (reason, session.get('name', session.get('user_id', '')), question_id))
+        cursor.execute("UPDATE theory_questions SET review_status='rejected', review_comment=%s, reviewed_by=%s, reviewed_at=NOW() WHERE id=%s", (reason, session.get('name', session.get('user_id', '')), question_id))
         
         conn.commit()
         cursor.close()
@@ -3189,12 +3170,9 @@ def remove_question(question_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # 尝试在 questions 表中删除
+    # 同时从两张表中删除（解决ID冲突）
     cursor.execute("DELETE FROM questions WHERE review_status != 'approved' AND id = %s", (question_id,))
-    
-    # 如果 questions 表没有影响行，则从 theory_questions 表删除
-    if cursor.rowcount == 0:
-        cursor.execute("DELETE FROM theory_questions WHERE review_status != 'approved' AND id = %s", (question_id,))
+    cursor.execute("DELETE FROM theory_questions WHERE review_status != 'approved' AND id = %s", (question_id,))
     
     conn.commit()
     cursor.close()
@@ -4904,8 +4882,10 @@ def update_password():
 
 class TheoryQuestionGenerator:
     def generate_theory_question_deepseek_api(self, pdf_content, question_type, score, grading_basis, difficulty,
-                                              user_prompt, aiModel, count=1, selected_concepts=None):
-        """同步版本的 DeepSeek API 调用（使用 THEORY_QUESTION_PROMPT 模板）"""
+                                              user_prompt, aiModel, count=1, selected_concepts=None, prompt_template_name=None,
+                                              core_concept=None, difficulty_level=None, choice_count=0, tf_count=0,
+                                              term_count=0, short_count=0, essay_count=0):
+        """同步版本的 DeepSeek API 调用（支持模板选择）"""
         """同步版本的 DeepSeek API 调用（使用 THEORY_QUESTION_PROMPT 模板）"""
         import requests
         timeout = 60
@@ -5031,21 +5011,34 @@ class TheoryQuestionGenerator:
 【再次强调】题目必须基于上述指定概念，这是最重要的要求！
 """
         
-        # 使用 THEORY_QUESTION_PROMPT 模板构建 prompt
-        prompt = THEORY_QUESTION_PROMPT.format(
-            pdf_content=pdf_content,
-            question_type=question_type,
-            difficulty=difficulty,
-            score=score,
-            grading_basis=grading_basis,
-            user_prompt=user_prompt + "\n\n" + type_instruction + "\n\n" + concept_constraint if (type_instruction or concept_constraint) else user_prompt,
-            count=count
-        )
-        
-        app.logger.info(f"【理论题生成】Prompt 构建完成 - 长度:{len(prompt)}字符")
-        
-        # 记录使用的模板
-        app.logger.info(f"【理论题生成】使用 THEORY_QUESTION_PROMPT 常量模板")
+        # 根据模版类型构建 prompt
+        if prompt_template_name == 'BIOINFO_EXAM_PROMPT' and core_concept and difficulty_level:
+            total_count = choice_count + tf_count + term_count + short_count + essay_count
+            prompt = BIOINFO_EXAM_PROMPT.format(
+                core_concept=core_concept,
+                difficulty_level=difficulty_level,
+                level_label=difficulty_level,
+                choice_count=choice_count,
+                tf_count=tf_count,
+                term_count=term_count,
+                short_count=short_count,
+                essay_count=essay_count,
+                total_count=total_count,
+                difficulty=difficulty,
+                pdf_content=pdf_content if pdf_content else '（无课件内容，请基于核心概念出题）'
+            )
+            app.logger.info(f"【理论题生成】使用 BIOINFO_EXAM_PROMPT 模板 - 核心概念:{core_concept}")
+        else:
+            prompt = THEORY_QUESTION_PROMPT.format(
+                pdf_content=pdf_content,
+                question_type=question_type,
+                difficulty=difficulty,
+                score=score,
+                grading_basis=grading_basis,
+                user_prompt=user_prompt + "\n\n" + type_instruction + "\n\n" + concept_constraint if (type_instruction or concept_constraint) else user_prompt,
+                count=count
+            )
+            app.logger.info(f"【理论题生成】使用 THEORY_QUESTION_PROMPT 模板")
 
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -5076,8 +5069,10 @@ class TheoryQuestionGenerator:
             return {"error": str(e)}
 
     def generate_theory_question_ollama(self, pdf_content, question_type, score, grading_basis, difficulty,
-                                        user_prompt, aiModel, count=1, selected_concepts=None):
-        """同步版本的 Ollama 调用（使用 THEORY_QUESTION_PROMPT 模板）"""
+                                        user_prompt, aiModel, count=1, selected_concepts=None, prompt_template_name=None,
+                                        core_concept=None, difficulty_level=None, choice_count=0, tf_count=0,
+                                        term_count=0, short_count=0, essay_count=0):
+        """同步版本的 Ollama 调用（支持模板选择）"""
         
         app.logger.info(f"【理论题生成】使用 THEORY_QUESTION_PROMPT 模板 - 类型:{question_type}, 数量:{count}, Ollama 模型:{aiModel}")
         # 根据不同题目类型添加特定要求
@@ -5170,16 +5165,34 @@ class TheoryQuestionGenerator:
                 concept_list = ", ".join(selected_concepts)
             concept_constraint = f"\n【🔴 最高优先级 - 必须基于指定概念出题】\n请根据以下**指定概念**生成题目，不要偏离这些概念：\n📌 **指定概念列表**: {concept_list}\n\n⚠️ **重要程度：⭐⭐⭐⭐⭐ (5 星，最高优先级)**\n- 题目**必须**围绕上述指定概念展开\n- 题干中应该明确出现这些概念或它们的同义词\n- 答案应该考查对这些概念的理解和应用\n- 如果课件内容中包含多个概念，请**只选择**与上述指定概念相关的内容进行出题\n- **不要**生成与这些指定概念无关的题目！\n\n✅ **正确示例**：\n   - 指定概念：\"DNA 复制\" → 题目：\"简述 DNA 复制的过程和特点\"\n   - 指定概念：\"中心法则\" → 题目：\"什么是中心法则？它在分子生物学中的意义是什么？\"\n\n❌ **错误示例**（绝对避免）：\n   - 指定概念：\"DNA 复制\" → 题目：\"蛋白质的结构是怎样的\"（偏题）\n   - 指定概念：\"中心法则\" → 题目：\"细胞分裂有哪些类型\"（无关）\n\n【再次强调】题目必须基于上述指定概念，这是最重要的要求！"
         
-        # 使用 THEORY_QUESTION_PROMPT 模板
-        prompt = THEORY_QUESTION_PROMPT.format(
-            pdf_content=pdf_content,
-            question_type=question_type,
-            difficulty=difficulty,
-            score=score,
-            grading_basis=grading_basis,
-            user_prompt=user_prompt + "\n\n" + type_instruction + "\n\n" + concept_constraint if (type_instruction or concept_constraint) else user_prompt,
-            count=count
-        )
+        # 根据模版类型构建 prompt
+        if prompt_template_name == 'BIOINFO_EXAM_PROMPT' and core_concept and difficulty_level:
+            total_count = choice_count + tf_count + term_count + short_count + essay_count
+            prompt = BIOINFO_EXAM_PROMPT.format(
+                core_concept=core_concept,
+                difficulty_level=difficulty_level,
+                level_label=difficulty_level,
+                choice_count=choice_count,
+                tf_count=tf_count,
+                term_count=term_count,
+                short_count=short_count,
+                essay_count=essay_count,
+                total_count=total_count,
+                difficulty=difficulty,
+                pdf_content=pdf_content if pdf_content else '（无课件内容，请基于核心概念出题）'
+            )
+            app.logger.info(f"【理论题生成】使用 BIOINFO_EXAM_PROMPT 模板 - 核心概念:{core_concept}")
+        else:
+            prompt = THEORY_QUESTION_PROMPT.format(
+                pdf_content=pdf_content,
+                question_type=question_type,
+                difficulty=difficulty,
+                score=score,
+                grading_basis=grading_basis,
+                user_prompt=user_prompt + "\n\n" + type_instruction + "\n\n" + concept_constraint if (type_instruction or concept_constraint) else user_prompt,
+                count=count
+            )
+            app.logger.info(f"【理论题生成】使用 THEORY_QUESTION_PROMPT 模板")
 
         try:
             response = requests.post(
@@ -7126,29 +7139,70 @@ def generate_theory_questions():
             count = int(request.form.get('count', 5))
             ai_model = request.form.get('ai_model', 'deepseek-r1-1.5b')
             
-            # 获取选定的概念
-            selected_concepts = request.form.getlist('selected_concepts')
+            # 主题模版选择
+            template_source = request.form.get('template_source', 'default')
+            prompt_template_name = None
             
-            # 🔴 添加调试日志
-            app.logger.info(f'🔍 前端提交的选定概念：{selected_concepts}')
-            app.logger.info(f'🔍 概念数量：{len(selected_concepts)}')
-            
-            # 🔴 初始化 document_ids
-            document_ids = []
-            
-            # 创建任务
-            task_params = {
-                'source_type': source_type,
-                'pdf_content': pdf_content,
-                'question_type': question_type,
-                'difficulty': difficulty,
-                'score': score,
-                'grading_basis': grading_basis,
-                'user_prompt': user_prompt,
-                'count': count,
-                'ai_model': ai_model,
-                'selected_concepts': selected_concepts  # 添加选定概念
-            }
+            if template_source == 'bioinfo_professor':
+                core_concept = request.form.get('core_concept', '').strip()
+                difficulty_level = request.form.get('difficulty_level', '本科生进阶')
+                choice_count = int(request.form.get('choice_count', 2))
+                tf_count = int(request.form.get('tf_count', 2))
+                term_count = int(request.form.get('term_count', 2))
+                short_count = int(request.form.get('short_count', 1))
+                essay_count = int(request.form.get('essay_count', 1))
+                
+                if not core_concept:
+                    flash('请输入核心概念', 'warning')
+                    return redirect(url_for('generate_theory_questions'))
+                
+                # 映射难度级别
+                level_map = {'本科生入门': 1, '本科生进阶': 2, '研究生': 3}
+                difficulty = level_map.get(difficulty_level, 2)
+                level_label = difficulty_level
+                
+                # 构建主题描述（用于任务记录）
+                question_type = '综合'  # bioinfo模板一次生成所有类型
+                total_count = choice_count + tf_count + term_count + short_count + essay_count
+                count = total_count
+                score = 5  # 默认分值
+                
+                # 将模板参数保存到任务中
+                task_params = {
+                    'source_type': source_type,
+                    'pdf_content': pdf_content,
+                    'question_type': question_type,
+                    'difficulty': difficulty,
+                    'score': score,
+                    'grading_basis': grading_basis,
+                    'user_prompt': user_prompt,
+                    'count': count,
+                    'ai_model': ai_model,
+                    'selected_concepts': selected_concepts,
+                    'template_source': 'bioinfo_professor',
+                    'prompt_template_name': 'BIOINFO_EXAM_PROMPT',
+                    'core_concept': core_concept,
+                    'difficulty_level': level_label,
+                    'choice_count': choice_count,
+                    'tf_count': tf_count,
+                    'term_count': term_count,
+                    'short_count': short_count,
+                    'essay_count': essay_count
+                }
+            else:
+                # 默认模版
+                task_params = {
+                    'source_type': source_type,
+                    'pdf_content': pdf_content,
+                    'question_type': question_type,
+                    'difficulty': difficulty,
+                    'score': score,
+                    'grading_basis': grading_basis,
+                    'user_prompt': user_prompt,
+                    'count': count,
+                    'ai_model': ai_model,
+                    'selected_concepts': selected_concepts
+                }
             
             if source_type == 'knowledge_base':
                 task_params['knowledge_base_id'] = kb_id
@@ -7390,7 +7444,15 @@ def generate_theory_questions():
                                         user_prompt=params.get('user_prompt', ''),
                                         aiModel=params['ai_model'],
                                         count=1,
-                                        selected_concepts=selected_concepts_str  # 使用字符串格式
+                                        selected_concepts=selected_concepts_str,
+                                        prompt_template_name=params.get('prompt_template_name'),
+                                        core_concept=params.get('core_concept'),
+                                        difficulty_level=params.get('difficulty_level'),
+                                        choice_count=params.get('choice_count', 0),
+                                        tf_count=params.get('tf_count', 0),
+                                        term_count=params.get('term_count', 0),
+                                        short_count=params.get('short_count', 0),
+                                        essay_count=params.get('essay_count', 0)
                                     )
                                     app.logger.info("DEEPSEEK API successfully worked!")
                                     app.logger.info(f"AI 返回结果：{result}")
@@ -7404,7 +7466,15 @@ def generate_theory_questions():
                                         user_prompt=params.get('user_prompt', ''),
                                         aiModel=params['ai_model'],
                                         count=1,
-                                        selected_concepts=selected_concepts_str  # 使用字符串格式
+                                        selected_concepts=selected_concepts_str,
+                                        prompt_template_name=params.get('prompt_template_name'),
+                                        core_concept=params.get('core_concept'),
+                                        difficulty_level=params.get('difficulty_level'),
+                                        choice_count=params.get('choice_count', 0),
+                                        tf_count=params.get('tf_count', 0),
+                                        term_count=params.get('term_count', 0),
+                                        short_count=params.get('short_count', 0),
+                                        essay_count=params.get('essay_count', 0)
                                     )
                                     app.logger.info("OLLAMA successfully worked!")
                                     app.logger.info(f"AI 返回结果：{result}")
