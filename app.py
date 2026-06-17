@@ -5011,23 +5011,17 @@ class TheoryQuestionGenerator:
 【再次强调】题目必须基于上述指定概念，这是最重要的要求！
 """
         
-        # 根据模版类型构建 prompt
-        if prompt_template_name == 'BIOINFO_EXAM_PROMPT' and core_concept and difficulty_level:
-            total_count = choice_count + tf_count + term_count + short_count + essay_count
-            prompt = BIOINFO_EXAM_PROMPT.format(
-                core_concept=core_concept,
-                difficulty_level=difficulty_level,
-                level_label=difficulty_level,
-                choice_count=choice_count,
-                tf_count=tf_count,
-                term_count=term_count,
-                short_count=short_count,
-                essay_count=essay_count,
-                total_count=total_count,
-                difficulty=difficulty,
-                pdf_content=pdf_content if pdf_content else '（无课件内容，请基于核心概念出题）'
-            )
-            app.logger.info(f"【理论题生成】使用 BIOINFO_EXAM_PROMPT 模板 - 核心概念:{core_concept}")
+        # 根据是否有自定义 prompt 来构建最终的 prompt
+        custom_prompt = params.get('custom_prompt', '') if isinstance(params, dict) else ''
+        if custom_prompt:
+            prompt = custom_prompt
+            prompt = prompt.replace('{content}', pdf_content or '')
+            prompt = prompt.replace('{question_type}', question_type)
+            prompt = prompt.replace('{difficulty}', str(difficulty))
+            prompt = prompt.replace('{count}', str(count))
+            prompt = prompt.replace('{score}', str(score))
+            prompt = prompt.replace('{grading_basis}', grading_basis or '')
+            app.logger.info(f"【理论题生成】使用用户自定义 Prompt 模板")
         else:
             prompt = THEORY_QUESTION_PROMPT.format(
                 pdf_content=pdf_content,
@@ -5038,7 +5032,7 @@ class TheoryQuestionGenerator:
                 user_prompt=user_prompt + "\n\n" + type_instruction + "\n\n" + concept_constraint if (type_instruction or concept_constraint) else user_prompt,
                 count=count
             )
-            app.logger.info(f"【理论题生成】使用 THEORY_QUESTION_PROMPT 模板")
+            app.logger.info(f"【理论题生成】使用默认 THEORY_QUESTION_PROMPT 模板")
 
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -5165,23 +5159,17 @@ class TheoryQuestionGenerator:
                 concept_list = ", ".join(selected_concepts)
             concept_constraint = f"\n【🔴 最高优先级 - 必须基于指定概念出题】\n请根据以下**指定概念**生成题目，不要偏离这些概念：\n📌 **指定概念列表**: {concept_list}\n\n⚠️ **重要程度：⭐⭐⭐⭐⭐ (5 星，最高优先级)**\n- 题目**必须**围绕上述指定概念展开\n- 题干中应该明确出现这些概念或它们的同义词\n- 答案应该考查对这些概念的理解和应用\n- 如果课件内容中包含多个概念，请**只选择**与上述指定概念相关的内容进行出题\n- **不要**生成与这些指定概念无关的题目！\n\n✅ **正确示例**：\n   - 指定概念：\"DNA 复制\" → 题目：\"简述 DNA 复制的过程和特点\"\n   - 指定概念：\"中心法则\" → 题目：\"什么是中心法则？它在分子生物学中的意义是什么？\"\n\n❌ **错误示例**（绝对避免）：\n   - 指定概念：\"DNA 复制\" → 题目：\"蛋白质的结构是怎样的\"（偏题）\n   - 指定概念：\"中心法则\" → 题目：\"细胞分裂有哪些类型\"（无关）\n\n【再次强调】题目必须基于上述指定概念，这是最重要的要求！"
         
-        # 根据模版类型构建 prompt
-        if prompt_template_name == 'BIOINFO_EXAM_PROMPT' and core_concept and difficulty_level:
-            total_count = choice_count + tf_count + term_count + short_count + essay_count
-            prompt = BIOINFO_EXAM_PROMPT.format(
-                core_concept=core_concept,
-                difficulty_level=difficulty_level,
-                level_label=difficulty_level,
-                choice_count=choice_count,
-                tf_count=tf_count,
-                term_count=term_count,
-                short_count=short_count,
-                essay_count=essay_count,
-                total_count=total_count,
-                difficulty=difficulty,
-                pdf_content=pdf_content if pdf_content else '（无课件内容，请基于核心概念出题）'
-            )
-            app.logger.info(f"【理论题生成】使用 BIOINFO_EXAM_PROMPT 模板 - 核心概念:{core_concept}")
+        # 根据是否有自定义 prompt 来构建最终的 prompt
+        custom_prompt = params.get('custom_prompt', '') if isinstance(params, dict) else ''
+        if custom_prompt:
+            prompt = custom_prompt
+            prompt = prompt.replace('{content}', pdf_content or '')
+            prompt = prompt.replace('{question_type}', question_type)
+            prompt = prompt.replace('{difficulty}', str(difficulty))
+            prompt = prompt.replace('{count}', str(count))
+            prompt = prompt.replace('{score}', str(score))
+            prompt = prompt.replace('{grading_basis}', grading_basis or '')
+            app.logger.info(f"【理论题生成】使用用户自定义 Prompt 模板")
         else:
             prompt = THEORY_QUESTION_PROMPT.format(
                 pdf_content=pdf_content,
@@ -5192,7 +5180,7 @@ class TheoryQuestionGenerator:
                 user_prompt=user_prompt + "\n\n" + type_instruction + "\n\n" + concept_constraint if (type_instruction or concept_constraint) else user_prompt,
                 count=count
             )
-            app.logger.info(f"【理论题生成】使用 THEORY_QUESTION_PROMPT 模板")
+            app.logger.info(f"【理论题生成】使用默认 THEORY_QUESTION_PROMPT 模板")
 
         try:
             response = requests.post(
@@ -7135,74 +7123,33 @@ def generate_theory_questions():
             difficulty = int(request.form.get('difficulty', 2))
             score = int(request.form.get('score', 5))
             grading_basis = request.form.get('grading_basis', '')
-            user_prompt = request.form.get('user_prompt', '')
             count = int(request.form.get('count', 5))
             ai_model = request.form.get('ai_model', 'deepseek-r1-1.5b')
             
-            # 主题模版选择
-            template_source = request.form.get('template_source', 'default')
-            prompt_template_name = None
+            # 用户自定义 prompt 模版（替换原 user_prompt）
+            custom_prompt = request.form.get('custom_prompt', '').strip()
+            user_prompt = custom_prompt if custom_prompt and custom_prompt != BIOINFO_EXAM_PROMPT else ''
             
-            if template_source == 'bioinfo_professor':
-                core_concept = request.form.get('core_concept', '').strip()
-                difficulty_level = request.form.get('difficulty_level', '本科生进阶')
-                choice_count = int(request.form.get('choice_count', 2))
-                tf_count = int(request.form.get('tf_count', 2))
-                term_count = int(request.form.get('term_count', 2))
-                short_count = int(request.form.get('short_count', 1))
-                essay_count = int(request.form.get('essay_count', 1))
-                
-                if not core_concept:
-                    flash('请输入核心概念', 'warning')
-                    return redirect(url_for('generate_theory_questions'))
-                
-                # 映射难度级别
-                level_map = {'本科生入门': 1, '本科生进阶': 2, '研究生': 3}
-                difficulty = level_map.get(difficulty_level, 2)
-                level_label = difficulty_level
-                
-                # 构建主题描述（用于任务记录）
-                question_type = '综合'  # bioinfo模板一次生成所有类型
-                total_count = choice_count + tf_count + term_count + short_count + essay_count
-                count = total_count
-                score = 5  # 默认分值
-                
-                # 将模板参数保存到任务中
-                task_params = {
-                    'source_type': source_type,
-                    'pdf_content': pdf_content,
-                    'question_type': question_type,
-                    'difficulty': difficulty,
-                    'score': score,
-                    'grading_basis': grading_basis,
-                    'user_prompt': user_prompt,
-                    'count': count,
-                    'ai_model': ai_model,
-                    'selected_concepts': selected_concepts,
-                    'template_source': 'bioinfo_professor',
-                    'prompt_template_name': 'BIOINFO_EXAM_PROMPT',
-                    'core_concept': core_concept,
-                    'difficulty_level': level_label,
-                    'choice_count': choice_count,
-                    'tf_count': tf_count,
-                    'term_count': term_count,
-                    'short_count': short_count,
-                    'essay_count': essay_count
-                }
-            else:
-                # 默认模版
-                task_params = {
-                    'source_type': source_type,
-                    'pdf_content': pdf_content,
-                    'question_type': question_type,
-                    'difficulty': difficulty,
-                    'score': score,
-                    'grading_basis': grading_basis,
-                    'user_prompt': user_prompt,
-                    'count': count,
-                    'ai_model': ai_model,
-                    'selected_concepts': selected_concepts
-                }
+            # 获取选定的概念
+            selected_concepts = request.form.getlist('selected_concepts')
+            
+            # 构建任务参数
+            task_params = {
+                'source_type': source_type,
+                'pdf_content': pdf_content,
+                'question_type': question_type,
+                'difficulty': difficulty,
+                'score': score,
+                'grading_basis': grading_basis,
+                'count': count,
+                'ai_model': ai_model,
+                'selected_concepts': selected_concepts,
+                'user_prompt': user_prompt
+            }
+            }
+            
+            if custom_prompt and custom_prompt != BIOINFO_EXAM_PROMPT:
+                task_params['custom_prompt'] = custom_prompt
             
             if source_type == 'knowledge_base':
                 task_params['knowledge_base_id'] = kb_id
@@ -7588,7 +7535,8 @@ def generate_theory_questions():
         'teacher/generate_theory_questions.html',
         question_types=question_types,
         knowledge_bases=user_knowledge_bases,
-        default_ai_model=CONFIG.get("OLLAMA_MODEL", {}).get("default", "deepseek-r1-1.5b")
+        default_ai_model=CONFIG.get("OLLAMA_MODEL", {}).get("default", "deepseek-r1-1.5b"),
+        default_prompt=BIOINFO_EXAM_PROMPT
     )
 
 # 新增AI驱动的概念提取功能
