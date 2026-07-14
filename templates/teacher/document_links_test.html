@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}文档链接测试{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <h2 class="mb-4">📚 知识库文档正确访问链接</h2>
+            
+            <div class="alert alert-info">
+                <strong>💡 使用说明：</strong>
+                <p class="mb-0">点击下方任意链接即可打开对应的文档查看页面。PDF 文档将在线预览，其他文件格式将显示下载选项。</p>
+            </div>
+            
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">⚠️ 重要提示</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled mb-0">
+                        <li class="mb-2">
+                            <i class="fas fa-check-circle text-success"></i>
+                            <strong>正确的 URL 格式：</strong><br>
+                            <code>/teacher/knowledge_bases/{kb_id}/document/{doc_id}</code>
+                        </li>
+                        <li class="mb-2">
+                            <i class="fas fa-times-circle text-danger"></i>
+                            <strong>错误的 URL 格式（已废弃）：</strong><br>
+                            <code>/question/uploads/...</code>
+                        </li>
+                        <li>
+                            <i class="fas fa-exclamation-triangle text-warning"></i>
+                            <strong>如果遇到 404：</strong>请按 <kbd>Cmd+Shift+Delete</kbd> 清除浏览器缓存后重试
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            
+            {% for kb_name, docs in documents_by_kb.items() %}
+            <div class="card mb-3">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-folder"></i> {{ kb_name }}
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th style="width: 40%;">文档标题</th>
+                                <th style="width: 15%;">文件类型</th>
+                                <th style="width: 25%;">操作</th>
+                                <th style="width: 20;">URL 预览</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for doc in docs %}
+                            <tr>
+                                <td>
+                                    <strong>{{ doc.title }}</strong>
+                                </td>
+                                <td>
+                                    <span class="badge bg-{{ 'pdf' if doc.file_type == 'pdf' else 'secondary' }}">
+                                        {{ doc.file_type|upper }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <a href="{{ url_for('view_document', kb_id=doc.kb_id, doc_id=doc.id) }}" 
+                                       class="btn btn-sm btn-primary" target="_blank">
+                                        <i class="fas fa-eye"></i> 查看
+                                    </a>
+                                    <a href="{{ url_for('view_document_pdf', kb_id=doc.kb_id, doc_id=doc.id) }}" 
+                                       class="btn btn-sm btn-outline-success" target="_blank">
+                                        <i class="fas fa-file-pdf"></i> PDF
+                                    </a>
+                                </td>
+                                <td>
+                                    <small class="text-muted">
+                                        <code>/teacher/knowledge_bases/{{ doc.kb_id }}/document/{{ doc.id }}</code>
+                                    </small>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% else %}
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle"></i>
+                暂无文档数据
+            </div>
+            {% endfor %}
+            
+            <div class="mt-4">
+                <a href="{{ url_for('knowledge_bases') }}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> 返回知识库列表
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.table td {
+    vertical-align: middle;
+}
+
+.badge {
+    min-width: 50px;
+}
+
+code {
+    font-size: 0.85em;
+    background-color: #f8f9fa;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.btn-group .btn {
+    margin-right: 5px;
+}
+</style>
+{% endblock %}

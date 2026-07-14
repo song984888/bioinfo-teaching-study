@@ -1,0 +1,448 @@
+{% extends "base.html" %}
+
+{% block title %}题目详情 - #{{ question.id }}{% endblock %}
+
+{% block content %}
+<div class="question-detail-container">
+    <div class="question-header">
+        <h2>题目详情 <span class="question-id">#{{ question.id }}</span></h2>
+        <div class="header-actions">
+            <a href="{{ url_for('review_questions') }}" class="btn">
+                &larr; 返回题目列表
+            </a>
+            {% if question.review_status != 'approved' %}
+            <a href="{{ url_for('approve_question', question_id=question.id) }}" class="btn primary">
+                ✓ 审核通过
+            </a>
+            {% endif %}
+            {% if question.review_status == 'pending' %}
+            <a href="javascript:void(0)" class="btn warn" onclick="rejectQuestion({{ question.id }})">
+                ✗ 驳回
+            </a>
+            {% endif %}
+            <a href="{{ url_for('remove_question', question_id=question.id) }}" 
+                class="btn danger"
+                id="deleteBtn"
+                data-question-id = "{{question.id}}">
+                ✗ 删除题目
+            </a>
+
+        </div>
+    </div>
+
+    <!-- 题目基本信息 -->
+    <div class="question-info">
+        <div class="info-row">
+            <div class="info-label">主题:</div>
+            <div class="info-value">{{ question.topic }}</div>
+        </div>
+        
+        <div class="info-row">
+            <div class="info-label">难度:</div>
+            <div class="info-value">
+                {% for i in range(1,4) %}
+                    {% if i <= question.difficulty %}
+                    ★
+                    {% else %}
+                    ☆
+                    {% endif %}
+                {% endfor %}
+                ({{ question.difficulty }}/3)
+            </div>
+        </div>
+        
+        <div class="info-row">
+            <div class="info-label">编程语言:</div>
+            <div class="info-value">
+                {% if question.is_theory %}
+                <span class="language-badge">理论题</span>
+                {% else %}
+                <span class="language-badge">
+                    {{ question.language | upper }}
+                </span>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="info-row">
+            <div class="info-label">创建时间:</div>
+            <div class="info-value">{{ question.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+        </div>
+        
+        <div class="info-row">
+            <div class="info-label">AI模型:</div>
+            <div class="info-value">{{ question.aiModel }}</div>
+        </div>
+        
+        <div class="info-row">
+            <div class="info-label">审核状态:</div>
+            <div class="info-value">
+                {% set status = question.review_status if question.review_status is defined else ('approved' if question.is_approved else 'pending') %}
+                {% if status == 'approved' %}
+                <span class="status-badge status-approved">✅ 已通过</span>
+                {% elif status == 'rejected' %}
+                <span class="status-badge status-rejected">❌ 已驳回</span>
+                {% else %}
+                <span class="status-badge status-pending">⏳ 待审核</span>
+                {% endif %}
+            </div>
+        </div>
+        {% if question.review_status == 'approved' or question.review_status == 'rejected' %}
+        <div class="info-row">
+            <div class="info-label">审核人:</div>
+            <div class="info-value">{{ question.reviewed_by or '-' }}</div>
+        </div>
+        {% endif %}
+        {% if question.review_status == 'rejected' and question.review_comment %}
+        <div class="info-row">
+            <div class="info-label">驳回原因:</div>
+            <div class="info-value" style="color:#dc3545;">{{ question.review_comment }}</div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- 题目内容 -->
+    <div class="question-section">
+        <h3>题目内容</h3>
+        <div class="question-content">
+            <pre>{{ question.question_text }}</pre>
+        </div>
+    </div>
+
+    <!-- 参考答案 -->
+    <div class="question-section">
+        <h3>参考答案</h3>
+        <div class="sample-answer">
+            <pre>{{ question.sample_answer }}</pre>
+        </div>
+        
+        <div class="code-actions">
+            <button class="btn" id="commentBtn">💬 评论</button>
+            <button class="btn primary" id="viewDocBtn">📄 查看原始文档</button>
+            {% if not question.is_theory %}
+            <button class="btn" id="debugRunBtn" style="background:#17a2b8; color:#fff;">🔧 调试运行</button>
+            {% endif %}
+        </div>
+        
+        {% if not question.is_theory %}
+        <!-- 调试运行弹窗 -->
+        <div id="debugModal" class="modal-overlay" style="display:none;">
+            <div class="modal-box" style="width:650px; max-height:90vh; overflow-y:auto;">
+                <h3>🔧 调试运行</h3>
+                
+                <!-- 输入区域 -->
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label for="debugStdinInput" style="display:block; margin-bottom:4px; font-weight:500;">标准输入 / 依次传入变量 (stdin)</label>
+                    <textarea id="debugStdinInput" rows="4" placeholder="每行代表一次 input() 读取的值&#10;例如程序需要依次读取：数量、书名+年份、关键字&#10;则输入：&#10;3&#10;Apple, 2020&#10;Banana, 2019&#10;apple" style="width:100%; font-family:monospace; font-size:13px; padding:8px; border:1px solid #ddd; border-radius:4px;"></textarea>
+                </div>
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label for="debugFileInput" style="display:block; margin-bottom:4px; font-weight:500;">测试文件 (保存为 test_input.txt)</label>
+                    <div style="display:flex; gap:10px; margin-bottom:8px;">
+                        <input type="file" id="debugFileUpload" onchange="handleDebugFileUpload(this)" style="font-size:13px;">
+                        <span id="debugFileName" style="font-size:13px; color:#888; line-height:32px;"></span>
+                    </div>
+                    <textarea id="debugFileInput" rows="3" placeholder="可选：程序可读取的文件内容，也可以点击上方按钮上传本地文件&#10;例如：&#10;apple&#10;banana&#10;cherry" style="width:100%; font-family:monospace; font-size:13px; padding:8px; border:1px solid #ddd; border-radius:4px;"></textarea>
+                </div>
+                
+                <!-- 运行按钮 -->
+                <div style="display:flex; gap:10px; margin-bottom:15px;">
+                    <button class="btn primary" id="debugRunExecuteBtn" onclick="executeDebugCode()" style="background:#17a2b8; color:#fff; padding:8px 20px;">
+                        ▶ 运行
+                    </button>
+                    <button class="btn" onclick="closeDebugModal()">取消</button>
+                    <span id="debugRunStatus" style="line-height:36px; margin-left:10px;"></span>
+                </div>
+                
+                <!-- 运行结果 -->
+                <div id="debugOutput" class="debug-output" style="display:none;">
+                    <div class="debug-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <strong>运行结果</strong>
+                        <span id="debugStatus"></span>
+                    </div>
+                    <pre id="debugStdout" style="background:#2d2d2d; color:#f8f8f2; padding:12px; border-radius:6px; max-height:250px; overflow-y:auto; font-size:13px; white-space:pre-wrap; margin:0;"></pre>
+                    <div id="debugStderr" style="display:none; margin-top:8px;">
+                        <strong style="color:#dc3545;">错误信息</strong>
+                        <pre id="debugStderrText" style="background:#fff5f5; color:#dc3545; padding:12px; border-radius:6px; max-height:120px; overflow-y:auto; font-size:13px; white-space:pre-wrap; margin:4px 0 0 0;"></pre>
+                    </div>
+                    <div style="margin-top:6px; font-size:12px; color:#888;">
+                        <span id="debugTime"></span>
+                        <span id="debugExitCode" style="margin-left:10px;"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- 提示信息 -->
+    <div class="question-section">
+        <h3>提示信息</h3>
+        <div class="hints-list">
+            {% if question.is_theory %}
+            <div class="empty-state">理论题暂无提示信息</div>
+            {% elif hints %}
+            <ul>
+                {% for hint in hints %}
+                <li>{{ hint }}</li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <div class="empty-state">无提示信息</div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- 评论区 -->
+    <div class="question-section">
+        <h3>💬 评论</h3>
+        <div class="comments-container">
+            <div class="comment-form">
+                <textarea id="commentContent" placeholder="写下你的评论..." rows="3"></textarea>
+                <button class="btn primary" id="submitCommentBtn">发表评论</button>
+            </div>
+            <div class="comments-list" id="commentsList">
+                <!-- 评论将通过 JavaScript 动态加载 -->
+            </div>
+        </div>
+    </div>
+  
+    <!-- 使用统计 -->
+    <div class="question-section">
+        <h3>使用统计</h3>
+        <div class="usage-stats">
+            {% if question.is_theory %}
+            <div class="empty-state">理论题暂无使用统计</div>
+            {% else %}
+            <div class="stats-row">
+                <div class="stat-item">
+                    <div class="stat-value">{{ usage_stats.exam_count }}</div>
+                    <div class="stat-label">考试使用次数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ usage_stats.exercise_count }}</div>
+                    <div class="stat-label">练习使用次数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ usage_stats.avg_score | round(1) }}</div>
+                    <div class="stat-label">平均得分</div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+/* 调试运行样式 */
+.debug-output {
+    border: 1px solid #ddd; border-radius: 8px; background: #f8f9fa; padding: 15px;
+}
+.debug-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.debug-header h4 { margin: 0; color: #333; }
+.debug-content pre, .debug-stderr pre {
+    background: #2d2d2d; color: #f8f8f2; padding: 12px; border-radius: 6px;
+    font-family: 'Courier New', monospace; font-size: 13px; white-space: pre-wrap; word-break: break-all;
+}
+.debug-stderr pre { background: #fff5f5; color: #dc3545; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // ===== 调试运行功能 =====
+    {% if not question.is_theory %}
+    function handleDebugFileUpload(input) {
+        const file = input.files[0];
+        if (!file) return;
+        document.getElementById('debugFileName').textContent = file.name;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('debugFileInput').value = e.target.result;
+        };
+        reader.readAsText(file);
+    }
+    
+    function openDebugModal() {
+        document.getElementById('debugModal').style.display = 'flex';
+        document.getElementById('debugOutput').style.display = 'none';
+        document.getElementById('debugStdout').textContent = '';
+        document.getElementById('debugStderr').style.display = 'none';
+        document.getElementById('debugStatus').innerHTML = '';
+        document.getElementById('debugTime').textContent = '';
+        document.getElementById('debugExitCode').textContent = '';
+        document.getElementById('debugRunStatus').innerHTML = '';
+        document.getElementById('debugRunExecuteBtn').disabled = false;
+        document.getElementById('debugFileUpload').value = '';
+        document.getElementById('debugFileName').textContent = '';
+    }
+    
+    function closeDebugModal() {
+        document.getElementById('debugModal').style.display = 'none';
+    }
+    
+    async function executeDebugCode() {
+        const btn = document.getElementById('debugRunExecuteBtn');
+        const statusSpan = document.getElementById('debugRunStatus');
+        const output = document.getElementById('debugOutput');
+        const stdout = document.getElementById('debugStdout');
+        const stderrDiv = document.getElementById('debugStderr');
+        const stderrText = document.getElementById('debugStderrText');
+        const statusElem = document.getElementById('debugStatus');
+        const timeElem = document.getElementById('debugTime');
+        const exitCode = document.getElementById('debugExitCode');
+        const stdinInput = document.getElementById('debugStdinInput').value;
+        const fileContent = document.getElementById('debugFileInput').value;
+        
+        output.style.display = 'block';
+        stdout.textContent = '正在运行代码...';
+        stderrDiv.style.display = 'none';
+        statusElem.innerHTML = '';
+        timeElem.textContent = '';
+        exitCode.textContent = '';
+        btn.disabled = true;
+        statusSpan.innerHTML = '<span style="color:#17a2b8;">⏳ 运行中...</span>';
+        
+        const startTime = Date.now();
+        try {
+            const resp = await fetch('/run_sample_code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    language: '{{ question.language | default("python") }}',
+                    code: {{ question.sample_answer | tojson | safe }},
+                    args: [],
+                    inputs: stdinInput,
+                    file_content: fileContent
+                })
+            });
+            const result = await resp.json();
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+            stdout.textContent = result.stdout || '(无输出)';
+            if (result.stderr) {
+                stderrDiv.style.display = 'block';
+                stderrText.textContent = result.stderr;
+            } else {
+                stderrDiv.style.display = 'none';
+            }
+            if (result.returncode === 0) {
+                statusElem.innerHTML = '<span style="color:#28a745;">✅ 运行成功</span>';
+            } else {
+                statusElem.innerHTML = '<span style="color:#dc3545;">❌ 运行失败</span>';
+            }
+            timeElem.textContent = '耗时: ' + elapsed + 's';
+            exitCode.textContent = '退出码: ' + result.returncode;
+            statusSpan.innerHTML = '<span style="color:#28a745;">✅ 完成</span>';
+        } catch (err) {
+            stdout.textContent = '请求失败: ' + err.message;
+            statusElem.innerHTML = '<span style="color:#dc3545;">❌ 网络错误</span>';
+            statusSpan.innerHTML = '<span style="color:#dc3545;">❌ 失败</span>';
+        } finally {
+            btn.disabled = false;
+            statusSpan.innerHTML = '';
+        }
+    }
+    
+    // 点击调试运行按钮打开弹窗
+    document.addEventListener('DOMContentLoaded', function() {
+        const debugBtn = document.getElementById('debugRunBtn');
+        if (debugBtn) debugBtn.addEventListener('click', openDebugModal);
+    });
+    {% endif %}
+    
+    // ===== 评论功能 =====
+    function loadComments() {
+        fetch("{{ url_for('get_comments', question_id=question.id) }}")
+            .then(response => response.json())
+            .then(comments => {
+                const commentsList = document.getElementById('commentsList');
+                if (comments.length === 0) {
+                    commentsList.innerHTML = '<div class="empty-state">暂无评论</div>';
+                    return;
+                }
+                commentsList.innerHTML = comments.map(comment => `
+                    <div class="comment-item">
+                        <div class="comment-header">
+                            <span class="comment-author">${comment.author_name || '匿名用户'}</span>
+                            <span class="comment-time">${comment.created_at}</span>
+                        </div>
+                        <div class="comment-content">${comment.content}</div>
+                    </div>
+                `).join('');
+            })
+            .catch(error => {
+                console.error('加载评论失败:', error);
+                document.getElementById('commentsList').innerHTML = '<div class="error">加载评论失败</div>';
+            });
+    }
+    
+    // ===== 评论功能 =====
+    document.getElementById('submitCommentBtn').addEventListener('click', async function() {
+        const commentContent = document.getElementById('commentContent').value.trim();
+        if (!commentContent) { alert('请输入评论内容'); return; }
+        try {
+            const response = await fetch("{{ url_for('add_comment', question_id=question.id) }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: commentContent, question_id: {{ question.id }} })
+            });
+            const result = await response.json();
+            if (result.success) {
+                alert('评论发表成功！');
+                document.getElementById('commentContent').value = '';
+                loadComments();
+            } else {
+                alert('评论失败：' + result.message);
+            }
+        } catch (error) {
+            alert('评论出错：' + error.message);
+        }
+    });
+    
+    // ===== 查看原始文档 =====
+    document.getElementById('viewDocBtn').addEventListener('click', async function() {
+        try {
+            const resp = await fetch(`/api/questions/{{ question.id }}/document`);
+            const result = await resp.json();
+            if (result.success && result.document && result.document.id) {
+                const kbResp = await fetch(`/api/document/${result.document.id}/info`);
+                const kbResult = await kbResp.json();
+                if (kbResult.success) {
+                    window.location.href = `/teacher/knowledge_bases/${kbResult.knowledge_base_id}/document/${result.document.id}`;
+                } else {
+                    alert('无法获取知识库信息');
+                }
+            } else {
+                alert(result.message || '该题目没有关联的原始文档');
+            }
+        } catch (error) {
+            alert('获取文档失败：' + error.message);
+        }
+    });
+    
+    // ===== 删除题目 =====
+    document.getElementById('deleteBtn').addEventListener('click', function(e) {
+        e.preventDefault();
+        if (confirm(`确定要删除题目 #${this.dataset.questionId}?\n\n此操作不可撤销！！`)) {
+            window.location.href = this.href;
+        }
+    });
+    
+    // ===== 驳回题目 =====
+    function rejectQuestion(id) {
+        const reason = prompt('请输入驳回原因（可选）：');
+        if (reason === null) return;
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/teacher/reject_question/' + id;
+        const input = document.createElement('input');
+        input.type = 'hidden'; input.name = 'reason'; input.value = reason;
+        form.appendChild(input);
+        document.body.appendChild(form);
+        form.submit();
+    }
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        loadComments();
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+
+{% block title %}任务详情 - #{{ task.id }}{% endblock %}
+
+{% block extra_css %}
+<style>
+/* PDF 内容显示样式 */
+.pdf-content-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.pdf-content-preview,
+.pdf-content-full {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 12px 15px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: #495057;
+    white-space: pre-wrap;  /* 保持原始换行和空格 */
+    word-wrap: break-word;  /* 长单词自动换行 */
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.pdf-text-content {
+    white-space: pre-wrap;  /* 关键：保持原始格式 */
+    word-wrap: break-word;
+}
+
+.pdf-content-preview {
+    position: relative;
+}
+
+.pdf-more-text {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 4px 12px;
+    background: #e9ecef;
+    color: #6c757d;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-style: italic;
+}
+
+.btn-expand {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    padding: 6px 16px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+}
+
+.btn-expand:hover {
+    background: #5568d3;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(102, 126, 234, 0.2);
+}
+
+.btn-expand:active {
+    transform: translateY(0);
+}
+
+/* 参数表格优化 */
+.param-value {
+    max-width: 600px;
+    word-wrap: break-word;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="task-detail-container">
+    <div class="task-header">
+        <h2>任务详情 <span class="task-id">#{{ task.id }}</span></h2>
+        <div class="header-actions">
+            <a href="{{ url_for('view_background_tasks') }}" class="btn">
+                &larr; 返回任务列表
+            </a>
+            {% if task.status == 'failed' %}
+            <button class="btn primary restart-btn" data-task-id="{{ task.id }}">
+                ↻ 重新运行
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 任务基本信息 -->
+    <div class="task-info">
+        <div class="info-row">
+            <div class="info-label">任务类型:</div>
+            <div class="info-value">
+                {% if task.task_type == 'generate_questions' %}
+                <span class="badge">🧠 生成题目</span>
+                {% elif task.task_type == 'auto_grade' %}
+                <span class="badge">📝 自动评分</span>
+                {% elif task.task_type == 'suggestion' %}
+                <span class="badge">💡 学习建议</span>
+                {% else %}
+                <span class="badge">⚙️ {{ task.task_type }}</span>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="info-row">
+            <div class="info-label">任务状态:</div>
+            <div class="info-value">
+                <span class="status-badge status-{{ task.status }}">
+                    {% if task.status == 'pending' %}⏳ 等待中
+                    {% elif task.status == 'processing' %}🔄 进行中
+                    {% elif task.status == 'completed' %}✅ 已完成
+                    {% elif task.status == 'failed' %}❌ 已失败
+                    {% else %}{{ task.status }}
+                    {% endif %}
+                </span>
+            </div>
+        </div>
+        
+        <div class="info-row">
+            <div class="info-label">创建时间:</div>
+            <div class="info-value">{{ task.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+        </div>
+        
+        {% if task.started_at %}
+        <div class="info-row">
+            <div class="info-label">开始时间:</div>
+            <div class="info-value">{{ task.started_at.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+        </div>
+        {% endif %}
+        
+        {% if task.finished_at %}
+        <div class="info-row">
+            <div class="info-label">完成时间:</div>
+            <div class="info-value">{{ task.finished_at.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+        </div>
+        
+        <div class="info-row">
+            <div class="info-label">执行时长:</div>
+            <div class="info-value">
+                {% if task.started_at and task.finished_at %}
+                {{ (task.finished_at - task.started_at).total_seconds() | round(1) }} 秒
+                {% else %}
+                -
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <div class="info-row">
+            <div class="info-label">创建者:</div>
+            <div class="info-value">{{ task_creator.name }} ({{ task_creator.employee_id }})</div>
+        </div>
+    </div>
+
+    <!-- 任务参数 -->
+    <div class="task-section">
+        <h3>任务参数</h3>
+        <div class="task-params">
+            {% if task_parameters %}
+            <table class="params-table">
+                <tbody>
+                    {% for key, value in task_parameters.items() %}
+                    <tr>
+                        <td class="param-key">{{ key }}:</td>
+                        <td class="param-value">
+                            {% if key == 'pdf_content' and value is string %}
+                                {# PDF 内容特殊处理：默认显示前10行 #}
+                                <div class="pdf-content-wrapper">
+                                    <div class="pdf-content-preview" id="pdf-preview-{{ loop.index }}">
+                                        {% set lines = value.split('\n') %}
+                                        <div class="pdf-text-content">
+                                            {% for line in lines[:10] %}
+                                                {{ line }}
+                                                {% if not loop.last %}<br>{% endif %}
+                                            {% endfor %}
+                                        </div>
+                                        {% if lines|length > 10 %}
+                                            <span class="pdf-more-text">... 还有 {{ lines|length - 10 }} 行</span>
+                                        {% endif %}
+                                    </div>
+                                    {% if lines|length > 10 %}
+                                    <div class="pdf-content-full" id="pdf-full-{{ loop.index }}" style="display: none;">
+                                        <div class="pdf-text-content">
+                                            {% for line in lines %}
+                                                {{ line }}
+                                                {% if not loop.last %}<br>{% endif %}
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                    <button class="btn-expand" onclick="togglePdfContent({{ loop.index }})">
+                                        <i class="fas fa-eye"></i> 展开全部
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            {% elif value is string %}
+                                {{ value }}
+                            {% else %}
+                                {{ value | tojson }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">无参数信息</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 任务日志 -->
+    <div class="task-section">
+        <h3>任务日志</h3>
+        <div class="task-logs">
+            {% if task.log %}
+            <pre>{{ task.log }}</pre>
+            {% else %}
+            <div class="empty-state">无日志记录</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 任务结果 -->
+    <div class="task-section">
+        <h3>任务结果</h3>
+        <div class="task-results">
+            {% if task.result %}
+                {% if task.task_type == 'generate_questions' %}
+                <div class="result-summary">
+                    <p>生成结果： 
+                        <span class="success-count">成功 {{ task_result.success }}</span> / 
+                        <span class="failed-count">失败 {{ task_result.failed }}</span> / 
+                        <span class="total-count">总计 {{ task_result.total }}</span>
+                    </p>
+                </div>
+                
+                {% if task_result.generated_questions %}
+                <div class="generated-questions">
+                    <h4>生成的题目:</h4>
+                    <ul class="question-list">
+                        {% for question in task_result.generated_questions %}
+                        <li class="question-item">
+                            <div class="question-preview">
+                                <span class="question-text" title="{{ question.question_text }}">
+                                    {% if question.question_text %}
+                                        {{ question.question_text[:20] }}{% if question.question_text|length > 20 %}...{% endif %}
+                                    {% else %}
+                                        无题目内容
+                                    {% endif %}
+                                </span>
+                            </div>
+                            <div class="question-meta">
+                                <a href="{{ url_for('question_detail', question_id=question.id) }}" class="question-link">
+                                    {{ question.topic }} 
+                                    <span class="badge">{{ question.language|upper }}</span>
+                                    <span class="badge badge-{{ 'hard' if question.difficulty == 3 else ('medium' if question.difficulty == 2 else 'easy') }}">
+                                        难度{{ question.difficulty }}
+                                    </span>
+                                </a>
+                                <span class="status-badge status-{{ 'approved' if question.is_approved else 'pending' }}">
+                                    {% if question.is_approved %}✅ 已审核{% else %}⏳ 待审核{% endif %}
+                                </span>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+                
+                {% elif task.task_type == 'generate_theory_questions' %}
+                <div class="result-summary">
+                    <p>理论题目生成完成！请前往<a href="{{ url_for('review_questions') }}" target="_blank">审核页面</a>查看和审核题目。</p>
+                </div>
+                {% else %}
+                <pre>{{ task.result | tojson(indent=2) }}</pre>
+                {% endif %}
+            {% else %}
+            <div class="empty-state">无结果信息</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- 任务重启按钮 -->
+<div class="task-actions">
+    {% if can_restart %}
+    <form action="{{ url_for('restart_task', task_id=task.id) }}" method="post">
+        <button type="submit" class="btn btn-warning">
+            <i class="fas fa-redo"></i> 重启任务
+        </button>
+    </form>
+    {% endif %}
+    
+    <a href="{{ url_for('view_background_tasks') }}" class="btn btn-secondary">
+        <i class="fas fa-arrow-left"></i> 返回任务列表
+    </a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// PDF 内容展开/收起功能
+function togglePdfContent(index) {
+    const preview = document.getElementById(`pdf-preview-${index}`);
+    const full = document.getElementById(`pdf-full-${index}`);
+    const button = document.querySelector(`button[onclick="togglePdfContent(${index})"]`);
+    
+    if (full.style.display === 'none') {
+        // 展开全部
+        preview.style.display = 'none';
+        full.style.display = 'block';
+        button.innerHTML = '<i class="fas fa-eye-slash"></i> 收起';
+    } else {
+        // 收起
+        preview.style.display = 'block';
+        full.style.display = 'none';
+        button.innerHTML = '<i class="fas fa-eye"></i> 展开全部';
+    }
+}
+
+// 自动重启任务功能（如果有）
+document.addEventListener('DOMContentLoaded', function() {
+    const restartBtn = document.querySelector('.restart-btn');
+    if (restartBtn) {
+        restartBtn.addEventListener('click', function() {
+            const taskId = this.dataset.taskId;
+            if (confirm(`确定要重新运行任务 #${taskId} 吗？`)) {
+                window.location.href = `/teacher/restart_task/${taskId}`;
+            }
+        });
+    }
+});
+</script>
+{% endblock %}
+

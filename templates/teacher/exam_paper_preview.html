@@ -1,0 +1,391 @@
+{% extends "base.html" %}
+
+{% block title %}试卷预览 - {{ paper_name }}{% endblock %}
+
+{% block content %}
+<div class="paper-preview-container">
+    <div class="paper-header">
+        <h1>{{ paper_name }}</h1>
+        <div class="paper-meta">
+            <span>课程：{{ course_name }}</span>
+            <span>时长：{{ exam_duration }}分钟</span>
+            <span>总分：{{ total_score }}分</span>
+        </div>
+    </div>
+
+    <!-- A/B 卷切换 -->
+    <div class="paper-tabs">
+        <button class="tab-btn active" onclick="switchPaper('A')">A 卷</button>
+        <button class="tab-btn" onclick="switchPaper('B')">B 卷</button>
+    </div>
+
+    <!-- A 卷内容 -->
+    <div id="paperA" class="paper-content active">
+        <h2 class="paper-type">A 卷</h2>
+        {% for question in paper_a_questions %}
+        <div class="question-block" data-qid="{{ question.id }}">
+            <div class="question-header">
+                <span class="question-number">{{ loop.index }}</span>
+                <span class="question-type-badge">{{ question.type_name }}</span>
+                <span class="question-score">{{ question.score }}分</span>
+                <span class="question-difficulty difficulty-{{ question.difficulty }}">
+                    {% if question.difficulty == 1 %}简单
+                    {% elif question.difficulty == 2 %}中等
+                    {% else %}困难{% endif %}
+                </span>
+            </div>
+            <div class="question-text">{{ question.question_text|safe }}</div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- B 卷内容 -->
+    <div id="paperB" class="paper-content" style="display: none;">
+        <h2 class="paper-type">B 卷</h2>
+        {% for question in paper_b_questions %}
+        <div class="question-block" data-qid="{{ question.id }}">
+            <div class="question-header">
+                <span class="question-number">{{ loop.index }}</span>
+                <span class="question-type-badge">{{ question.type_name }}</span>
+                <span class="question-score">{{ question.score }}分</span>
+                <span class="question-difficulty difficulty-{{ question.difficulty }}">
+                    {% if question.difficulty == 1 %}简单
+                    {% elif question.difficulty == 2 %}中等
+                    {% else %}困难{% endif %}
+                </span>
+            </div>
+            <div class="question-text">{{ question.question_text|safe }}</div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- 参考答案 -->
+    <div class="reference-answer-section">
+        <h2>📝 参考答案及评分标准</h2>
+        
+        <div class="answer-tabs">
+            <button class="answer-tab-btn active" onclick="showAnswer('A')">A 卷答案</button>
+            <button class="answer-tab-btn" onclick="showAnswer('B')">B 卷答案</button>
+        </div>
+
+        <div id="answerA" class="answer-content active">
+            {% for question in paper_a_answers %}
+            <div class="answer-block">
+                <h4>第{{ loop.index }}题（{{ question.type_name }}，{{ question.score }}分）</h4>
+                <div class="answer-text">{{ question.sample_answer|safe }}</div>
+                <div class="grading-criteria">
+                    <strong>评分要点：</strong>
+                    <ul>
+                        {% for criterion in question.grading_criteria %}
+                        <li>{{ criterion }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div id="answerB" class="answer-content" style="display: none;">
+            {% for question in paper_b_answers %}
+            <div class="answer-block">
+                <h4>第{{ loop.index }}题（{{ question.type_name }}，{{ question.score }}分）</h4>
+                <div class="answer-text">{{ question.sample_answer|safe }}</div>
+                <div class="grading-criteria">
+                    <strong>评分要点：</strong>
+                    <ul>
+                        {% for criterion in question.grading_criteria %}
+                        <li>{{ criterion }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- 操作按钮 -->
+    <div class="action-buttons">
+        <a href="{{ url_for('paper_management') }}" class="btn">
+            ← 返回试卷列表
+        </a>
+        <button class="btn primary" onclick="downloadPDF()">
+            📥 下载 PDF
+        </button>
+        <button class="btn secondary" onclick="printPaper()">
+            🖨️ 打印试卷
+        </button>
+        <a href="{{ url_for('create_exam_paper') }}" class="btn">
+            ↩️ 重新组卷
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 切换 A/B 卷
+function switchPaper(type) {
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.paper-content').forEach(content => content.style.display = 'none');
+    
+    event.target.classList.add('active');
+    document.getElementById(`paper${type}`).style.display = 'block';
+}
+
+// 显示答案
+function showAnswer(type) {
+    document.querySelectorAll('.answer-tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.answer-content').forEach(content => content.classList.remove('active'));
+    document.querySelectorAll('.answer-content').forEach(content => content.style.display = 'none');
+    
+    event.target.classList.add('active');
+    const answerDiv = document.getElementById(`answer${type}`);
+    answerDiv.style.display = 'block';
+    answerDiv.classList.add('active');
+}
+
+// 下载 PDF
+function downloadPDF() {
+    const currentPaper = document.querySelector('.tab-btn.active').textContent;
+    const url = `{{ url_for('download_paper_pdf', paper_id=paper_id) }}&type=${currentPaper}`;
+    
+    // 显示加载提示
+    const btn = event.target;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '⏳ 生成中...';
+    btn.disabled = true;
+    
+    fetch(url)
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(err => { throw new Error(err.error || '下载失败'); });
+            }
+            return response.blob();
+        })
+        .then(blob => {
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = `{{ paper_name }}_${currentPaper}卷.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(downloadUrl);
+            document.body.removeChild(a);
+        })
+        .catch(error => {
+            alert('❌ PDF 下载失败：' + error.message + '\n\n请确保已安装 reportlab 库：pip install reportlab');
+        })
+        .finally(() => {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        });
+}
+
+// 打印试卷
+function printPaper() {
+    window.print();
+}
+</script>
+
+<style>
+.paper-preview-container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px;
+    background: white;
+}
+
+.paper-header {
+    text-align: center;
+    border-bottom: 3px solid var(--primary);
+    padding-bottom: 20px;
+    margin-bottom: 30px;
+}
+
+.paper-header h1 {
+    font-size: 2rem;
+    color: var(--dark);
+    margin-bottom: 15px;
+}
+
+.paper-meta {
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    color: var(--gray);
+    font-size: 1rem;
+}
+
+.paper-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.tab-btn, .answer-tab-btn {
+    padding: 10px 25px;
+    border: 2px solid var(--primary);
+    background: white;
+    color: var(--primary);
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.3s;
+}
+
+.tab-btn.active, .answer-tab-btn.active {
+    background: var(--primary);
+    color: white;
+}
+
+.paper-type {
+    font-size: 1.5rem;
+    color: var(--primary);
+    margin: 20px 0;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+.question-block {
+    margin-bottom: 25px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid var(--primary);
+}
+
+.question-header {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.question-number {
+    font-weight: bold;
+    font-size: 1.2rem;
+}
+
+.question-type-badge {
+    background: #e3f2fd;
+    color: #1976d2;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+}
+
+.question-score {
+    font-weight: bold;
+    color: var(--primary);
+}
+
+.question-difficulty {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+}
+
+.difficulty-1 {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.difficulty-2 {
+    background: #fff3e0;
+    color: #ef6c00;
+}
+
+.difficulty-3 {
+    background: #ffebee;
+    color: #c62828;
+}
+
+.question-text {
+    line-height: 1.8;
+    font-size: 1rem;
+    white-space: pre-wrap;
+}
+
+.reference-answer-section {
+    margin-top: 50px;
+    padding-top: 30px;
+    border-top: 3px solid var(--primary);
+}
+
+.answer-block {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #fffde7;
+    border-radius: 6px;
+    border-left: 4px solid #ffc107;
+}
+
+.answer-block h4 {
+    margin-bottom: 10px;
+    color: var(--dark);
+}
+
+.answer-text {
+    line-height: 1.8;
+    margin-bottom: 15px;
+    white-space: pre-wrap;
+}
+
+.grading-criteria {
+    background: white;
+    padding: 10px;
+    border-radius: 4px;
+}
+
+.grading-criteria ul {
+    margin: 10px 0;
+    padding-left: 20px;
+}
+
+.grading-criteria li {
+    margin-bottom: 5px;
+    color: var(--gray);
+}
+
+.action-buttons {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    margin-top: 30px;
+    padding-top: 30px;
+    border-top: 2px solid #e0e0e0;
+    flex-wrap: wrap;
+}
+
+.action-buttons button,
+.action-buttons a {
+    padding: 12px 30px;
+    font-size: 1rem;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.3s;
+}
+
+.action-buttons button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+@media print {
+    .paper-tabs, .answer-tabs, .action-buttons {
+        display: none;
+    }
+    
+    .paper-content, .answer-content {
+        display: block !important;
+    }
+    
+    body {
+        background: white;
+    }
+}
+</style>
+{% endblock %}

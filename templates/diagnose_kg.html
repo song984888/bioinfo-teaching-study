@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>知识图谱快速诊断</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; border-bottom: 3px solid #4361ee; padding-bottom: 10px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 4px; font-weight: bold; cursor: pointer; }
+        .status.success { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .status.info { background: #d1ecf1; color: #0c5460; }
+        .status.warning { background: #fff3cd; color: #856404; }
+        #graph-container { width: 100%; height: 600px; border: 2px solid #ddd; border-radius: 8px; margin-top: 20px; position: relative; background: #fafafa; }
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; font-size: 18px; color: #666; z-index: 100; }
+        .node { cursor: pointer; }
+        .node:hover { stroke: #ffd700; stroke-width: 3px; }
+        .link { stroke: #999; stroke-opacity: 0.6; }
+        .label { font-size: 14px; fill: #333; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 知识图谱快速诊断工具</h1>
+        <p><strong>说明：</strong>本页面用于测试 D3.js 渲染能力，使用模拟数据验证前端是否正常。</p>
+        
+        <div id="status-messages"></div>
+        
+        <div id="graph-container">
+            <div id="loading">⏳ 正在加载...</div>
+        </div>
+    </div>
+    
+    <script src="/static/js/d3.min.js"></script>
+    
+    <script>
+        // 全局错误监听
+        window.addEventListener('error', function(e) {
+            addStatus(`❌ JavaScript 错误：${e.message}`, 'error');
+            console.error('Global error:', e);
+        });
+        
+        function addStatus(message, type = 'info') {
+            const container = document.getElementById('status-messages');
+            const div = document.createElement('div');
+            div.className = `status ${type}`;
+            div.textContent = message;
+            container.appendChild(div);
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+        
+        async function runTest() {
+            try {
+                console.log('=== 开始诊断 ===');
+                
+                // 1. 检查 D3.js
+                if (typeof d3 === 'undefined') {
+                    addStatus('❌ D3.js 未加载！请检查 /static/js/d3.min.js 是否存在', 'error');
+                    return;
+                }
+                addStatus(`✓ D3.js 已加载，版本：${d3.version || '未知'}`, 'success');
+                
+                // 2. 准备测试数据（模拟你的数据：11 个概念，2 个关系）
+                const testData = {
+                    concepts: [
+                        { id: 8, concept_name: 'photosynthetic', description: '', concept_type: 'entity', frequency: 1, size: 20 },
+                        { id: 9, concept_name: 'extreme', description: '', concept_type: 'entity', frequency: 1, size: 20 },
+                        { id: 10, concept_name: 'drought', description: '', concept_type: 'entity', frequency: 1, size: 20 },
+                        { id: 11, concept_name: 'precipitation', description: '', concept_type: 'entity', frequency: 1, size: 20 },
+                        { id: 12, concept_name: 'grassland', description: '', concept_type: 'entity', frequency: 1, size: 20 },
+                        { id: 13, concept_name: 'biomass', description: '', concept_type: 'entity', frequency: 1, size: 20 },
+                        { id: 14, concept_name: 'vegetation', description: '', concept_type: 'entity', frequency: 1, size: 20 },
+                        { id: 15, concept_name: 'response', description: '', concept_type: 'entity', frequency: 1, size: 20 },
+                        { id: 16, concept_name: 'change', description: '', concept_type: 'entity', frequency: 1, size: 20 },
+                        { id: 17, concept_name: 'pattern', description: '', concept_type: 'entity', frequency: 1, size: 20 },
+                        { id: 18, concept_name: 'condition', description: '', concept_type: 'entity', frequency: 1, size: 20 }
+                    ],
+                    relations: [
+                        { id: 1, from_concept_id: 8, to_concept_id: 9, relation_type: '相关', confidence: 0.8 },
+                        { id: 2, from_concept_id: 9, to_concept_id: 10, relation_type: '包含', confidence: 0.7 }
+                    ]
+                };
+                
+                addStatus(`✓ 测试数据：${testData.concepts.length}个概念，${testData.relations.length}个关系`, 'success');
+                
+                // 3. 获取容器
+                const container = document.getElementById('graph-container');
+                if (!container) {
+                    addStatus('❌ 找不到 graph-container 容器', 'error');
+                    return;
+                }
+                addStatus('✓ 找到容器', 'info');
+                
+                // 4. 创建 SVG
+                const svgNS = "http://www.w3.org/2000/svg";
+                let svgElement = document.getElementById('graph-svg');
+                if (!svgElement) {
+                    svgElement = document.createElementNS(svgNS, "svg");
+                    svgElement.setAttribute("id", "graph-svg");
+                    svgElement.style.width = "100%";
+                    svgElement.style.height = "100%";
+                    container.appendChild(svgElement);
+                    addStatus('✓ 创建 SVG 元素', 'info');
+                }
+                
+                const width = container.clientWidth;
+                const height = container.clientHeight;
+                svgElement.setAttribute("width", width);
+                svgElement.setAttribute("height", height);
+                addStatus(`✓ SVG 尺寸：${width} x ${height}`, 'info');
+                
+                const svg = d3.select(svgElement);
+                
+                // 5. 计算网格布局
+                const gridSize = Math.ceil(Math.sqrt(testData.concepts.length));
+                const cellSize = Math.min(width / (gridSize + 2), height / (gridSize + 2)) * 0.8;
+                
+                testData.concepts.forEach((concept, i) => {
+                    const row = Math.floor(i / gridSize);
+                    const col = i % gridSize;
+                    concept.x = width / 2 + (col - gridSize / 2) * cellSize * 1.5;
+                    concept.y = height / 2 + (row - gridSize / 2) * cellSize * 1.5;
+                });
+                
+                addStatus(`✓ 网格布局完成 (${gridSize}x${gridSize})`, 'info');
+                
+                // 6. 绘制连线
+                if (testData.relations.length > 0) {
+                    const linkGroup = svg.append("g").attr("class", "links");
+                    
+                    testData.relations.forEach(d => {
+                        const source = testData.concepts.find(c => c.id === d.from_concept_id);
+                        const target = testData.concepts.find(c => c.id === d.to_concept_id);
+                        
+                        if (source && target) {
+                            linkGroup.append("line")
+                                .attr("x1", source.x)
+                                .attr("y1", source.y)
+                                .attr("x2", target.x)
+                                .attr("y2", target.y)
+                                .attr("stroke", "#999")
+                                .attr("stroke-opacity", "0.6")
+                                .attr("stroke-width", Math.sqrt(d.confidence) * 2);
+                        }
+                    });
+                    
+                    addStatus(`✓ 绘制了 ${testData.relations.length} 条连线`, 'success');
+                } else {
+                    addStatus('⚠️ 没有连线数据', 'warning');
+                }
+                
+                // 7. 绘制节点
+                const nodeGroup = svg.append("g").attr("class", "nodes");
+                
+                testData.concepts.forEach(d => {
+                    nodeGroup.append("circle")
+                        .attr("cx", d.x)
+                        .attr("cy", d.y)
+                        .attr("r", d.size)
+                        .attr("fill", "#4361ee")
+                        .attr("stroke", "#fff")
+                        .attr("stroke-width", "2")
+                        .attr("class", "node");
+                });
+                
+                addStatus(`✓ 绘制了 ${testData.concepts.length} 个节点`, 'success');
+                
+                // 8. 添加标签
+                const labelGroup = svg.append("g").attr("class", "labels");
+                
+                testData.concepts.forEach(d => {
+                    labelGroup.append("text")
+                        .attr("x", d.x)
+                        .attr("y", d.y + 5)
+                        .attr("text-anchor", "middle")
+                        .attr("fill", "#333")
+                        .attr("font-size", "14px")
+                        .text(d.concept_name);
+                });
+                
+                addStatus(`✓ 添加了 ${testData.concepts.length} 个标签`, 'success');
+                
+                // 9. 隐藏加载指示器
+                document.getElementById('loading').style.display = 'none';
+                addStatus('✅ 知识图谱渲染完成！', 'success');
+                
+                console.log('=== 诊断结束 ===');
+                
+            } catch (error) {
+                addStatus(`❌ 渲染失败：${error.message}`, 'error');
+                console.error('Rendering error:', error);
+                console.error('Stack trace:', error.stack);
+            }
+        }
+        
+        // 页面加载完成后执行
+        document.addEventListener('DOMContentLoaded', runTest);
+    </script>
+</body>
+</html>

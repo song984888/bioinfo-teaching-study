@@ -1,0 +1,447 @@
+{% extends "base.html" %}
+
+{% block title %}智能组卷{% endblock %}
+
+{% block content %}
+<div class="exam-paper-container">
+    <div class="exam-header">
+        <h2>📝 智能组卷</h2>
+        <p class="subtitle">基于题库自动生成 A/B 卷</p>
+    </div>
+
+    <form id="paperConfigForm" method="POST" action="{{ url_for('generate_exam_paper') }}">
+        <!-- 基本信息 -->
+        <div class="config-section">
+            <h3>📋 试卷基本信息</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="paper_name">试卷名称 <span class="required">*</span></label>
+                    <input type="text" id="paper_name" name="paper_name" required placeholder="例如：2024 年 Python 程序设计期末考试">
+                </div>
+                <div class="form-group">
+                    <label for="course_name">课程名称</label>
+                    <input type="text" id="course_name" name="course_name" placeholder="例如：Python 程序设计">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="exam_duration">考试时长（分钟）</label>
+                    <input type="number" id="exam_duration" name="exam_duration" value="90" min="30" max="180">
+                </div>
+                <div class="form-group">
+                    <label for="total_score">总分</label>
+                    <input type="number" id="total_score" name="total_score" value="100" min="60" max="150">
+                </div>
+            </div>
+        </div>
+
+        <!-- 题目配置 -->
+        <div class="config-section">
+            <h3>🎯 题目配置</h3>
+            <div class="question-type-config">
+                <!-- 动态添加题目类型配置 -->
+                <div id="questionTypeConfigs"></div>
+                
+                <button type="button" class="btn secondary" onclick="addQuestionTypeConfig()">
+                    + 添加题目类型要求
+                </button>
+            </div>
+        </div>
+
+        <!-- 高级选项 -->
+        <div class="config-section">
+            <h3>⚙️ 高级选项</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="difficulty_strategy">难度策略</label>
+                    <select id="difficulty_strategy" name="difficulty_strategy">
+                        <option value="balanced">均衡分布</option>
+                        <option value="easy">偏简单（7:2:1）</option>
+                        <option value="medium">中等难度（5:3:2）</option>
+                        <option value="hard">偏难（3:4:3）</option>
+                        <option value="custom">自定义</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="topic_coverage">知识点覆盖</label>
+                    <select id="topic_coverage" name="topic_coverage">
+                        <option value="comprehensive">综合覆盖</option>
+                        <option value="focused">重点突出</option>
+                        <option value="random">随机选择</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- 提交按钮 -->
+        <div class="form-actions">
+            <button type="submit" class="btn primary">
+                🚀 生成 A/B 卷
+            </button>
+            <button type="button" class="btn" onclick="previewCurrentConfig()">
+                👁️ 预览效果
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- 题目类型配置模板 -->
+<template id="questionTypeTemplate">
+    <div class="question-type-item">
+        <div class="type-header">
+            <select name="question_type[]" class="type-select" required onchange="updateScoreCalculation()">
+                <option value="">选择题目类型</option>
+                <option value="programming">程序设计题</option>
+                <option value="theory">理论题</option>
+            </select>
+            <button type="button" class="btn-remove" onclick="removeQuestionType(this)">×</button>
+        </div>
+        <div class="type-settings">
+            <div class="setting-row">
+                <label>A 卷数量：</label>
+                <input type="number" name="a_count[]" min="1" max="20" value="1" required onchange="updateScoreCalculation()">
+            </div>
+            <div class="setting-row">
+                <label>B 卷数量：</label>
+                <input type="number" name="b_count[]" min="1" max="20" value="1" required onchange="updateScoreCalculation()">
+            </div>
+            <div class="setting-row">
+                <label>每题分值：</label>
+                <input type="number" name="score_per_question[]" min="1" max="50" value="10" required onchange="updateScoreCalculation()">
+            </div>
+            <div class="setting-row">
+                <label>难度分布：</label>
+                <select name="difficulty_dist[]">
+                    <option value="mixed">混合难度</option>
+                    <option value="1">简单</option>
+                    <option value="2">中等</option>
+                    <option value="3">困难</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</template>
+
+<!-- 分数统计面板 -->
+<div class="score-summary-panel" id="scoreSummaryPanel" style="display: none;">
+    <h4>📊 分数统计</h4>
+    <div class="score-stats">
+        <div class="stat-item">
+            <span class="label">A 卷总分：</span>
+            <span class="value" id="aTotalScore">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="label">B 卷总分：</span>
+            <span class="value" id="bTotalScore">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="label">题目总数：</span>
+            <span class="value" id="totalQuestions">0</span>
+        </div>
+    </div>
+    <div class="score-tips">
+        💡 提示：建议 A/B 卷总分保持一致，题目数量相同
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let questionTypeCount = 0;
+
+// 添加题目类型配置
+function addQuestionTypeConfig(defaultType = '', defaultSettings = {}) {
+    const template = document.getElementById('questionTypeTemplate');
+    const container = document.getElementById('questionTypeConfigs');
+    const clone = template.content.cloneNode(true);
+    
+    // 为每个输入字段添加唯一标识
+    const inputs = clone.querySelectorAll('input, select');
+    inputs.forEach(input => {
+        input.id = `q${questionTypeCount}_${input.name}`;
+        
+        // 设置默认值
+        if (defaultType && input.name === 'question_type[]') {
+            input.value = defaultType;
+        }
+        if (defaultSettings) {
+            if (input.name === 'a_count[]' && defaultSettings.a_count) {
+                input.value = defaultSettings.a_count;
+            }
+            if (input.name === 'b_count[]' && defaultSettings.b_count) {
+                input.value = defaultSettings.b_count;
+            }
+            if (input.name === 'score_per_question[]' && defaultSettings.score) {
+                input.value = defaultSettings.score;
+            }
+            if (input.name === 'difficulty_dist[]' && defaultSettings.difficulty) {
+                input.value = defaultSettings.difficulty;
+            }
+        }
+    });
+    
+    container.appendChild(clone);
+    questionTypeCount++;
+    updateScoreCalculation();
+}
+
+// 移除题目类型配置
+function removeQuestionType(button) {
+    const item = button.closest('.question-type-item');
+    item.remove();
+    updateScoreCalculation();
+}
+
+// 更新分数计算
+function updateScoreCalculation() {
+    let aTotal = 0;
+    let bTotal = 0;
+    let totalQ = 0;
+    
+    document.querySelectorAll('.question-type-item').forEach(item => {
+        const typeSelect = item.querySelector('select[name="question_type[]"]');
+        const aCount = parseInt(item.querySelector('input[name="a_count[]"]').value) || 0;
+        const bCount = parseInt(item.querySelector('input[name="b_count[]"]').value) || 0;
+        const score = parseInt(item.querySelector('input[name="score_per_question[]"]').value) || 0;
+        
+        if (typeSelect.value) {
+            aTotal += aCount * score;
+            bTotal += bCount * score;
+            totalQ += aCount + bCount;
+        }
+    });
+    
+    document.getElementById('aTotalScore').textContent = aTotal;
+    document.getElementById('bTotalScore').textContent = bTotal;
+    document.getElementById('totalQuestions').textContent = totalQ;
+    
+    const panel = document.getElementById('scoreSummaryPanel');
+    panel.style.display = (aTotal > 0 || bTotal > 0) ? 'block' : 'none';
+}
+
+// 预览当前配置
+function previewCurrentConfig() {
+    updateScoreCalculation();
+    
+    const aTotal = parseInt(document.getElementById('aTotalScore').textContent);
+    const bTotal = parseInt(document.getElementById('bTotalScore').textContent);
+    const totalQ = parseInt(document.getElementById('totalQuestions').textContent);
+    
+    if (totalQ === 0) {
+        alert('⚠️ 请先配置题目类型和数量');
+        return;
+    }
+    
+    if (aTotal !== bTotal) {
+        if (!confirm(`⚠️ 警告：A 卷（${aTotal}分）和 B 卷（${bTotal}分）总分不一致，是否继续？`)) {
+            return;
+        }
+    }
+    
+    alert(`✅ 配置预览：
+A 卷：${aTotal}分
+B 卷：${bTotal}分
+总题目数：${totalQ}题
+
+点击“生成 A/B 卷”按钮开始生成试卷`);
+}
+
+// 初始化：添加一个默认的题目类型配置
+document.addEventListener('DOMContentLoaded', function() {
+    // 添加两个默认配置（编程题 + 理论题）
+    addQuestionTypeConfig('programming', {
+        a_count: 3,
+        b_count: 3,
+        score: 15,
+        difficulty: 'mixed'
+    });
+    addQuestionTypeConfig('theory', {
+        a_count: 10,
+        b_count: 10,
+        score: 3,
+        difficulty: '2'
+    });
+});
+</script>
+
+<style>
+.exam-paper-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.exam-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.exam-header h2 {
+    font-size: 2rem;
+    color: var(--primary);
+    margin-bottom: 10px;
+}
+
+.subtitle {
+    color: var(--gray);
+    font-size: 1.1rem;
+}
+
+.config-section {
+    background: white;
+    border-radius: 12px;
+    padding: 25px;
+    margin-bottom: 25px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+}
+
+.config-section h3 {
+    color: var(--dark);
+    margin-bottom: 20px;
+    font-size: 1.3rem;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.required {
+    color: #ff4444;
+}
+
+.question-type-config {
+    border: 2px dashed #e0e0e0;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.question-type-item {
+    background: #f8f9fa;
+    border-left: 4px solid var(--primary);
+    padding: 15px;
+    margin-bottom: 15px;
+    border-radius: 4px;
+}
+
+.type-header {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.type-select {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+.btn-remove {
+    background: #ff4444;
+    color: white;
+    border: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1.2rem;
+}
+
+.type-settings {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+}
+
+.setting-row {
+    display: flex;
+    flex-direction: column;
+}
+
+.setting-row label {
+    font-size: 0.9rem;
+    color: var(--gray);
+    margin-bottom: 5px;
+}
+
+.setting-row input,
+.setting-row select {
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.score-summary-panel {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    z-index: 1000;
+    min-width: 300px;
+}
+
+.score-summary-panel h4 {
+    margin: 0 0 15px 0;
+    color: var(--primary);
+}
+
+.score-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+}
+
+.stat-item {
+    text-align: center;
+}
+
+.stat-item .label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--gray);
+    margin-bottom: 5px;
+}
+
+.stat-item .value {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--primary);
+}
+
+.score-tips {
+    margin-top: 15px;
+    padding: 10px;
+    background: #e3f2fd;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    color: #1976d2;
+    text-align: center;
+}
+
+.form-actions {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    margin-top: 30px;
+}
+
+.form-actions button {
+    padding: 12px 30px;
+    font-size: 1rem;
+}
+</style>
+{% endblock %}

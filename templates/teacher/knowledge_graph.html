@@ -1,0 +1,978 @@
+
+{% extends "base.html" %}
+
+<script>
+    console.log('=== 模板开始渲染 ===');
+    console.log('knowledge_base:', {{ knowledge_base|tojson|safe }});
+    console.log('concepts length:', {{ concepts|length }});
+    console.log('relations length:', {{ relations|length }});
+</script>
+
+{% block title %}{{ knowledge_base.name }} - 知识图谱{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- 添加 JavaScript 数据变量 -->
+    <script>
+        // 将 Flask 模板变量转换为 JavaScript 变量
+        var knowledge_base = {{ knowledge_base|tojson|safe }};
+        var concepts = {{ concepts|tojson|safe }};
+        var relations = {{ relations|tojson|safe }};
+        var max_frequency = {{ max_frequency|tojson|safe }};
+        
+        console.log('JavaScript 变量已设置:');
+        console.log('knowledge_base:', knowledge_base);
+        console.log('concepts:', concepts);
+        console.log('relations:', relations);
+        console.log('max_frequency:', max_frequency);
+    </script>
+
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('knowledge_bases') }}">知识库管理</a>
+            </li>
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('view_knowledge_base', kb_id=knowledge_base.id) }}">{{ knowledge_base.name }}</a>
+            </li>
+            <li class="breadcrumb-item active">知识图谱</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2><i class="fas fa-project-diagram"></i> {{ knowledge_base.name }} - 知识图谱</h2>
+            <p class="text-muted">可视化展示知识库中的概念及其关系</p>
+        </div>
+        <div>
+            <button type="button" class="btn btn-success me-2" id="openAddConceptModal">
+                <i class="fas fa-plus-circle"></i> 添加概念
+            </button>
+            <a href="{{ url_for('view_knowledge_base', kb_id=knowledge_base.id) }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> 返回知识库
+            </a>
+        </div>
+    </div>
+    
+    <!-- 添加概念模态框 -->
+    <div class="modal fade" id="addConceptModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-plus-circle"></i> 添加自定义概念</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addConceptFormKG">
+                        <div class="mb-3">
+                            <label for="conceptNameKG" class="form-label">概念名称 *</label>
+                            <input type="text" class="form-control" id="conceptNameKG" required 
+                                   placeholder="例如：机器学习">
+                        </div>
+                        <div class="mb-3">
+                            <label for="conceptTypeKG" class="form-label">概念类型</label>
+                            <select class="form-select" id="conceptTypeKG">
+                                <option value="entity">实体</option>
+                                <option value="relation">关系</option>
+                                <option value="attribute">属性</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="conceptDescriptionKG" class="form-label">描述</label>
+                            <textarea class="form-control" id="conceptDescriptionKG" rows="3" 
+                                      placeholder="简要描述这个概念（可选）"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="cancelConceptBtn">取消</button>
+                    <button type="button" class="btn btn-success" id="addConceptBtn">添加概念</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-9">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-network-wired"></i> 知识图谱可视化
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if concepts %}
+                    <div id="knowledge-graph" style="height: 600px; border: 1px solid #ddd; border-radius: 4px; position: relative;">
+                        <!-- 图谱将通过 JavaScript 渲染 -->
+                        <div id="loading-indicator" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">加载中...</span>
+                            </div>
+                            <p class="mt-2">正在加载知识图谱...</p>
+                        </div>
+                        <!-- 添加 SVG 容器 -->
+                        <svg id="graph-svg" width="100%" height="100%" style="display: none;"></svg>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-project-diagram fa-3x text-muted mb-3"></i>
+                        <h4 class="text-muted">暂无概念数据</h4>
+                        <p class="text-muted">请先向知识库中添加文档并提取概念</p>
+                        <a href="{{ url_for('upload_document', kb_id=knowledge_base.id) }}" class="btn btn-primary">
+                            <i class="fas fa-upload"></i> 上传文档
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-info-circle"></i> 图谱信息
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="statistics">
+                        <div class="stat-item mb-3">
+                            <div class="d-flex justify-content-between">
+                                <span>概念总数</span>
+                                <strong>{{ concepts|length }}</strong>
+                            </div>
+                        </div>
+                        <div class="stat-item mb-3">
+                            <div class="d-flex justify-content-between">
+                                <span>关系总数</span>
+                                <strong>{{ relations|length }}</strong>
+                            </div>
+                        </div>
+                        <div class="stat-item mb-3">
+                            <div class="d-flex justify-content-between">
+                                <span>实体概念</span>
+                                <strong>{{ concepts|selectattr('concept_type', 'equalto', 'entity')|list|length }}</strong>
+                            </div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="d-flex justify-content-between">
+                                <span>关系概念</span>
+                                <strong>{{ concepts|selectattr('concept_type', 'equalto', 'relation')|list|length }}</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-sort-amount-down"></i> 概念频率排序
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="frequency-ranking" class="frequency-list">
+                        <!-- 频率排序列表将在这里动态生成 -->
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-sliders-h"></i> 显示控制
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">节点大小</label>
+                        <input type="range" class="form-range" id="nodeSize" min="10" max="50" value="20">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">连线粗细</label>
+                        <input type="range" class="form-range" id="linkWidth" min="1" max="10" value="2">
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="showLabels" checked>
+                        <label class="form-check-label" for="showLabels">
+                            显示标签
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- 添加 D3.js v7 完整版 CDN 引用（力导向布局必需） -->
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<!-- 添加 Bootstrap JS（模态框必需） -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<style>
+.tooltip {
+    position: absolute;
+    background: rgba(0,0,0,0.8);
+    color: white;
+    padding: 10px;
+    border-radius: 5px;
+    pointer-events: none;
+    font-size: 12px;
+    z-index: 1000;
+    max-width: 250px;
+    word-wrap: break-word;
+}
+
+.stat-item {
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.stat-item:last-child {
+    border-bottom: none;
+}
+
+.card {
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    border: none;
+    margin-bottom: 20px;
+}
+
+.card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.frequency-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.frequency-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    border-left: 4px solid #4361ee;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.frequency-item:hover {
+    background-color: #e9ecef;
+    transform: translateX(3px);
+}
+
+.frequency-item.high-frequency {
+    border-left-color: #ffd700;
+    background-color: #fff9e6;
+    font-weight: bold;
+}
+
+.frequency-count {
+    background-color: #4361ee;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.frequency-count.high {
+    background-color: #ffd700;
+    color: #333;
+}
+
+.highlighted-node {
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0% { stroke-width: 5; }
+    50% { stroke-width: 8; }
+    100% { stroke-width: 5; }
+}
+
+/* 加载指示器样式 */
+#loading-indicator {
+    display: none;
+}
+
+#loading-indicator.show {
+    display: block;
+}
+
+/* 🔴 强制设置 SVG 内元素可见 */
+#graph-svg {
+    background-color: white !important;
+    z-index: 1 !important;
+}
+
+#graph-svg .nodes circle {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+#graph-svg .links line {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 0.6 !important;
+}
+
+#graph-svg .labels text {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+</style>
+
+
+
+<script>
+// 添加全局错误监听
+window.addEventListener('error', function(e) {
+    console.error('🔴 全局错误捕获:', e.message);
+    console.error('错误源:', e.filename, '行号:', e.lineno);
+    const loadingIndicator = document.getElementById('loading-indicator');
+    if (loadingIndicator) {
+        loadingIndicator.innerHTML = '<div style="color: red; padding: 20px;"><h3>❌ 渲染失败</h3><p>' + e.message + '</p><p><small>请查看浏览器控制台（F12）获取详细信息</small></p></div>';
+    }
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('=== 知识图谱渲染调试开始 ===');
+    console.log('页面加载完成');
+    console.log('当前时间:', new Date().toISOString());
+    console.log('D3.js 可用性:', typeof d3 !== 'undefined');
+    console.log('concepts 变量类型:', typeof concepts);
+    console.log('relations 变量类型:', typeof relations);
+    
+    // 初始化 Bootstrap Modal
+    var addConceptModalElement = document.getElementById('addConceptModal');
+    if (addConceptModalElement) {
+        // 🔴 确保模态框初始状态是隐藏的
+        addConceptModalElement.style.display = 'none';
+        addConceptModalElement.classList.remove('show');
+        addConceptModalElement.removeAttribute('aria-modal');
+        addConceptModalElement.removeAttribute('aria-hidden');
+        
+        // 清理可能存在的 backdrop
+        var existingBackdrops = document.querySelectorAll('.modal-backdrop');
+        existingBackdrops.forEach(function(backdrop) {
+            backdrop.remove();
+        });
+        
+        var addConceptModal = new bootstrap.Modal(addConceptModalElement, {
+            backdrop: true,
+            keyboard: true,
+            focus: true
+        });
+        console.log('✅ 添加概念模态框已初始化（默认隐藏）');
+        
+        // 监听模态框关闭事件，清理表单
+        addConceptModalElement.addEventListener('hidden.bs.modal', function () {
+            document.getElementById('addConceptFormKG').reset();
+            console.log('✅ 模态框已关闭，表单已清空');
+        });
+        
+        // 绑定取消按钮点击事件 - 直接使用 Bootstrap API 关闭
+        var cancelBtn = document.getElementById('cancelConceptBtn');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', function() {
+                console.log('🔴 取消按钮被点击');
+                console.log('模态框元素:', addConceptModalElement);
+                
+                var modal = bootstrap.Modal.getInstance(addConceptModalElement);
+                console.log('获取到的 modal 实例:', modal);
+                
+                if (modal) {
+                    // 先触发 Bootstrap 的关闭方法
+                    modal.hide();
+                    console.log('✅ 已调用 modal.hide()');
+                    
+                    // 立即手动移除所有样式和类（不等待）
+                    addConceptModalElement.style.display = 'none';
+                    addConceptModalElement.classList.remove('show');
+                    addConceptModalElement.removeAttribute('aria-modal');
+                    addConceptModalElement.removeAttribute('role');
+                    addConceptModalElement.removeAttribute('aria-hidden');
+                    
+                    // 移除 body 的 modal-open 类
+                    document.body.classList.remove('modal-open');
+                    document.body.style.overflow = '';
+                    document.body.style.paddingRight = '';
+                    
+                    // 移除所有 backdrop
+                    var backdrops = document.querySelectorAll('.modal-backdrop');
+                    backdrops.forEach(function(backdrop) {
+                        backdrop.remove();
+                    });
+                    
+                    console.log('✅ 模态框已强制手动关闭');
+                } else {
+                    console.error('❌ 无法获取 modal 实例，尝试手动关闭');
+                    // 如果实例不存在，手动隐藏
+                    addConceptModalElement.style.display = 'none';
+                    addConceptModalElement.classList.remove('show');
+                    document.body.classList.remove('modal-open');
+                    var backdrop = document.querySelector('.modal-backdrop');
+                    if (backdrop) {
+                        backdrop.remove();
+                    }
+                    console.log('✅ 模态框已手动关闭');
+                }
+            });
+            console.log('✅ 取消按钮事件已绑定');
+        }
+        
+        // 绑定添加按钮点击事件
+        var addBtn = document.getElementById('addConceptBtn');
+        if (addBtn) {
+            addBtn.addEventListener('click', function() {
+                addConceptFromKG();
+            });
+            console.log('✅ 添加按钮事件已绑定');
+        }
+        
+        // 🔴 绑定打开模态框按钮的点击事件
+        var openModalBtn = document.getElementById('openAddConceptModal');
+        if (openModalBtn) {
+            openModalBtn.addEventListener('click', function() {
+                var modal = new bootstrap.Modal(document.getElementById('addConceptModal'));
+                modal.show();
+                console.log('✅ 模态框已打开');
+            });
+            console.log('✅ 打开模态框按钮事件已绑定');
+        }
+    }
+    
+    try {
+        console.log('concepts 内容:', concepts);
+        console.log('relations 内容:', relations);
+        console.log('概念数量:', concepts ? concepts.length : 0);
+        console.log('关系数量:', relations ? relations.length : 0);
+    } catch(e) {
+        console.error('打印数据时出错:', e);
+    }
+
+    // 检查 D3.js
+    if (typeof d3 === 'undefined') {
+        console.error('❌ D3.js 未加载');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        if (loadingIndicator) {
+            loadingIndicator.innerHTML = '<div style="color: red;">❌ D3.js 未加载</div>';
+        }
+        return;
+    }
+    
+    console.log('D3.js 版本:', d3.version);
+
+    // 获取容器
+    const container = document.getElementById('knowledge-graph');
+    if (!container) {
+        console.error('❌ 找不到 knowledge-graph 容器');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        if (loadingIndicator) {
+            loadingIndicator.innerHTML = '<div style="color: red;">❌ 找不到容器</div>';
+        }
+        return;
+    }
+    console.log('✓ 找到容器，尺寸:', container.clientWidth, 'x', container.clientHeight);
+    
+    // 创建或获取 SVG 元素
+    let svgElement = document.getElementById('graph-svg');
+    if (!svgElement) {
+        svgElement = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svgElement.setAttribute("id", "graph-svg");
+        svgElement.style.width = "100%";
+        svgElement.style.height = "100%";
+        svgElement.style.display = "block";
+        container.appendChild(svgElement);
+        console.log('✓ 创建了新的 SVG 元素');
+    } else {
+        console.log('✓ 使用已存在的 SVG 元素');
+    }
+    
+    // 设置 SVG 尺寸
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    svgElement.setAttribute("width", width);
+    svgElement.setAttribute("height", height);
+    console.log('✓ SVG 尺寸设置为:', width, 'x', height);
+    
+    const svg = d3.select(svgElement);
+    console.log('✓ D3 选择 SVG 成功');
+
+    // 检查概念数据
+    if (!concepts || concepts.length === 0) {
+        console.error('❌ 没有概念数据');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        if (loadingIndicator) {
+            loadingIndicator.innerHTML = '<div style="color: orange;">⚠️ 暂无概念数据</div>';
+        }
+        return;
+    }
+    console.log('✓ 有', concepts.length, '个概念');
+
+    // 【方案 B】使用 D3.js 力导向布局（Force-Directed Layout）
+    console.log('🚀 启用力导向布局 - 节点自动分散，彻底解决重叠问题！');
+    
+    // 准备数据：构建节点和连线数组
+    const simulationData = {
+        nodes: concepts.map(c => ({
+            id: c.id,
+            name: c.concept_name,
+            frequency: c.frequency || 1,
+            size: c.size || 30,  // 增大默认尺寸
+            type: c.concept_type,
+            confidence: c.confidence || 0
+        })),
+        links: relations.map(r => ({
+            source: r.from_concept_id,
+            target: r.to_concept_id,
+            confidence: r.confidence || 1
+        }))
+    };
+    
+    console.log('✓ 力导向数据准备完成:', simulationData.nodes.length, '个节点，', simulationData.links.length, '条连线');
+    
+    // 创建力导向模拟
+    const simulation = d3.forceSimulation(simulationData.nodes)
+        .force('link', d3.forceLink(simulationData.links).id(d => d.id).distance(150)) // 连线长度 150px
+        .force('charge', d3.forceManyBody().strength(-300)) // 节点间斥力（原 -400 → -300，进一步减小）
+        .force('center', d3.forceCenter(width / 2, height / 2).strength(0.2)) // 中心引力增强（原 0.15 → 0.2）
+        .force('collide', d3.forceCollide().radius(d => d.size + 35).iterations(2)) // 碰撞检测（原 +40 → +35）
+        .force('x', d3.forceX(width / 2).strength(0.05)) // X 轴约束力，防止左右飞出
+        .force('y', d3.forceY(height / 2).strength(0.05)); // Y 轴约束力，防止上下飞出
+    
+    // 🔴 手动设置初始位置（避免 cx/cy 为 null）
+    simulationData.nodes.forEach((node, index) => {
+        node.x = width / 2 + (Math.random() - 0.5) * 200;
+        node.y = height / 2 + (Math.random() - 0.5) * 200;
+    });
+    
+    console.log('✓ 力导向模拟器创建成功');
+    console.log('🔴 初始位置示例:', simulationData.nodes[0].name, 'x:', simulationData.nodes[0].x, 'y:', simulationData.nodes[0].y);
+    
+    // 创建连线和节点分组
+    const linkGroup = svg.append("g").attr("class", "links");
+    const nodeGroup = svg.append("g").attr("class", "nodes");
+    const labelGroup = svg.append("g").attr("class", "labels");
+    
+    console.log('✓ SVG 分组创建成功');
+    console.log('SVG 元素:', svg.node());
+    console.log('linkGroup:', linkGroup.node());
+    console.log('nodeGroup:', nodeGroup.node());
+    console.log('labelGroup:', labelGroup.node());
+    
+    // 绘制连线
+    const links = linkGroup.selectAll("line")
+        .data(simulationData.links)
+        .enter().append("line")
+        .attr("stroke", "#7f8c8d")
+        .attr("stroke-opacity", "0.7")
+        .attr("stroke-width", d => Math.sqrt(d.confidence || 1) * 2.5)
+        .attr("stroke-linecap", "round");
+    
+    console.log('✓ 绘制了', simulationData.links.length, '条连线');
+    console.log('links 数据:', simulationData.links);
+    console.log('实际创建的 line 元素数量:', links.size());
+    
+    // 绘制节点
+    // 🔴 关键修复：拖拽函数必须在创建节点之前定义
+    function dragstarted(event, d) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+    }
+    
+    function dragged(event, d) {
+        d.fx = event.x;
+        d.fy = event.y;
+    }
+    
+    function dragended(event, d) {
+        if (!event.active) simulation.alphaTarget(0);
+        d.fx = null;
+        d.fy = null;
+    }
+    
+    // 绘制节点
+    const nodes = nodeGroup.selectAll(".node")
+        .data(simulationData.nodes)
+        .enter()
+        .append("g")  // 🔴 使用 g 分组包裹 circle 和 title
+        .attr("class", "node")
+        .attr("transform", d => `translate(${d.x},${d.y})`)  // 🔴 使用 transform 定位
+        .call(d3.drag() // 添加拖拽交互
+            .on("start", dragstarted)
+            .on("drag", dragged)
+            .on("end", dragended))
+        .on("dblclick", function(event, d) {
+            console.log('🔴 双击节点:', d.name, 'ID:', d.id);
+            // 双击节点时询问是否删除
+            deleteConcept(d.name, d.id);
+        });
+    
+    // 在分组内添加圆形
+    nodes.append("circle")
+        .attr("r", d => d.size)  // 使用 size 作为半径
+        .attr("fill", d => getConceptColorBright(d.type))
+        .attr("stroke", d => d.frequency > 3 ? '#e74c3c' : (d.frequency > 1 ? '#f39c12' : '#2c3e50'))
+        .attr("stroke-width", "3px")  // 固定边框宽度
+        .attr("cursor", "pointer")
+        .append("title") // 添加提示
+        .text(function(d) {
+            return `${d.name}
+类型：${d.type}
+频率：${d.frequency}
+
+双击删除此概念`;
+        });
+    
+    console.log('✓ 绘制了', simulationData.nodes.length, '个节点（带拖拽交互）');
+    console.log('nodes 数据:', simulationData.nodes);
+    console.log('实际创建的 circle 元素数量:', svgElement.querySelectorAll('.nodes circle').length);
+    
+    // 鼠标悬停效果
+    nodes.on("mouseover", function(event, d) {
+        d3.select(this)
+          .transition()
+          .duration(200)
+          .attr("stroke-width", "6")
+          .attr("stroke", "#ff4757");
+        
+        // 显示详细信息提示
+        showTooltip(event, d);
+    })
+    .on("mouseout", function(event, d) {
+        d3.select(this)
+          .transition()
+          .duration(200)
+          .attr("stroke-width", d.frequency > 3 ? "5" : (d.frequency > 1 ? "3.5" : "2.5"))
+          .attr("stroke", d.frequency > 3 ? '#e74c3c' : (d.frequency > 1 ? '#f39c12' : '#2c3e50'));
+        
+        // 隐藏提示
+        hideTooltip();
+    });
+    
+    // 添加标签（显示概念名称和频率）
+    const labels = labelGroup.selectAll("text")
+        .data(simulationData.nodes)
+        .enter().append("text")
+        .attr("text-anchor", "middle")
+        .attr("fill", "#000000")
+        .attr("font-weight", "bold")
+        .attr("font-size", d => {
+            const nameLength = d.name.length;
+            if (nameLength > 12) return "10px";
+            if (nameLength > 8) return "11px";
+            return "12px";
+        })
+        .attr("stroke", "#ffffff")
+        .attr("stroke-width", "2px")
+        .attr("paint-order", "stroke")
+        // 🔴 关键修复：标签也使用初始位置
+        .attr("x", d => d.x)
+        .attr("y", d => d.y - d.size - 15)
+        .text(d => {
+            // 显示概念名称 + 频率
+            const displayName = d.name.length > 12 ? d.name.substring(0, 12) + '...' : d.name;
+            return `${displayName} (${d.frequency})`;
+        });
+    
+    console.log('✓ 添加了', simulationData.nodes.length, '个标签');
+    
+    // 🔴 关键修复：拖拽函数必须在创建节点之前定义
+    function dragstarted(event, d) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+    }
+    
+    function dragged(event, d) {
+        d.fx = event.x;
+        d.fy = event.y;
+    }
+    
+    function dragended(event, d) {
+        if (!event.active) simulation.alphaTarget(0);
+        d.fx = null;
+        d.fy = null;
+    }
+    
+    // 力导向模拟的 tick 函数 - 每帧更新位置
+    simulation.on('tick', () => {
+        links
+            .attr("x1", d => d.source.x)
+            .attr("y1", d => d.source.y)
+            .attr("x2", d => d.target.x)
+            .attr("y2", d => d.target.y);
+        
+        // 🔴 更新分组的位置（不是 circle 的 cx/cy）
+        nodes
+            .attr("transform", d => `translate(${d.x},${d.y})`);
+        
+        labels
+            .attr("x", d => d.x)
+            .attr("y", d => d.y - d.size - 15); // 标签在节点上方
+    });
+    
+    console.log('✅ 力导向布局启动成功！');
+    
+    // 隐藏加载指示器
+    const loadingIndicator = document.getElementById('loading-indicator');
+    if (loadingIndicator) {
+        loadingIndicator.style.display = 'none';
+        console.log('✓ 隐藏加载指示器');
+    }
+    
+    // 显示 SVG 容器
+    svgElement.style.display = 'block';
+    console.log('✓ 显示 SVG 容器');
+    
+    console.log('=== 知识图谱渲染结束（力导向布局）===');
+    
+    // 🔴 强制重绘 SVG
+    svgElement.style.display = 'none';
+    svgElement.offsetHeight; // 强制重绘
+    svgElement.style.display = 'block';
+    
+    // 🔴 检查第一个 circle 的计算样式
+    setTimeout(() => {
+        const firstCircle = svgElement.querySelector('circle');
+        if (firstCircle) {
+            const computedStyle = window.getComputedStyle(firstCircle);
+            console.log('🔴 Circle 计算样式:');
+            console.log('  display:', computedStyle.display);
+            console.log('  visibility:', computedStyle.visibility);
+            console.log('  opacity:', computedStyle.opacity);
+            console.log('  fill:', computedStyle.fill);
+            console.log('  stroke:', computedStyle.stroke);
+            console.log('  stroke-width:', computedStyle.strokeWidth);
+            console.log('  r:', firstCircle.getAttribute('r'));
+            console.log('  cx:', firstCircle.getAttribute('cx'));
+            console.log('  cy:', firstCircle.getAttribute('cy'));
+            
+            // 检查是否有 transform
+            const transform = firstCircle.getCTM();
+            console.log('  transform:', transform);
+        } else {
+            console.error('❌ 找不到 circle 元素！');
+        }
+    }, 500);
+});
+
+// 优化的颜色辅助函数（使用更鲜明亮丽的配色）
+function getConceptColorBright(type) {
+    const brightColors = {
+        'entity': '#3498db',      // 明亮的蓝色
+        'relation': '#e74c3c',    // 鲜艳的红色
+        'attribute': '#2ecc71',   // 清新的绿色
+        'default': '#f39c12'      // 温暖的橙色
+    };
+    return brightColors[type] || brightColors.default;
+}
+
+// 🔴 显示详细信息提示
+function showTooltip(event, d) {
+    // 创建提示框
+    const tooltip = document.createElement('div');
+    tooltip.id = 'node-tooltip';
+    tooltip.style.cssText = `
+        position: absolute;
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 8px 12px;
+        border-radius: 4px;
+        font-size: 12px;
+        pointer-events: none;
+        z-index: 9999;
+        max-width: 200px;
+    `;
+    tooltip.innerHTML = `
+        <strong>${d.name}</strong><br>
+        类型：${d.type}<br>
+        频率：${d.frequency}
+    `;
+    
+    document.body.appendChild(tooltip);
+    
+    // 设置提示框位置
+    const updateTooltipPosition = (e) => {
+        tooltip.style.left = (e.pageX + 15) + 'px';
+        tooltip.style.top = (e.pageY - 28) + 'px';
+    };
+    
+    updateTooltipPosition(event);
+    
+    // 鼠标移动时更新位置
+    document.addEventListener('mousemove', updateTooltipPosition);
+}
+
+// 🔴 隐藏提示
+function hideTooltip() {
+    const tooltip = document.getElementById('node-tooltip');
+    if (tooltip) {
+        tooltip.remove();
+    }
+}
+
+// 删除概念函数
+async function deleteConcept(conceptName, conceptId) {
+    if (!confirm(`⚠️ 确定要删除概念 "${conceptName}" 吗？
+
+注意：
+- 将同时删除与此概念相关的所有关系
+- 此操作不可恢复`)) {
+        return;
+    }
+    
+    try {
+        console.log('准备删除概念:', conceptName, 'ID:', conceptId);
+        
+        const response = await fetch(`/teacher/knowledge_bases/${knowledge_base.id}/concepts/delete`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                concept_name: conceptName
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // 显示成功提示（绿色）
+            showNotification(`${result.message}`, 'success');
+            
+            // 从图谱中移除节点和关系
+            removeNodeFromGraph(conceptId);
+            
+            // 更新右侧统计信息
+            updateStatistics(-1);
+        } else {
+            showNotification(`删除失败：${result.error || '未知错误'}`, 'danger');
+        }
+    } catch (error) {
+        console.error('删除概念失败:', error);
+        showNotification(`删除失败：${error.message}`, 'danger');
+    }
+}
+
+// 显示通知提示
+function showNotification(message, type = 'info') {
+    // 创建提示框
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+    alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    alertDiv.role = 'alert';
+    alertDiv.innerHTML = `${message} <button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+    
+    // 添加到页面
+    document.body.appendChild(alertDiv);
+    
+    // 3 秒后自动关闭
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 3000);
+}
+
+// 更新统计信息
+function updateStatistics(conceptChange) {
+    // 更新概念总数
+    const conceptCountEl = document.querySelector('.stat-item strong');
+    if (conceptCountEl) {
+        const currentCount = parseInt(conceptCountEl.textContent) || 0;
+        const newCount = currentCount + conceptChange;
+        if (newCount >= 0) {
+            conceptCountEl.textContent = newCount;
+        }
+    }
+}
+
+// 从图谱中移除节点
+function removeNodeFromGraph(conceptId) {
+    console.log('从图谱中移除节点 ID:', conceptId);
+    
+    // 移除节点
+    d3.select('.nodes').selectAll(".node")
+        .filter(d => d.id === conceptId)
+        .remove();
+    
+    // 移除标签
+    d3.select('.labels').selectAll("text")
+        .filter(d => d.id === conceptId)
+        .remove();
+    
+    // 移除相关的连线（source 或 target 是该节点的都删除）
+    d3.select('.links').selectAll("line")
+        .filter(d => d.source.id === conceptId || d.target.id === conceptId)
+        .remove();
+    
+    console.log('✓ 节点已从图谱中移除');
+}
+
+// 添加概念函数（从知识图谱页面）
+async function addConceptFromKG() {
+    const conceptName = document.getElementById('conceptNameKG').value.trim();
+    const conceptType = document.getElementById('conceptTypeKG').value;
+    const description = document.getElementById('conceptDescriptionKG').value.trim();
+    
+    if (!conceptName) {
+        alert('请输入概念名称');
+        return;
+    }
+    
+    try {
+        console.log('准备添加概念:', conceptName, '类型:', conceptType);
+        
+        const response = await fetch(`/teacher/knowledge_bases/${knowledge_base.id}/concepts/add`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                concept_name: conceptName,
+                concept_type: conceptType,
+                description: description
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // 显示成功提示
+            showNotification(`${result.message}`, 'success');
+            
+            // 关闭模态框
+            var modalElement = document.getElementById('addConceptModal');
+            var modal = bootstrap.Modal.getInstance(modalElement);
+            if (modal) {
+                modal.hide();
+            }
+            
+            // 清空表单
+            document.getElementById('conceptNameKG').value = '';
+            document.getElementById('conceptDescriptionKG').value = '';
+            
+            // 刷新页面查看新节点
+            setTimeout(() => {
+                location.reload();
+            }, 1000);
+        } else {
+            showNotification(`添加失败：${result.error || '未知错误'}`, 'danger');
+        }
+    } catch (error) {
+        console.error('添加概念失败:', error);
+        showNotification(`添加失败：${error.message}`, 'danger');
+    }
+}
+</script>
+{% endblock %}

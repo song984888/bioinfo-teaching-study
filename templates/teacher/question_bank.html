@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+
+{% block title %}题库浏览 - 教师控制台{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="mb-4">
+        <h2><i class="fas fa-book"></i> 题库浏览</h2>
+        <p class="text-muted">查看和筛选已通过审核的题目</p>
+    </div>
+
+    <!-- 统计信息 -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <h5 class="card-title">题目总数</h5>
+                    <h2>{{ total_count }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <h5 class="card-title">当前显示</h5>
+                    <h2>{{ questions|length }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <h5 class="card-title">主题数量</h5>
+                    <h2>{{ all_topics|length }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-white">
+                <div class="card-body">
+                    <h5 class="card-title">语言类型</h5>
+                    <h2>{{ all_languages|length }}</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 筛选器 -->
+    <div class="card mb-4">
+        <div class="card-header bg-light">
+            <h5 class="mb-0"><i class="fas fa-filter"></i> 筛选条件</h5>
+        </div>
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('question_bank') }}" class="row g-3">
+                <div class="col-md-3">
+                    <label for="topic" class="form-label">主题</label>
+                    <select class="form-select" id="topic" name="topic">
+                        <option value="">全部主题</option>
+                        {% for topic in all_topics %}
+                        <option value="{{ topic }}" {% if request_args.get('topic') == topic %}selected{% endif %}>
+                            {{ topic }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="col-md-2">
+                    <label for="difficulty" class="form-label">难度</label>
+                    <select class="form-select" id="difficulty" name="difficulty">
+                        <option value="">全部难度</option>
+                        <option value="1" {% if request_args.get('difficulty') == '1' %}selected{% endif %}>简单 (1)</option>
+                        <option value="2" {% if request_args.get('difficulty') == '2' %}selected{% endif %}>中等 (2)</option>
+                        <option value="3" {% if request_args.get('difficulty') == '3' %}selected{% endif %}>困难 (3)</option>
+                    </select>
+                </div>
+                
+                <div class="col-md-2">
+                    <label for="language" class="form-label">编程语言</label>
+                    <select class="form-select" id="language" name="language">
+                        <option value="">全部语言</option>
+                        {% for lang in all_languages %}
+                        <option value="{{ lang }}" {% if request_args.get('language') == lang %}selected{% endif %}>
+                            {{ lang | upper }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="col-md-2">
+                    <label for="question_type" class="form-label">题目类型</label>
+                    <select class="form-select" id="question_type" name="question_type">
+                        <option value="">全部类型</option>
+                        {% for qtype in all_question_types %}
+                        <option value="{{ qtype }}" {% if request_args.get('question_type') == qtype %}selected{% endif %}>
+                            {{ qtype }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="col-md-3">
+                    <label for="start_date" class="form-label">开始日期</label>
+                    <input type="date" class="form-control" id="start_date" name="start_date" 
+                           value="{{ request_args.get('start_date', '') }}">
+                </div>
+                
+                <div class="col-md-3">
+                    <label for="end_date" class="form-label">结束日期</label>
+                    <input type="date" class="form-control" id="end_date" name="end_date" 
+                           value="{{ request_args.get('end_date', '') }}">
+                </div>
+                
+                <div class="col-md-3 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary me-2">
+                        <i class="fas fa-search"></i> 筛选
+                    </button>
+                    <a href="{{ url_for('question_bank') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-redo"></i> 重置
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 题目列表 -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-list"></i> 题目列表</h5>
+        </div>
+        <div class="card-body p-0">
+            {% if questions %}
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 60px;">ID</th>
+                            <th>题目内容</th>
+                            <th style="width: 120px;">主题</th>
+                            <th style="width: 80px;">难度</th>
+                            <th style="width: 100px;">语言</th>
+                            <th style="width: 100px;">类型</th>
+                            <th style="width: 100px;">分值</th>
+                            <th style="width: 160px;">创建时间</th>
+                            <th style="width: 120px;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for question in questions %}
+                        <tr>
+                            <td>{{ question.id }}</td>
+                            <td>
+                                <div style="max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" 
+                                     title="{{ question.question_text }}">
+                                    {{ question.question_text[:100] }}{% if question.question_text|length > 100 %}...{% endif %}
+                                </div>
+                            </td>
+                            <td>
+                                <span class="badge bg-info">{{ question.topic }}</span>
+                            </td>
+                            <td>
+                                {% for i in range(1, 4) %}
+                                    {% if i <= question.difficulty %}★{% else %}☆{% endif %}
+                                {% endfor %}
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary">{{ question.language | upper }}</span>
+                            </td>
+                            <td>
+                                <span class="badge bg-primary">{{ question.question_type }}</span>
+                            </td>
+                            <td>{{ question.score }}分</td>
+                            <td>{{ question.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                            <td>
+                                <div class="btn-group" role="group">
+                                    <a href="{{ url_for('question_detail', question_id=question.id) }}" 
+                                       class="btn btn-sm" 
+                                       title="查看详情"
+                                       style="background-color: #0d6efd; border-color: #0d6efd; color: white !important; white-space: nowrap; padding: 4px 12px; display: inline-flex; align-items: center; gap: 6px;">
+                                        <i class="fas fa-eye"></i>
+                                        <span>查看</span>
+                                    </a>
+                                    <a href="{{ url_for('dashboard') }}" 
+                                       class="btn btn-sm" 
+                                       title="组卷"
+                                       style="background-color: #198754; border-color: #198754; color: white !important; white-space: nowrap; padding: 4px 12px; display: inline-flex; align-items: center; gap: 6px;">
+                                        <i class="fas fa-plus"></i>
+                                        <span>组卷</span>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- 分页 -->
+            {% if total_pages > 1 %}
+            <div class="card-footer">
+                <nav aria-label="Page navigation">
+                    <ul class="pagination justify-content-center mb-0">
+                        <li class="page-item {% if page == 1 %}disabled{% endif %}">
+                            <a class="page-link" href="{{ url_for('question_bank', page=page-1, **request_args.to_dict()) }}">
+                                <i class="fas fa-chevron-left"></i> 上一页
+                            </a>
+                        </li>
+                        
+                        {% for p in range(1, total_pages + 1) %}
+                            {% if p == page %}
+                                <li class="page-item active">
+                                    <span class="page-link">{{ p }}</span>
+                                </li>
+                            {% elif p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('question_bank', page=p, **request_args.to_dict()) }}">
+                                        {{ p }}
+                                    </a>
+                                </li>
+                            {% elif p == page - 3 or p == page + 3 %}
+                                <li class="page-item disabled">
+                                    <span class="page-link">...</span>
+                                </li>
+                            {% endif %}
+                        {% endfor %}
+                        
+                        <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+                            <a class="page-link" href="{{ url_for('question_bank', page=page+1, **request_args.to_dict()) }}">
+                                下一页 <i class="fas fa-chevron-right"></i>
+                            </a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+            {% endif %}
+            
+            {% else %}
+            <div class="text-center py-5">
+                <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                <h5 class="text-muted">暂无题目</h5>
+                <p class="text-muted">请调整筛选条件或添加新的题目</p>
+                <a href="{{ url_for('generate_theory_questions') }}" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> 生成新题目
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block styles %}
+<style>
+    .table td {
+        vertical-align: middle;
+    }
+    
+    .badge {
+        font-size: 0.85em;
+        padding: 0.35em 0.65em;
+    }
+    
+    .pagination .page-link {
+        color: var(--primary);
+    }
+    
+    .pagination .page-item.active .page-link {
+        background-color: var(--primary);
+        border-color: var(--primary);
+    }
+</style>
+{% endblock %}
