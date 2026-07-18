@@ -173,6 +173,24 @@
                                     <div class="metric-label">参与练习频率(活跃期内每日练习填充比例)</div>
                                 </div>
                             </div>
+                            <div class="col-md-4 mb-4">
+                                <div class="metric-card">
+                                    <div class="metric-value">{{ kb_learning.concept_count if kb_learning else 0 }}</div>
+                                    <div class="metric-label">知识库-查看概念数</div>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-4">
+                                <div class="metric-card">
+                                    <div class="metric-value">{{ kb_learning.document_count if kb_learning else 0 }}</div>
+                                    <div class="metric-label">知识库-阅读文档/课件数</div>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-4">
+                                <div class="metric-card">
+                                    <div class="metric-value">{{ kb_learning.total_concept_views if kb_learning else 0 }}</div>
+                                    <div class="metric-label">文献检索次数</div>
+                                </div>
+                            </div>
                         </div>
                         
                         <!-- 学习时间分布 -->
@@ -248,6 +266,22 @@
                                     {% endfor %}
                                 </div>
                             </div>
+                            {% if kb_learning and kb_learning.has_data %}
+                            <div class="key-topics mt-4">
+                                <h5><i class="fas fa-book-open me-2 text-success"></i>知识库学习</h5>
+                                <div class="mt-2">
+                                    <p class="mb-1"><small>浏览知识库：<b>{{ kb_learning.kb_count }}</b> 个</small></p>
+                                    <p class="mb-1"><small>查看概念：<b>{{ kb_learning.concept_count }}</b> 个</small></p>
+                                    <p class="mb-1"><small>阅读文档：<b>{{ kb_learning.document_count }}</b> 篇</small></p>
+                                    <p class="mb-1"><small>检索文献：<b>{{ kb_learning.total_concept_views }}</b> 次</small></p>
+                                </div>
+                            </div>
+                            {% else %}
+                            <div class="key-topics mt-4">
+                                <h5><i class="fas fa-book-open me-2 text-muted"></i>知识库学习</h5>
+                                <p class="text-muted"><small>暂无知识库学习记录</small></p>
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>

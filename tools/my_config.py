@@ -297,6 +297,33 @@ def init_db():
             FOREIGN KEY (from_concept_id) REFERENCES knowledge_concepts(id) ON DELETE CASCADE,
             FOREIGN KEY (to_concept_id) REFERENCES knowledge_concepts(id) ON DELETE CASCADE
         )""",
+        """CREATE TABLE IF NOT EXISTS concept_view_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            student_id VARCHAR(50) NOT NULL COMMENT '学生工号(employee_id)',
+            kb_id INT NOT NULL,
+            concept_id INT NOT NULL,
+            concept_name VARCHAR(191),
+            viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_cvl_kb (kb_id),
+            INDEX idx_cvl_concept (concept_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学生概念点击浏览记录'""",
+        """CREATE TABLE IF NOT EXISTS document_view_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            student_id VARCHAR(50) NOT NULL COMMENT '学生工号(employee_id)',
+            kb_id INT NOT NULL,
+            document_id INT NOT NULL,
+            document_title VARCHAR(255),
+            viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_dvl_kb (kb_id),
+            INDEX idx_dvl_doc (document_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学生文档打开记录'""",
+        """CREATE TABLE IF NOT EXISTS kb_view_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            student_id VARCHAR(50) NOT NULL COMMENT '学生工号(employee_id)',
+            kb_id INT NOT NULL,
+            viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_kvl_kb (kb_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学生知识图谱打开记录'""",
         """CREATE TABLE IF NOT EXISTS exam_papers (
             id INT AUTO_INCREMENT PRIMARY KEY,
             paper_name VARCHAR(200) NOT NULL COMMENT '试卷名称',

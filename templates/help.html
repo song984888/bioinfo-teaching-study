@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}使用帮助 · 生物信息学教&学系统{% endblock %}
+
+{% block content %}
+<div class="articles-container">
+  <div class="page-header" style="border-radius:12px;margin-bottom:1.5rem">
+    <h1><span>📖 使用帮助</span> 生物信息学教&学系统</h1>
+    <p>当前身份：<strong>{{ role }}</strong> · 以下为各角色常用功能的快速指引</p>
+    <p style="margin-top:0.6rem">
+      {% if role == 'admin' %}
+      <a class="btn btn-secondary" href="{{ url_for('download_system_manual') }}" style="text-decoration:none;display:inline-block">📥 下载《系统完整功能与用户手册》</a>
+      {% else %}
+      <span class="exp-note">系统完整手册仅限管理员下载</span>
+      {% endif %}
+    </p>
+  </div>
+
+  <!-- 通用 -->
+  <div class="card exp-section">
+    <h3>🔐 通用操作</h3>
+    <ul class="exp-list">
+      <li><b>登录</b>：使用学号/工号 + 密码登录，角色由账号决定（student / teacher / admin）。</li>
+      <li><b>首页</b>：控制台入口，集中所有功能卡片。</li>
+      <li><b>个人账号</b>：修改密码、查看账户信息（控制台右上角或导航「账号管理」）。</li>
+      <li><b>文献检索</b>：检索生物信息学文献并做单篇深入研读（见下方说明）。</li>
+    </ul>
+  </div>
+
+  {% if role == 'student' %}
+  <div class="card exp-section">
+    <h3>🎓 学生功能</h3>
+    <ul class="exp-list">
+      <li><b>开始考试</b>：参加正式编程考试，提交代码后由 AI 自动评分。</li>
+      <li><b>查看成绩</b>：查看历史考试成绩、AI 评分与教师复核评分。</li>
+      <li><b>抽题学习</b>：按主题 / 语言 / 难度抽取练习题，实时运行代码并查看结果。</li>
+      <li><b>模拟考试</b>：模拟真实考试环境，不计入学分，用于自测。</li>
+      <li><b>学习反馈</b>：系统根据考试与练习数据，由 AI 生成个性化学习建议。</li>
+      <li><b>调试运行</b>：在题目详情页点击「调试运行」，可输入标准输入（逐行变量）、上传测试文件，再运行查看结果。</li>
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if role == 'teacher' or role == 'admin' %}
+  <div class="card exp-section">
+    <h3>🧑‍🏫 教师 / 管理员功能</h3>
+    <ul class="exp-list">
+      <li><b>AI 出题（编程）</b>：选择主题 / 难度 / 语言，调用 DeepSeek 或 Ollama 生成编程题，后台任务异步执行。</li>
+      <li><b>理论题生成</b>：基于知识库或 PDF，按题型（名词解释 / 填空 / 判断 / 单选 / 多选 / 简答 / 论述 / 案例分析 / 综合）生成理论题。</li>
+      <li><b>题目审核</b>：在「待审核」中通过 / 驳回 / 删除题目；通过后进入题库。</li>
+      <li><b>题库</b>：浏览已通过题目，支持筛选与分页。</li>
+      <li><b>智能组卷</b>：按题型、数量、分值、难度分布生成 A/B 双卷，可预览并导出 PDF。</li>
+      <li><b>考试记录</b>：查看学生考试详情，教师可手动复核 / 修正分数。</li>
+      <li><b>知识库</b>：上传 PDF / TXT / Word 文档，自动抽取概念与关系，生成知识图谱。</li>
+      <li><b>后台任务</b>：查看 AI 生成任务的进度、日志与结果，失败时可重启。</li>
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if role == 'admin' %}
+  <div class="card exp-section">
+    <h3>🛡 管理员专属</h3>
+    <ul class="exp-list">
+      <li><b>账号管理</b>：创建 / 启用禁用 / 删除 / 编辑用户账号。</li>
+      <li><b>题目管理</b>：跨库检索并删除任意题目。</li>
+      <li><b>知识库管理</b>：查看并删除全部知识库。</li>
+      <li><b>Prompt 管理</b>：查看并覆盖各题型 / 编程题的 AI 提示词模板（保存至 prompt_configs）。</li>
+    </ul>
+  </div>
+  {% endif %}
+
+  <div class="card exp-section">
+    <h3>🧬 文献检索（Bioinformatics 文献智能检索）</h3>
+    <ul class="exp-list">
+      <li><b>检索</b>：多选目标期刊 + 关键词 + 年份范围，点击「检索文献」。</li>
+      <li><b>创新点提取</b>：每篇卡片「提取创新点与应用」自动抽取核心创新点与成果应用；「批量提取」可一次性分析全部结果。</li>
+      <li><b>深入研读</b>：点击「深入研读」打开弹窗，将单篇文献结构化为 关键词 / 方法&工具 / 结果 / 讨论&未来 / 待解决问题 / 图表；点击关键词可重新检索。</li>
+      <li><b>导出</b>：将结果导出为 CSV（含 BOM，Excel 可直接打开）。</li>
+      <li><b>期刊维护</b>：教师 / 管理员点击期刊选择框旁的「⚙ 管理」可添加、重命名、删除目标期刊。</li>
+    </ul>
+  </div>
+
+  <div class="card exp-section">
+    <h3>❓ 常见问题</h3>
+    <ul class="exp-list">
+      <li>代码运行支持 Python / Java / C / Perl，运行在临时目录，超时 30 秒。</li>
+      <li>AI 功能依赖 DeepSeek API 或本地 Ollama；若 API 不可用，相关功能会回退或报错提示。</li>
+      <li>文献数据来自 Europe PMC 公开接口，全文 / 图表依赖其 OA 子集可用性。</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}

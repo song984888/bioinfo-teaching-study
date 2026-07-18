@@ -11,6 +11,20 @@
 {% block title %}{{ knowledge_base.name }} - 知识图谱{% endblock %}
 
 {% block content %}
+<style>
+  #knowledge-graph.kg-fullscreen {
+    position: fixed !important;
+    top: 0; left: 0;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 1080;
+    background: #fff;
+    border-radius: 0;
+    margin: 0;
+    border: 1px solid #ddd;
+  }
+  #knowledge-graph.kg-fullscreen #loading-indicator { display: none !important; }
+</style>
 <div class="container mt-4">
     <!-- 添加 JavaScript 数据变量 -->
     <script>
@@ -19,6 +33,20 @@
         var concepts = {{ concepts|tojson|safe }};
         var relations = {{ relations|tojson|safe }};
         var max_frequency = {{ max_frequency|tojson|safe }};
+        var documents = {{ documents|tojson|safe }};
+
+        // 构建 文档id -> 颜色 的映射，用于按文档区分概念颜色
+        var docColorMap = {};
+        var docTitleMap = {};
+        if (documents && documents.length) {
+            documents.forEach(function(d) {
+                docColorMap[d.id] = d.color;
+                docTitleMap[d.id] = d.title;
+            });
+        }
+        function getDocColor(docId) {
+            return docColorMap[docId] || '#95a5a6';
+        }
         
         console.log('JavaScript 变量已设置:');
         console.log('knowledge_base:', knowledge_base);
@@ -47,6 +75,12 @@
         <div>
             <button type="button" class="btn btn-success me-2" id="openAddConceptModal">
                 <i class="fas fa-plus-circle"></i> 添加概念
+            </button>
+            <button type="button" class="btn btn-outline-primary me-2" id="toggleFullscreenBtn">
+                <i class="fas fa-expand"></i> 全屏
+            </button>
+            <button type="button" class="btn btn-outline-secondary me-2" id="relayoutBtn">
+                <i class="fas fa-sync-alt"></i> 重新布局
             </button>
             <a href="{{ url_for('view_knowledge_base', kb_id=knowledge_base.id) }}" class="btn btn-secondary">
                 <i class="fas fa-arrow-left"></i> 返回知识库
@@ -161,15 +195,21 @@
                             </div>
                         </div>
                     </div>
-                </div>
             </div>
-            
-            <div class="card mt-3">
-                <div class="card-header">
-                    <h5 class="mb-0">
-                        <i class="fas fa-sort-amount-down"></i> 概念频率排序
-                    </h5>
-                </div>
+        </div>
+
+        <div class="card mt-3 border-info">
+            <div class="card-body text-info small">
+                <i class="fas fa-lightbulb"></i> 提示：单击概念节点会以该概念为检索词跳转到文献检索页；双击则删除该概念。
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-sort-amount-down"></i> 概念频率排序
+                </h5>
+            </div>
                 <div class="card-body">
                     <div id="frequency-ranking" class="frequency-list">
                         <!-- 频率排序列表将在这里动态生成 -->
@@ -197,6 +237,67 @@
                         <label class="form-check-label" for="showLabels">
                             显示标签
                         </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-palette"></i> 文档颜色图例
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="document-legend">
+                        <!-- 文档颜色图例将在这里动态生成 -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-fire"></i> 学生关注热度
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="statistics mb-3">
+                        <div class="stat-item mb-2">
+                            <div class="d-flex justify-content-between"><span>概念浏览</span><strong>{{ total_concept_views }}</strong></div>
+                        </div>
+                        <div class="stat-item mb-2">
+                            <div class="d-flex justify-content-between"><span>文档浏览</span><strong>{{ total_document_views }}</strong></div>
+                        </div>
+                        <div class="stat-item mb-2">
+                            <div class="d-flex justify-content-between"><span>图谱打开</span><strong>{{ kg_views_total }}</strong></div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="d-flex justify-content-between"><span>参与学生</span><strong>{{ unique_students }}</strong></div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="fw-bold mb-2"><i class="fas fa-star"></i> Top 概念</div>
+                        {% if concept_heat %}
+                        <ol class="mb-0 ps-3">
+                            {% for c in concept_heat if c.views > 0 %}
+                            <li class="mb-1">{{ c.name }} <span class="badge bg-primary rounded-pill">{{ c.views }}</span></li>
+                            {% else %}
+                            <div class="text-muted small">暂无浏览数据</div>
+                            {% endfor %}
+                        </ol>
+                        {% else %}<div class="text-muted small">暂无数据</div>{% endif %}
+                    </div>
+                    <div>
+                        <div class="fw-bold mb-2"><i class="fas fa-file-alt"></i> Top 文档</div>
+                        {% if document_heat %}
+                        <ol class="mb-0 ps-3">
+                            {% for d in document_heat if d.views > 0 %}
+                            <li class="mb-1">{{ d.title }} <span class="badge bg-success rounded-pill">{{ d.views }}</span></li>
+                            {% else %}
+                            <div class="text-muted small">暂无浏览数据</div>
+                            {% endfor %}
+                        </ol>
+                        {% else %}<div class="text-muted small">暂无数据</div>{% endif %}
                     </div>
                 </div>
             </div>
@@ -340,6 +441,7 @@ window.addEventListener('error', function(e) {
     console.error('错误源:', e.filename, '行号:', e.lineno);
     const loadingIndicator = document.getElementById('loading-indicator');
     if (loadingIndicator) {
+        loadingIndicator.style.display = 'block';
         loadingIndicator.innerHTML = '<div style="color: red; padding: 20px;"><h3>❌ 渲染失败</h3><p>' + e.message + '</p><p><small>请查看浏览器控制台（F12）获取详细信息</small></p></div>';
     }
 });
@@ -465,7 +567,8 @@ document.addEventListener('DOMContentLoaded', function() {
         console.error('❌ D3.js 未加载');
         const loadingIndicator = document.getElementById('loading-indicator');
         if (loadingIndicator) {
-            loadingIndicator.innerHTML = '<div style="color: red;">❌ D3.js 未加载</div>';
+            loadingIndicator.style.display = 'block';
+            loadingIndicator.innerHTML = '<div style="color: red;">❌ D3.js 未加载，请检查网络或 CDN 是否可访问</div>';
         }
         return;
     }
@@ -499,8 +602,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // 设置 SVG 尺寸
-    const width = container.clientWidth;
-    const height = container.clientHeight;
+    let width = container.clientWidth;
+    let height = container.clientHeight;
     svgElement.setAttribute("width", width);
     svgElement.setAttribute("height", height);
     console.log('✓ SVG 尺寸设置为:', width, 'x', height);
@@ -513,6 +616,7 @@ document.addEventListener('DOMContentLoaded', function() {
         console.error('❌ 没有概念数据');
         const loadingIndicator = document.getElementById('loading-indicator');
         if (loadingIndicator) {
+            loadingIndicator.style.display = 'block';
             loadingIndicator.innerHTML = '<div style="color: orange;">⚠️ 暂无概念数据</div>';
         }
         return;
@@ -530,7 +634,9 @@ document.addEventListener('DOMContentLoaded', function() {
             frequency: c.frequency || 1,
             size: c.size || 30,  // 增大默认尺寸
             type: c.concept_type,
-            confidence: c.confidence || 0
+            confidence: c.confidence || 0,
+            document_id: c.document_id,  // 所属文档，用于按文档着色
+            docColor: getDocColor(c.document_id)
         })),
         links: relations.map(r => ({
             source: r.from_concept_id,
@@ -585,23 +691,29 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 绘制节点
     // 🔴 关键修复：拖拽函数必须在创建节点之前定义
+    let kgDragged = false;     // 拖拽中/拖拽刚结束置位，避免误触发点击跳转
+    let kgClickTimer = null;   // 单击延迟定时器，用于区分「单击跳转」与「双击删除」
+
     function dragstarted(event, d) {
         if (!event.active) simulation.alphaTarget(0.3).restart();
         d.fx = d.x;
         d.fy = d.y;
     }
-    
+
     function dragged(event, d) {
+        kgDragged = true;
         d.fx = event.x;
         d.fy = event.y;
     }
-    
+
     function dragended(event, d) {
         if (!event.active) simulation.alphaTarget(0);
         d.fx = null;
         d.fy = null;
+        // 拖拽结束后短暂延迟再允许点击跳转
+        setTimeout(() => { kgDragged = false; }, 60);
     }
-    
+
     // 绘制节点
     const nodes = nodeGroup.selectAll(".node")
         .data(simulationData.nodes)
@@ -613,7 +725,18 @@ document.addEventListener('DOMContentLoaded', function() {
             .on("start", dragstarted)
             .on("drag", dragged)
             .on("end", dragended))
+        .on("click", function(event, d) {
+            // 拖拽结束不跳转；延迟以区分单击（检索文献）与双击（删除）
+            if (kgDragged) return;
+            if (kgClickTimer) { clearTimeout(kgClickTimer); kgClickTimer = null; }
+            kgClickTimer = setTimeout(function () {
+                kgClickTimer = null;
+                window.location.href = '/bioinfo-articles?q=' + encodeURIComponent(d.name);
+            }, 250);
+        })
         .on("dblclick", function(event, d) {
+            // 取消可能挂起的单击跳转，执行删除
+            if (kgClickTimer) { clearTimeout(kgClickTimer); kgClickTimer = null; }
             console.log('🔴 双击节点:', d.name, 'ID:', d.id);
             // 双击节点时询问是否删除
             deleteConcept(d.name, d.id);
@@ -622,7 +745,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // 在分组内添加圆形
     nodes.append("circle")
         .attr("r", d => d.size)  // 使用 size 作为半径
-        .attr("fill", d => getConceptColorBright(d.type))
+        .attr("fill", d => d.docColor)  // 按所属文档着色，区分不同文档的概念
         .attr("stroke", d => d.frequency > 3 ? '#e74c3c' : (d.frequency > 1 ? '#f39c12' : '#2c3e50'))
         .attr("stroke-width", "3px")  // 固定边框宽度
         .attr("cursor", "pointer")
@@ -632,6 +755,7 @@ document.addEventListener('DOMContentLoaded', function() {
 类型：${d.type}
 频率：${d.frequency}
 
+单击：检索相关文献
 双击删除此概念`;
         });
     
@@ -687,24 +811,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     
     console.log('✓ 添加了', simulationData.nodes.length, '个标签');
-    
-    // 🔴 关键修复：拖拽函数必须在创建节点之前定义
-    function dragstarted(event, d) {
-        if (!event.active) simulation.alphaTarget(0.3).restart();
-        d.fx = d.x;
-        d.fy = d.y;
-    }
-    
-    function dragged(event, d) {
-        d.fx = event.x;
-        d.fy = event.y;
-    }
-    
-    function dragended(event, d) {
-        if (!event.active) simulation.alphaTarget(0);
-        d.fx = null;
-        d.fy = null;
-    }
     
     // 力导向模拟的 tick 函数 - 每帧更新位置
     simulation.on('tick', () => {
@@ -766,6 +872,99 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('❌ 找不到 circle 元素！');
         }
     }, 500);
+
+    // ==================== 全屏 & 自适应大小 ====================
+    // 重新读取容器尺寸、更新 SVG 像素尺寸并重新居中力导向模拟
+    function resizeGraph() {
+        if (!container || !svgElement || !simulation) return;
+        width = container.clientWidth;
+        height = container.clientHeight;
+        if (width <= 0 || height <= 0) return;
+        svgElement.setAttribute("width", width);
+        svgElement.setAttribute("height", height);
+        simulation.force("center").x(width / 2).y(height / 2);
+        simulation.force("x").x(width / 2);
+        simulation.force("y").y(height / 2);
+        simulation.alpha(0.5).restart();
+        console.log('✓ 图谱尺寸已更新为:', width, 'x', height);
+    }
+
+    // 全屏切换（CSS 覆盖层，隐藏浏览器其他内容，彻底解决显示不全）
+    const fullscreenBtn = document.getElementById('toggleFullscreenBtn');
+    if (fullscreenBtn) {
+        fullscreenBtn.addEventListener('click', function () {
+            const isFs = container.classList.toggle('kg-fullscreen');
+            fullscreenBtn.innerHTML = isFs
+                ? '<i class="fas fa-compress"></i> 退出全屏'
+                : '<i class="fas fa-expand"></i> 全屏';
+            // 等待布局生效后再重新计算尺寸并重新居中
+            requestAnimationFrame(() => requestAnimationFrame(resizeGraph));
+        });
+    }
+
+    // 重新布局：重新居中并重新散开节点
+    const relayoutBtn = document.getElementById('relayoutBtn');
+    if (relayoutBtn) {
+        relayoutBtn.addEventListener('click', function () {
+            resizeGraph();
+            if (typeof showNotification === 'function') showNotification('已重新布局', 'info');
+        });
+    }
+
+    // 窗口大小变化时自动适应（防抖），普通视图下也能随时铺满可用空间
+    let kgResizeTimer = null;
+    window.addEventListener('resize', function () {
+        if (kgResizeTimer) clearTimeout(kgResizeTimer);
+        kgResizeTimer = setTimeout(resizeGraph, 200);
+    });
+
+    // ==================== 文档颜色图例 ====================
+    const docLegend = document.getElementById('document-legend');
+    if (docLegend && documents && documents.length) {
+        documents.forEach(function (d) {
+            const item = document.createElement('div');
+            item.style.cssText = 'display:flex;align-items:center;margin-bottom:8px;';
+            const swatch = document.createElement('span');
+            swatch.style.cssText = 'display:inline-block;width:14px;height:14px;border-radius:50%;background:' + d.color + ';margin-right:8px;flex:0 0 auto;';
+            const label = document.createElement('span');
+            label.style.cssText = 'font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+            label.textContent = (d.title || ('文档 ' + d.id));
+            item.appendChild(swatch);
+            item.appendChild(label);
+            docLegend.appendChild(item);
+        });
+    }
+
+    // ==================== 显示控制滑块（实时调节） ====================
+    // 节点大小：实时调整 circle 半径、标签偏移与碰撞力
+    const nodeSizeSlider = document.getElementById('nodeSize');
+    if (nodeSizeSlider) {
+        nodeSizeSlider.addEventListener('input', function () {
+            const val = +this.value;
+            simulationData.nodes.forEach(n => { n.size = val; });
+            nodes.select('circle').attr('r', val);
+            labels.attr('y', d => d.y - val - 15);
+            simulation.force('collide').radius(d => d.size + 35);
+            simulation.alpha(0.3).restart();
+        });
+    }
+
+    // 连线粗细：实时调整 stroke-width
+    const linkWidthSlider = document.getElementById('linkWidth');
+    if (linkWidthSlider) {
+        linkWidthSlider.addEventListener('input', function () {
+            const val = +this.value;
+            links.attr('stroke-width', val);
+        });
+    }
+
+    // 显示标签：实时切换标签可见性
+    const showLabelsCheck = document.getElementById('showLabels');
+    if (showLabelsCheck) {
+        showLabelsCheck.addEventListener('change', function () {
+            labels.style('display', this.checked ? null : 'none');
+        });
+    }
 });
 
 // 优化的颜色辅助函数（使用更鲜明亮丽的配色）
@@ -798,7 +997,8 @@ function showTooltip(event, d) {
     tooltip.innerHTML = `
         <strong>${d.name}</strong><br>
         类型：${d.type}<br>
-        频率：${d.frequency}
+        频率：${d.frequency}<br>
+        来源文档：${docTitleMap[d.document_id] || '未知'}
     `;
     
     document.body.appendChild(tooltip);

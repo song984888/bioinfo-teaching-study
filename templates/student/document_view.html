@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}{{ document.title }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div>
+            <a href="{{ url_for('student_knowledge_base_detail', kb_id=kb_id) }}" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> 返回
+            </a>
+            <span class="ms-2 h5">{{ document.title }}</span>
+        </div>
+        <div>
+            <a href="{{ url_for('student_knowledge_graph', kb_id=kb_id) }}" class="btn btn-sm btn-outline-info">
+                <i class="fas fa-project-diagram"></i> 知识图谱
+            </a>
+            <a href="{{ url_for('student_document_download', kb_id=kb_id, doc_id=document.id) }}" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-download"></i> 下载
+            </a>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            {% set has_meta = doc_meta.journal or doc_meta.authors or doc_meta.pub_year or doc_meta.doi or doc_meta.pmid or doc_meta.pmcid or doc_meta.source_url or doc_meta.keywords %}
+            {% if document.file_type == 'pdf' %}
+            <iframe src="{{ url_for('student_document_pdf', kb_id=kb_id, doc_id=document.id) }}"
+                    width="100%" height="700px" style="border:0;"></iframe>
+            {% elif document.file_type in ['txt', 'md', 'py', 'java', 'c', 'cpp', 'js', 'html'] %}
+                {% if has_meta %}
+                <div class="mb-3 pb-2 border-bottom">
+                    <h4 class="mb-1">{{ document.title }}</h4>
+                    {% if doc_meta.authors %}<div class="text-muted small mb-1">{{ doc_meta.authors }}</div>{% endif %}
+                    <div class="text-muted small mb-1">
+                        {% if doc_meta.journal %}<span>{{ doc_meta.journal }}</span>{% endif %}
+                        {% if doc_meta.pub_year %}<span class="ms-1">{{ doc_meta.pub_year }}</span>{% endif %}
+                    </div>
+                    {% if doc_meta.keywords %}<div class="small mb-1"><b>关键词：</b>{{ doc_meta.keywords }}</div>{% endif %}
+                    <div class="small text-muted">
+                        {% if doc_meta.doi %}<span class="me-2">DOI: {{ doc_meta.doi }}</span>{% endif %}
+                        {% if doc_meta.pmid %}<span class="me-2">PMID: {{ doc_meta.pmid }}</span>{% endif %}
+                        {% if doc_meta.pmcid %}<span class="me-2">{{ doc_meta.pmcid }}</span>{% endif %}
+                        {% if doc_meta.source_url %}<a href="{{ doc_meta.source_url }}" target="_blank" rel="noopener">来源链接 ↗</a>{% endif %}
+                    </div>
+                </div>
+                <div style="white-space:pre-wrap;line-height:1.85;">{{ document.content }}</div>
+                {% else %}
+                <pre class="code-display"><code>{{ document.content }}</code></pre>
+                {% endif %}
+            {% else %}
+            <div class="alert alert-warning">该文件格式（{{ document.file_type|upper }}）不支持在线预览，请下载查看。</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

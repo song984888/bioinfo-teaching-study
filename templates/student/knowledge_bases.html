@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}知识库浏览{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2><i class="fas fa-book"></i> 公开知识库</h2>
+    <p class="text-muted">浏览公开知识库，查看文档与知识图谱；在知识图谱中点击概念即可检索相关文献。</p>
+
+    <div class="row mt-3">
+        {% for kb in knowledge_bases %}
+        <div class="col-md-4 mb-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">{{ kb.name }}</h5>
+                    <p class="card-text text-muted">{{ kb.description or '暂无描述' }}</p>
+                </div>
+                <div class="card-footer bg-white">
+                    <a href="{{ url_for('student_knowledge_base_detail', kb_id=kb.id) }}" class="btn btn-primary btn-sm">
+                        <i class="fas fa-folder-open"></i> 查看文档
+                    </a>
+                    <a href="{{ url_for('student_knowledge_graph', kb_id=kb.id) }}" class="btn btn-outline-info btn-sm">
+                        <i class="fas fa-project-diagram"></i> 知识图谱
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="col-12">
+            <div class="alert alert-info">暂无公开知识库。</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

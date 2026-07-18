@@ -102,6 +102,7 @@
             <button class="tab-link active" data-tab="exercise">练习数据</button>
             <button class="tab-link" data-tab="exam">考试数据</button>
             <button class="tab-link" data-tab="suggestion">学习建议</button>
+            <button class="tab-link" data-tab="kb">知识库学习</button>
         </div>
         
         <div id="exercise" class="tab-content active">
@@ -181,6 +182,30 @@
                 <h4>个性化学习建议</h4>
                 <div id="study-suggestion">暂无学习建议</div>
                 <p class="suggestion-date">生成时间: <span id="suggestion-date">-</span></p>
+            </div>
+        </div>
+
+        <div id="kb" class="tab-content">
+            <div class="kb-summary">
+                <div class="kb-stat"><span id="kb-count">-</span><label>浏览知识库</label></div>
+                <div class="kb-stat"><span id="concept-count">-</span><label>查看概念数</label></div>
+                <div class="kb-stat"><span id="doc-count">-</span><label>查看文档数</label></div>
+                <div class="kb-stat"><span id="total-concept-views">-</span><label>概念点击次数</label></div>
+                <div class="kb-stat"><span id="total-doc-views">-</span><label>文档查看次数</label></div>
+            </div>
+            <div class="kb-lists">
+                <div class="kb-list-block">
+                    <h5>浏览的知识库</h5>
+                    <ul id="kb-views-list"><li class="empty-item">暂无数据</li></ul>
+                </div>
+                <div class="kb-list-block">
+                    <h5>关注的概念 Top</h5>
+                    <ul id="concept-views-list"><li class="empty-item">暂无数据</li></ul>
+                </div>
+                <div class="kb-list-block">
+                    <h5>查看的文档 Top</h5>
+                    <ul id="document-views-list"><li class="empty-item">暂无数据</li></ul>
+                </div>
             </div>
         </div>
     </div>
@@ -549,6 +574,70 @@ h1 {
     margin-top: 15px;
 }
 
+/* 知识库学习情况样式 */
+.kb-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+.kb-stat {
+    flex: 1;
+    min-width: 120px;
+    text-align: center;
+    padding: 16px 8px;
+    background: #f8f9fa;
+    border-radius: 10px;
+    border: 1px solid #e0e0e0;
+}
+.kb-stat span {
+    display: block;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #4a69bd;
+    margin-bottom: 4px;
+}
+.kb-stat label {
+    font-size: 0.85rem;
+    color: #7f8c8d;
+}
+.kb-lists {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+.kb-list-block {
+    flex: 1;
+    min-width: 200px;
+}
+.kb-list-block h5 {
+    margin: 0 0 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #eee;
+    color: #2c3e50;
+}
+.kb-list-block ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 200px;
+    overflow-y: auto;
+}
+.kb-list-block li {
+    padding: 6px 0;
+    border-bottom: 1px solid #f5f5f5;
+    font-size: 0.9rem;
+}
+.empty-item {
+    color: #aaa;
+    font-style: italic;
+}
+.kb-list-block li .cnt {
+    color: #888;
+    font-size: 0.82rem;
+    margin-left: 4px;
+}
+
 /* 图标样式 */
 .icon-user-add:before { content: "👤"; }
 .icon-key:before { content: "🔑"; }
@@ -678,10 +767,33 @@ function loadStudyData(userId) {
                 document.getElementById('suggestion-date').textContent = 
                     data.suggestion.created_at || '-';
             }
+            
+            // 填充知识库学习情况
+            if (data.kb_learning && data.kb_learning.has_data) {
+                const kb = data.kb_learning;
+                document.getElementById('kb-count').textContent = kb.kb_count ?? '-';
+                document.getElementById('concept-count').textContent = kb.concept_count ?? '-';
+                document.getElementById('doc-count').textContent = kb.document_count ?? '-';
+                document.getElementById('total-concept-views').textContent = kb.total_concept_views ?? '-';
+                document.getElementById('total-doc-views').textContent = kb.total_document_views ?? '-';
+                fillList('kb-views-list', kb.kb_views, x => `${x.kb_name || ('知识库#' + x.kb_id)} <span class="cnt">(${x.views})</span>`);
+                fillList('concept-views-list', kb.concept_views, x => `${x.concept_name} <span class="cnt">(${x.views})</span>`);
+                fillList('document-views-list', kb.document_views, x => `${x.document_title || ''} ${x.kb_name ? '【' + x.kb_name + '】' : ''} <span class="cnt">(${x.views})</span>`);
+            }
         })
         .catch(error => {
             console.error('Error loading study data:', error);
         });
+}
+
+function fillList(elemId, arr, fmt) {
+    const ul = document.getElementById(elemId);
+    if (!ul) return;
+    if (!arr || arr.length === 0) {
+        ul.innerHTML = '<li class="empty-item">暂无数据</li>';
+        return;
+    }
+    ul.innerHTML = arr.map(fmt).map(s => '<li>' + s + '</li>').join('');
 }
 </script>
 

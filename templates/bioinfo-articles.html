@@ -1,0 +1,1272 @@
+{% extends "base.html" %}
+
+{% block title %}文献检索 · 生物信息学文献智能检索{% endblock %}
+
+{% block styles %}
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #21262d;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text2: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --orange: #d2991d;
+    --red: #f85149;
+    --purple: #a371f7;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+  .page-header {
+    background: linear-gradient(135deg, #1a2332 0%, #0d1117 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 2rem 1.5rem;
+    text-align: center;
+  }
+  .page-header h1 { font-size: 1.8rem; font-weight: 700; margin-bottom: 0.3rem; }
+  .page-header h1 span { color: var(--accent); }
+  .page-header p { color: var(--text2); font-size: 0.95rem; }
+  .articles-container { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+  .search-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+  @media (max-width: 768px) { .search-panel { grid-template-columns: 1fr; } }
+  .search-panel label {
+    display: block; font-size: 0.85rem; font-weight: 600;
+    color: var(--text2); margin-bottom: 0.35rem;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .search-panel input, .search-panel select {
+    width: 100%; padding: 0.6rem 0.8rem;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-size: 0.95rem;
+    outline: none; transition: border-color 0.2s;
+  }
+  .search-panel input:focus, .search-panel select:focus { border-color: var(--accent); }
+  .btn-group { grid-column: 1 / -1; display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    padding: 0.65rem 1.5rem; border-radius: 8px; border: none;
+    cursor: pointer; font-size: 0.95rem; font-weight: 600; transition: all 0.2s;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #4090e0; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: var(--border); }
+  .btn-analyze { background: var(--purple); color: #fff; }
+  .btn-analyze:hover { background: #8b5cf6; }
+  .stats {
+    display: flex; gap: 1rem; flex-wrap: wrap;
+    margin-bottom: 1rem; align-items: center;
+  }
+  .stat-badge {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 20px; padding: 0.3rem 0.8rem;
+    font-size: 0.8rem; color: var(--text2);
+  }
+  .stat-badge strong { color: var(--accent); }
+  .loading { text-align: center; padding: 3rem; display: none; }
+  .loading.active { display: block; }
+  .spinner {
+    width: 40px; height: 40px; border: 3px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin: 0 auto 1rem;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error {
+    background: rgba(248,81,73,0.1); border: 1px solid var(--red);
+    border-radius: 8px; padding: 1rem; color: var(--red);
+    display: none; margin-bottom: 1rem;
+  }
+  .error.active { display: block; }
+  .empty { text-align: center; padding: 4rem 1rem; color: var(--text2); display: none; }
+  .empty.active { display: block; }
+  .empty-icon { font-size: 3rem; margin-bottom: 1rem; }
+  .results { display: flex; flex-direction: column; gap: 1rem; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.5rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .card:hover { border-color: var(--accent); box-shadow: 0 0 20px rgba(88,166,255,0.08); }
+  .card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
+  .card-title {
+    font-size: 1.1rem; font-weight: 700; color: var(--accent);
+    cursor: pointer; flex: 1; min-width: 250px;
+  }
+  .card-title:hover { text-decoration: underline; }
+  .card-badges { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+  .badge {
+    font-size: 0.72rem; padding: 0.2rem 0.55rem;
+    border-radius: 12px; font-weight: 600; white-space: nowrap;
+  }
+  .badge-journal { background: rgba(88,166,255,0.15); color: var(--accent); }
+  .badge-year { background: rgba(63,185,80,0.15); color: var(--green); }
+  .badge-citations { background: rgba(210,153,29,0.15); color: var(--orange); }
+  .badge-open { background: rgba(163,113,247,0.15); color: var(--purple); }
+  .card-meta {
+    display: flex; gap: 1.5rem; flex-wrap: wrap;
+    margin: 0.6rem 0 0.8rem; font-size: 0.85rem; color: var(--text2);
+  }
+  .card-meta span { display: flex; align-items: center; gap: 0.3rem; }
+  .card-abstract {
+    font-size: 0.9rem; color: var(--text2); line-height: 1.7;
+    margin-bottom: 0.8rem; max-height: 4.5em; overflow: hidden;
+    transition: max-height 0.3s;
+  }
+  .card-abstract.expanded { max-height: none; }
+  .abstract-toggle {
+    color: var(--accent); cursor: pointer; font-size: 0.8rem;
+    font-weight: 600; user-select: none;
+  }
+  .card-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
+  .insight-section {
+    margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid var(--border);
+  }
+  .insight-header {
+    display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.5rem;
+    font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .insight-header.innovation { color: var(--green); }
+  .insight-header.application { color: var(--orange); }
+  .insight-text {
+    font-size: 0.88rem; color: var(--text); padding: 0.5rem 0.75rem;
+    background: var(--surface2); border-radius: 6px; border-left: 3px solid var(--border);
+  }
+  .insight-header.innovation + .insight-text { border-left-color: var(--green); }
+  .insight-header.application + .insight-text { border-left-color: var(--orange); }
+  .insight-na { color: var(--text2); font-style: italic; font-size: 0.85rem; }
+  .card-analyze-btn { font-size: 0.8rem; padding: 0.35rem 0.8rem; }
+  .articles-credit {
+    text-align: center; padding: 1.5rem; color: var(--text2);
+    font-size: 0.8rem; border-top: 1px solid var(--border); margin-top: 1.5rem;
+  }
+  .articles-credit a { color: var(--accent); }
+  .highlight-novel { background: rgba(63,185,80,0.2); padding: 0 2px; border-radius: 3px; }
+  .highlight-app { background: rgba(210,153,29,0.2); padding: 0 2px; border-radius: 3px; }
+
+  /* ---- Explorer Modal ---- */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.72);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 2rem 1rem; z-index: 2000; overflow-y: auto;
+  }
+  .modal-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; width: 100%; max-width: 980px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .modal-head {
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;
+    padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; background: var(--surface); border-radius: 14px 14px 0 0;
+  }
+  .modal-head h2 { font-size: 1.15rem; color: var(--accent); line-height: 1.4; }
+  .modal-head .sub { font-size: 0.82rem; color: var(--text2); margin-top: 0.3rem; }
+  .modal-close {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+    width: 34px; height: 34px; border-radius: 8px; cursor: pointer; font-size: 1rem; flex-shrink: 0;
+  }
+  .modal-close:hover { background: var(--border); }
+  .modal-body { padding: 1.5rem; }
+  .exp-section { margin-bottom: 1.5rem; }
+  .exp-section h3 {
+    font-size: 0.95rem; color: var(--text); margin-bottom: 0.6rem;
+    padding-left: 0.6rem; border-left: 3px solid var(--accent);
+  }
+  .exp-section h3 .tag { font-size: 0.72rem; color: var(--text2); font-weight: 400; margin-left: 0.4rem; }
+  .exp-text { font-size: 0.9rem; color: var(--text2); line-height: 1.75; }
+  .exp-list { list-style: none; display: flex; flex-direction: column; gap: 0.5rem; }
+  .exp-list li {
+    font-size: 0.9rem; color: var(--text); padding: 0.5rem 0.75rem;
+    background: var(--surface2); border-radius: 6px; border-left: 3px solid var(--border);
+  }
+  .exp-list li.method { border-left-color: var(--accent); }
+  .exp-list li.result { border-left-color: var(--green); }
+  .exp-list li.disc { border-left-color: var(--orange); }
+  .exp-list li.problem { border-left-color: var(--red); }
+  .kw-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .kw-chip {
+    background: rgba(88,166,255,0.12); color: var(--accent);
+    border: 1px solid rgba(88,166,255,0.3); border-radius: 16px;
+    padding: 0.3rem 0.8rem; font-size: 0.82rem; cursor: pointer; transition: all 0.2s;
+  }
+  .kw-chip:hover { background: var(--accent); color: #fff; }
+  .kw-chip.mesh { background: rgba(163,113,247,0.12); color: var(--purple); border-color: rgba(163,113,247,0.3); }
+  .kw-chip.mesh:hover { background: var(--purple); color: #fff; }
+  .fig-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
+  .fig-item {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    overflow: hidden; display: flex; flex-direction: column;
+  }
+  .fig-item img { width: 100%; background: #fff; object-fit: contain; max-height: 220px; }
+  .fig-item .cap { padding: 0.5rem 0.6rem; font-size: 0.78rem; color: var(--text2); }
+  .ext-link {
+    display: inline-flex; align-items: center; gap: 0.4rem; margin-top: 0.6rem;
+    color: var(--accent); font-size: 0.85rem; text-decoration: none;
+  }
+  .ext-link:hover { text-decoration: underline; }
+  .exp-note { font-size: 0.8rem; color: var(--text2); font-style: italic; }
+  .jl-item { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+  .jl-item .jl-name { flex: 1; word-break: break-all; }
+  .jl-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
+  .jl-actions button { font-size: 0.78rem; padding: 0.3rem 0.7rem; border-radius: 6px; cursor: pointer; border: 1px solid var(--border); background: var(--surface2); color: var(--text); }
+  .jl-actions .jl-del:hover { background: rgba(248,81,73,0.15); border-color: var(--red); }
+  .jl-actions .jl-edit:hover { background: rgba(88,166,255,0.15); border-color: var(--accent); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1><span>🧬 Bioinformatics</span> 文献智能检索</h1>
+  <p>检索生物信息学顶级期刊最新论文 · 自动提取核心创新点与成果应用 · 单篇深入研读</p>
+</div>
+
+<div class="articles-container">
+
+  <!-- Search Panel -->
+  <div class="search-panel" id="searchPanel">
+    <div>
+      <label>📚 目标期刊
+        {% if can_edit_journals %}
+        <button type="button" class="kw-chip" style="float:right;margin-top:-2px" onclick="openJournalManager()">⚙ 管理</button>
+        {% endif %}
+      </label>
+      <select id="journalSelect" multiple size="6">
+        {% for j in journals %}
+        <option value="{{ j }}" selected>{{ j }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label>🔍 关键词 (空格分隔)</label>
+      <input type="text" id="keywordInput" value="bioinformatics" placeholder="e.g., bioinformatics pan-genome synteny">
+
+      <label style="margin-top:0.8rem">📊 每页显示</label>
+      <select id="pageSize">
+        <option value="10">10 篇</option>
+        <option value="20" selected>20 篇</option>
+        <option value="50">50 篇</option>
+      </select>
+
+      <label style="margin-top:0.8rem">📅 年份范围</label>
+      <div style="display:flex;gap:0.5rem">
+        <input type="number" id="yearFrom" value="2024" min="2000" max="2026" placeholder="From">
+        <input type="number" id="yearTo" value="2026" min="2000" max="2026" placeholder="To">
+      </div>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn btn-primary" id="searchBtn" onclick="searchArticles()">🔍 检索文献</button>
+      <button class="btn btn-analyze" id="analyzeAllBtn" onclick="analyzeAllAbstracts()">🤖 批量提取创新点</button>
+      <button class="btn btn-secondary" onclick="exportCSV()">📥 导出 CSV</button>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats" id="statsBar" style="display:none">
+    <span class="stat-badge">共检索到 <strong id="statTotal">0</strong> 篇</span>
+    <span class="stat-badge">显示 <strong id="statShown">0</strong> 篇</span>
+    <span class="stat-badge">Open Access <strong id="statOA">0</strong></span>
+  </div>
+
+  <!-- Loading -->
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <p>正在从 Europe PMC 检索文献...</p>
+  </div>
+
+  <!-- Error -->
+  <div class="error" id="error"></div>
+
+  <!-- Empty State -->
+  <div class="empty active" id="empty">
+    <div class="empty-icon">📖</div>
+    <p>点击「检索文献」查看最新比较基因组学论文</p>
+    <p style="font-size:0.8rem;margin-top:0.3rem">数据来源: Europe PMC / PubMed</p>
+  </div>
+
+  <!-- Results -->
+  <div class="results" id="results"></div>
+
+  <div class="articles-credit">
+    数据来源: <a href="https://europepmc.org/" target="_blank">Europe PMC</a> ·
+    覆盖期刊: Bioinformatics, Briefings in Bioinformatics, Nucleic Acids Research, Genome Biology 等 ·
+    <span id="apiCredit"></span>
+  </div>
+
+</div>
+
+<!-- Explorer Modal -->
+<div class="modal-overlay" id="explorerModal" style="display:none" onclick="if(event.target===this) closeExplorer()">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div>
+        <h2 id="expTitle"></h2>
+        <div class="sub" id="expSub"></div>
+      </div>
+      <button class="modal-close" onclick="closeExplorer()">✕</button>
+    </div>
+    <div class="modal-body" id="expBody">
+      <div class="loading active"><div class="spinner"></div><p>正在解析文献结构...</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- Journal Manager Modal -->
+<div class="modal-overlay" id="journalModal" style="display:none" onclick="if(event.target===this) closeJournalManager()">
+  <div class="modal-box" style="max-width:620px">
+    <div class="modal-head">
+      <div><h2>📚 管理目标期刊</h2><div class="sub">教师 / 管理员可添加、重命名、删除检索期刊</div></div>
+      <button class="modal-close" onclick="closeJournalManager()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="exp-section">
+        <div style="display:flex;gap:0.5rem">
+          <input type="text" id="newJournalInput" placeholder="输入新期刊名称，如 Nature Methods" style="flex:1;padding:0.6rem 0.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text)">
+          <button class="btn btn-primary" onclick="addJournal()">＋ 添加</button>
+        </div>
+      </div>
+      <div class="exp-section">
+        <h3>当前期刊列表</h3>
+        <ul class="exp-list" id="journalList"></ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Upload-to-Knowledge-Base Modal (teacher / admin) -->
+<div class="modal-overlay" id="uploadKbModal" style="display:none" onclick="if(event.target===this) closeUploadToKb()">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-head">
+      <div>
+        <h2>📚 上传文献到知识库</h2>
+        <div class="sub" id="uploadKbSub">选择目标知识库，将本文献摘要存入</div>
+      </div>
+      <button class="modal-close" onclick="closeUploadToKb()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="exp-section">
+        <h3>目标知识库</h3>
+        <select id="uploadKbSelect" style="width:100%;padding:0.6rem 0.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text)">
+          <option value="">— 加载中 —</option>
+        </select>
+      </div>
+      <div class="exp-section" id="uploadKbPreview" style="font-size:0.85rem;color:var(--text2)"></div>
+      <div class="exp-section" style="display:flex;gap:0.5rem;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="closeUploadToKb()">取消</button>
+        <button class="btn btn-primary" id="uploadKbConfirm" onclick="confirmUploadToKb()">📤 确认上传</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const API_BASE = 'https://www.ebi.ac.uk/europepmc/webservices/rest';
+let articles = [];
+let analysisCache = {};
+const canEditJournals = {{ 'true' if can_edit_journals else 'false' }};
+
+async function searchArticles() {
+  const loading = document.getElementById('loading');
+  const error = document.getElementById('error');
+  const empty = document.getElementById('empty');
+  const results = document.getElementById('results');
+  const statsBar = document.getElementById('statsBar');
+  const searchBtn = document.getElementById('searchBtn');
+
+  error.classList.remove('active');
+  empty.classList.remove('active');
+  results.innerHTML = '';
+  statsBar.style.display = 'none';
+  articles = [];
+  analysisCache = {};
+
+  const selectedJournals = Array.from(document.getElementById('journalSelect').selectedOptions).map(o => o.value);
+  const keywords = document.getElementById('keywordInput').value.trim();
+  const pageSize = document.getElementById('pageSize').value;
+  const yearFrom = document.getElementById('yearFrom').value;
+  const yearTo = document.getElementById('yearTo').value;
+
+  if (selectedJournals.length === 0) {
+    showError('请至少选择一个目标期刊');
+    return;
+  }
+
+  let queryParts = [];
+  // Europe PMC API is very sensitive: no parentheses, no quotes around journal names
+  // Build a simple query: keywords AND journal fragments
+  const terms = [];
+
+  // Add keyword terms (replace spaces with AND)
+  if (keywords) {
+    terms.push(keywords.replace(/\s+/g, ' AND '));
+  } else {
+    terms.push('comparative AND genomics');
+  }
+
+  // Generate JOURNAL filter terms using the FULL journal name as a quoted phrase.
+  // Europe PMC's JOURNAL: field is a phrase/exact match, so the complete name must
+  // be used, e.g. JOURNAL:"Nucleic Acids Res" — using only the first word
+  // (JOURNAL:Nucleic) returns 0 hits.
+  const journalTerms = selectedJournals.map(j => `JOURNAL:"${j}"`);
+  if (journalTerms.length === 1) {
+    terms.push(journalTerms[0]);
+  } else {
+    terms.push(`(${journalTerms.join(' OR ')})`);
+  }
+
+  // Date range
+  if (yearFrom || yearTo) {
+    const from = yearFrom || '2000';
+    const to = yearTo || '2026';
+    terms.push(`PUB_YEAR:[${from} TO ${to}]`);
+  }
+
+  const query = terms.join(' AND ');
+
+  loading.classList.add('active');
+  searchBtn.disabled = true;
+
+  try {
+    // Build URL — use encodeURIComponent for proper encoding.
+    // Server-side JOURNAL:"..." filtering is now accurate, so fetch exactly pageSize.
+    const fetchPageSize = pageSize;
+    const params = [
+      `query=${encodeURIComponent(query)}`,
+      `resultType=core`,
+      `pageSize=${encodeURIComponent(fetchPageSize)}`,
+      `format=json`,
+      `sort=P_PDATE_D desc`,
+      `synonym=true`
+    ].join('&');
+    const url = `${API_BASE}/search?${params}`;
+    console.log('Fetching:', url);
+
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+    const data = await response.json();
+    if (!data.resultList || !data.resultList.result || data.resultList.result.length === 0) {
+      empty.classList.add('active');
+      empty.innerHTML = '<div class="empty-icon">🔍</div><p>未找到匹配文献</p><p style="font-size:0.8rem">尝试调整关键词或期刊选择</p>';
+      return;
+    }
+
+    let rawArticles = data.resultList.result;
+
+    // Client-side journal filtering (safety net): keep an article only if its journal
+    // title contains every word of at least one selected journal value.
+    // e.g. "Brief Bioinform" matches "Briefings in Bioinformatics" because both
+    // "brief" and "bioinform" appear in the full title.
+    rawArticles = rawArticles.filter(a => {
+      const jt = (a.journalInfo?.journal?.title || a.journalTitle || '').toLowerCase();
+      return selectedJournals.some(j => {
+        const words = j.toLowerCase().split(/\s+/);
+        return words.every(w => jt.includes(w));
+      });
+    });
+
+    // Client-side date filtering (as backup)
+    if (yearFrom || yearTo) {
+      const from = parseInt(yearFrom) || 0;
+      const to = parseInt(yearTo) || 9999;
+      rawArticles = rawArticles.filter(a => {
+        const year = parseInt(a.pubYear) || 0;
+        return year >= from && year <= to;
+      });
+    }
+
+    // Trim to requested page size
+    articles = rawArticles.slice(0, parseInt(pageSize));
+    const hitCount = data.hitCount || articles.length;
+
+    document.getElementById('statTotal').textContent = hitCount;
+    document.getElementById('statShown').textContent = articles.length;
+    document.getElementById('statOA').textContent = articles.filter(a => a.isOpenAccess === 'Y').length;
+    statsBar.style.display = 'flex';
+
+    const version = data.version || '';
+    document.getElementById('apiCredit').textContent = `API v${version}`;
+
+    renderArticles(articles);
+    empty.classList.remove('active');
+
+  } catch (err) {
+    showError(`检索失败: ${err.message}`);
+    console.error(err);
+  } finally {
+    loading.classList.remove('active');
+    searchBtn.disabled = false;
+  }
+}
+
+function showError(msg) {
+  const error = document.getElementById('error');
+  error.textContent = '⚠️ ' + msg;
+  error.classList.add('active');
+}
+
+function renderArticles(articleList) {
+  const results = document.getElementById('results');
+  results.innerHTML = '';
+  articleList.forEach((article, idx) => {
+    const card = createArticleCard(article, idx);
+    results.appendChild(card);
+  });
+}
+
+function articleSourceUrl(a) {
+  if (a.pmcid) return `https://europepmc.org/article/PMC/${a.pmcid}`;
+  if (a.doi) return `https://doi.org/${a.doi}`;
+  if (a.pmid) return `https://pubmed.ncbi.nlm.nih.gov/${a.pmid}`;
+  return '#';
+}
+
+function createArticleCard(article, idx) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.id = `card-${idx}`;
+
+  const title = article.title || 'No Title';
+  const authors = article.authorString || 'Unknown Authors';
+  const journal = (article.journalInfo?.journal?.title) || article.journalTitle || article.bookOrReportDetails?.publisher || 'Unknown Journal';
+  const year = article.pubYear || (article.firstPublicationDate || '').substring(0, 4) || 'N/A';
+  const doi = article.doi || '';
+  const pmid = article.pmid || article.id || '';
+  const pmcid = article.pmcid || '';
+  const abstract = article.abstractText || '';
+  const citations = article.citedByCount || 0;
+  const isOpenAccess = article.isOpenAccess === 'Y';
+  const source = article.source || '';
+  const srcUrl = articleSourceUrl(article);
+
+  const authorDisplay = authors.length > 150 ? authors.substring(0, 147) + '...' : authors;
+  const doiLink = doi ? `https://doi.org/${doi}` : srcUrl;
+
+  card.innerHTML = `
+    <div class="card-header">
+      <a class="card-title" href="${doiLink}" target="_blank" title="Open DOI: ${doi}">${escapeHtml(title)}</a>
+      <div class="card-badges">
+        <span class="badge badge-journal">📰 ${escapeHtml(journal)}</span>
+        <span class="badge badge-year">📅 ${year}</span>
+        ${citations > 0 ? `<span class="badge badge-citations">📊 引用 ${citations}</span>` : ''}
+        ${isOpenAccess ? '<span class="badge badge-open">🔓 Open Access</span>' : ''}
+        ${source ? `<span class="badge" style="background:rgba(139,148,158,0.15);color:#8b949e">${source}</span>` : ''}
+      </div>
+    </div>
+
+    <div class="card-meta">
+      <span>👤 ${escapeHtml(authorDisplay)}</span>
+      ${doi ? `<span>🔗 DOI: <a href="${doiLink}" target="_blank" style="color:var(--accent)">${escapeHtml(doi)}</a></span>` : ''}
+      ${pmid ? `<span>🆔 PMID: ${escapeHtml(pmid)}</span>` : ''}
+      ${pmcid ? `<span>🆔 PMCID: ${escapeHtml(pmcid)}</span>` : ''}
+    </div>
+
+    <div class="card-abstract" id="abstract-${idx}">
+      ${highlightKeywords(escapeHtml(abstract))}
+    </div>
+    ${abstract.length > 300 ? `<span class="abstract-toggle" onclick="toggleAbstract(${idx})" id="toggle-${idx}">▶ 展开摘要</span>` : ''}
+
+    <div class="insight-section" id="insight-${idx}" style="display:none">
+      <div class="insight-header innovation">💡 核心创新点</div>
+      <div class="insight-text" id="innovation-${idx}"></div>
+      <div class="insight-header application" style="margin-top:0.5rem">🎯 成果应用</div>
+      <div class="insight-text" id="application-${idx}"></div>
+    </div>
+
+    <div class="card-actions">
+      <button class="btn btn-analyze card-analyze-btn" onclick="analyzeSingle(${idx})" id="analyze-btn-${idx}">
+        🤖 提取创新点与应用
+      </button>
+      <button class="btn btn-secondary card-analyze-btn" onclick="exploreArticle(${idx})">
+        🔍 深入研读
+      </button>
+      ${canEditJournals ? `<button class="btn btn-primary card-analyze-btn" onclick="openUploadToKb(${idx})">📚 上传到知识库</button>` : ''}
+    </div>
+  `;
+
+  if (analysisCache[idx]) {
+    showInsight(idx, analysisCache[idx].innovation, analysisCache[idx].application);
+  }
+
+  return card;
+}
+
+// ---- Upload article to a Knowledge Base (teacher / admin, closed loop) ----
+let uploadKbListCache = null;
+let currentUploadIdx = null;
+
+function stripHtmlForUpload(html) {
+  const div = document.createElement('div');
+  div.innerHTML = html || '';
+  return (div.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+async function ensureKbListLoaded() {
+  if (uploadKbListCache) return uploadKbListCache;
+  const sel = document.getElementById('uploadKbSelect');
+  try {
+    const resp = await fetch('/api/teacher/uploadable_knowledge_bases');
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.message || '加载知识库失败');
+    uploadKbListCache = data.knowledge_bases || [];
+    sel.innerHTML = uploadKbListCache.length
+      ? uploadKbListCache.map(k => `<option value="${k.id}">${escapeHtml(k.name)}</option>`).join('')
+      : '<option value="">无可上传的知识库</option>';
+    return uploadKbListCache;
+  } catch (e) {
+    sel.innerHTML = '<option value="">加载失败</option>';
+    throw e;
+  }
+}
+
+function openUploadToKb(idx) {
+  const modalBody = document.querySelector('#uploadKbModal .modal-body');
+  if (!window.__uploadKbOrigBody) window.__uploadKbOrigBody = modalBody.innerHTML;
+  else modalBody.innerHTML = window.__uploadKbOrigBody;
+
+  currentUploadIdx = idx;
+  const article = articles[idx];
+  if (!article) return;
+  const title = article.title || 'Untitled';
+  document.getElementById('uploadKbSub').textContent =
+    '将《' + (title.length > 40 ? title.substring(0, 40) + '…' : title) + '》存入知识库';
+  document.getElementById('uploadKbPreview').textContent =
+    '作者: ' + (article.authorString || '未知') +
+    ' ｜ 期刊: ' + ((article.journalInfo?.journal?.title) || article.journalTitle || '未知') +
+    ' ｜ 年份: ' + (article.pubYear || '—');
+  document.getElementById('uploadKbModal').style.display = 'flex';
+  ensureKbListLoaded().catch(() => {});
+}
+
+function closeUploadToKb() {
+  document.getElementById('uploadKbModal').style.display = 'none';
+}
+
+async function confirmUploadToKb() {
+  const sel = document.getElementById('uploadKbSelect');
+  const kbId = sel.value;
+  if (!kbId) { alert('请选择目标知识库'); return; }
+  const article = articles[currentUploadIdx];
+  if (!article) { closeUploadToKb(); return; }
+  const btn = document.getElementById('uploadKbConfirm');
+  btn.disabled = true;
+  try {
+    // 关键词：Europe PMC 结构为 keywordList.keyword（字符串数组或对象数组）
+    let keywords = '';
+    try {
+      const kl = article.keywordList;
+      if (kl) {
+        const arr = Array.isArray(kl) ? kl : (kl.keyword || []);
+        keywords = arr.map(x => (typeof x === 'string' ? x : (x.value || x.text || ''))).filter(Boolean).join(', ');
+      }
+    } catch (e) { /* ignore */ }
+
+    const payload = {
+      kb_id: parseInt(kbId, 10),
+      title: article.title || 'Untitled',
+      abstract: stripHtmlForUpload(article.abstractText || ''),
+      authors: article.authorString || '',
+      journal: (article.journalInfo?.journal?.title) || article.journalTitle || '',
+      year: article.pubYear || '',
+      doi: article.doi || '',
+      pmid: article.pmid || article.id || '',
+      pmcid: article.pmcid || '',
+      source_url: articleSourceUrl(article),
+      keywords: keywords
+    };
+    const resp = await fetch('/teacher/articles/upload_to_kb', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await resp.json();
+    if (data.success) {
+      showUploadSuccess(data);
+    } else {
+      alert('上传失败: ' + (data.message || '未知错误'));
+    }
+  } catch (e) {
+    alert('上传失败: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function showUploadSuccess(data) {
+  const body = document.querySelector('#uploadKbModal .modal-body');
+  body.innerHTML = `
+    <div class="exp-section" style="text-align:center">
+      <div style="font-size:2.5rem">✅</div>
+      <p style="margin:0.5rem 0;color:var(--text)">${escapeHtml(data.message)}</p>
+      <p class="exp-note">可前往知识库提取概念并生成图谱，形成知识库建设闭环。</p>
+      <div style="display:flex;gap:0.5rem;justify-content:center;margin-top:1rem">
+        <a class="btn btn-secondary" href="/teacher/knowledge_bases/${data.kb_id}">前往知识库</a>
+        <button class="btn btn-primary" onclick="closeUploadToKb()">完成</button>
+      </div>
+    </div>`;
+}
+
+function toggleAbstract(idx) {
+  const abs = document.getElementById(`abstract-${idx}`);
+  const toggle = document.getElementById(`toggle-${idx}`);
+  if (!abs || !toggle) return;
+  if (abs.classList.contains('expanded')) {
+    abs.classList.remove('expanded');
+    toggle.textContent = '▶ 展开摘要';
+  } else {
+    abs.classList.add('expanded');
+    toggle.textContent = '▼ 收起摘要';
+  }
+}
+
+function showInsight(idx, innovation, application) {
+  const section = document.getElementById(`insight-${idx}`);
+  const innovDiv = document.getElementById(`innovation-${idx}`);
+  const appDiv = document.getElementById(`application-${idx}`);
+  const btn = document.getElementById(`analyze-btn-${idx}`);
+  if (!section || !innovDiv || !appDiv) return;
+  section.style.display = 'block';
+  innovDiv.innerHTML = innovation || '<span class="insight-na">未检测到明确的创新点描述</span>';
+  appDiv.innerHTML = application || '<span class="insight-na">未检测到明确的应用描述</span>';
+  if (btn) btn.textContent = '✅ 已提取';
+}
+
+// ---- Innovation & Application Extraction ----
+function analyzeSingle(idx) {
+  const article = articles[idx];
+  if (!article) return;
+  const abstract = article.abstractText || '';
+  if (!abstract.trim()) { showInsight(idx, null, null); return; }
+  const result = extractInsights(abstract);
+  analysisCache[idx] = result;
+  showInsight(idx, result.innovation, result.application);
+}
+
+function analyzeAllAbstracts() {
+  if (articles.length === 0) { showError('请先检索文献'); return; }
+  let count = 0;
+  articles.forEach((article, idx) => {
+    if (!analysisCache[idx]) {
+      const abstract = article.abstractText || '';
+      if (abstract.trim()) {
+        analysisCache[idx] = extractInsights(abstract);
+        showInsight(idx, analysisCache[idx].innovation, analysisCache[idx].application);
+        count++;
+      }
+    }
+  });
+  if (count === 0) showError('所有文献已分析完毕');
+}
+
+function extractInsights(abstract) {
+  // Strip HTML tags (Europe PMC returns abstracts with HTML formatting)
+  const cleanAbstract = abstract.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
+  const sentences = cleanAbstract
+    .replace(/([.!?])\s+(?=[A-Z])/g, '$1|')
+    .replace(/([。！？])\s*/g, '$1|')
+    .split('|')
+    .map(s => s.trim())
+    .filter(s => s.length > 20);
+
+  const innovationPatterns = [
+    /\bnovel\b/i, /\bfirst\b/i, /\bnew\s+(method|approach|algorithm|tool|pipeline|framework|strategy|technique)\b/i,
+    /\bwe\s+(developed|propose|present|introduce|designed|created|built|constructed|implemented)\b/i,
+    /\bunprecedented\b/i, /\bfor the first time\b/i, /\bstate-of-the-art\b/i,
+    /\bhere\s+we\s+(report|show|demonstrate|describe|develop|present)\b/i,
+    /\bthis\s+study\s+(presents|introduces|proposes|reports|describes)\b/i,
+    /\bwe\s+have\s+(developed|created|designed|built|generated)\b/i,
+    /\bto\s+address\s+this\b/i, /\bovercomes?\s+(the|these)\s+(limitation|challenge|bottleneck)\b/i,
+    /\badvance(s|ment)?\b/i, /\bbreakthrough\b/i, /\bpioneer(ing)?\b/i,
+    /\binnovative\b/i, /\boutperform(s|ing|ed)?\b/i, /\benable(s|d)?\s+(the|rapid|efficient|accurate|precise|high-throughput)\b/i,
+  ];
+
+  const applicationPatterns = [
+    /\b(can|may|could|will|should)\s+be\s+(used|applied|utilized|employed|deployed|leveraged)\b/i,
+    /\b(applied|application|applicable)\s+(to|in|for)\b/i,
+    /\bdemonstrate(d)?\s+(the|its|their)\s+(utility|use|application|potential|value|effectiveness)\b/i,
+    /\b(potential|practical|clinical|translational|diagnostic|therapeutic)\s+(application|use|implication|value|utility)\b/i,
+    /\bhas\s+(the\s+)?potential\s+to\b/i, /\bpaves?\s+the\s+way\b/i,
+    /\bfacilitate(s|d)?\b/i, /\b(useful|valuable|important|critical|essential)\s+(for|in|to)\b/i,
+    /\bopens?\s+(up\s+)?new\s+(avenue|possibilit|opportunit|path)\b/i,
+    /\b(provides?|offers?)\s+(a|an)\s+(powerful|valuable|useful|versatile|comprehensive)\s+(tool|resource|framework|platform|approach|method)\b/i,
+    /\bcan\s+(serve|function|act)\s+as\b/i, /\bwide(ly)?\s+(applicable|used|adopted)\b/i,
+    /\b(broad|wide)\s+(range|spectrum|variety)\s+of\s+(applications?|uses?)\b/i,
+    /\bimpact(s|ing)?\s+(on\s+)?(clinical|medical|agricultural|environmental|industrial|biomedical)\b/i,
+    /\bwill\s+(aid|help|assist|guide|inform|improve|enhance|advance)\b/i,
+  ];
+
+  const innovationSentences = [];
+  const applicationSentences = [];
+
+  sentences.forEach(sentence => {
+    let innovScore = 0, appScore = 0;
+    innovationPatterns.forEach(p => { if (p.test(sentence)) innovScore++; });
+    applicationPatterns.forEach(p => { if (p.test(sentence)) appScore++; });
+    if (innovScore > 0) innovationSentences.push({ text: sentence, score: innovScore });
+    if (appScore > 0) applicationSentences.push({ text: sentence, score: appScore });
+  });
+
+  innovationSentences.sort((a, b) => b.score - a.score);
+  applicationSentences.sort((a, b) => b.score - a.score);
+
+  const topInnov = innovationSentences.slice(0, 2).map(s => s.text);
+  const topApp = applicationSentences.slice(0, 2).map(s => s.text);
+
+  return {
+    innovation: topInnov.length > 0
+      ? topInnov.map(s => `<span style="color:var(--green)">•</span> ${highlightInnovKeywords(s)}`).join('<br>')
+      : null,
+    application: topApp.length > 0
+      ? topApp.map(s => `<span style="color:var(--orange)">•</span> ${highlightAppKeywords(s)}`).join('<br>')
+      : null
+  };
+}
+
+// ---- Article Structure Analysis (for deep-dive explorer) ----
+const TOOL_KEYWORDS = ['blast','hmmer','mafft','clustal','muscle','raxml','iq-tree','iqtree','gatk',
+  'samtools','bowtie','bwa','hisat','star','kallisto','salmon','diamond','kraken','metaphlan',
+  'qiime','snakemake','nextflow','bioconductor','r package','python','perl','java','c++',
+  'tensorflow','pytorch','scikit','xgboost','random forest','svm','deep learning','neural network',
+  'docker','conda','galaxy','jupyter','rsem','stringtie','featurecounts','bedtools','vcftools',
+  'plink','gsea','cytoscape','igraph','networkx','biopython','bioperl'];
+
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function analyzeStructure(text) {
+  const clean = (text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const sentences = clean
+    .replace(/([.!?])\s+(?=[A-Z])/g, '$1|')
+    .replace(/([。！？])\s*/g, '$1|')
+    .split('|').map(s => s.trim()).filter(s => s.length > 25);
+
+  const methodPatterns = [
+    /\b(method|methods|approach|approaches|pipeline|algorithm|tool|tools|software|framework|protocol|workflow|model|database|dataset)\b/i,
+    /\b(we used|we implemented|we developed|we built|we constructed|we designed|we employed|we applied|using|based on|employ(ed|ing)?|applied|implemented|developed)\b/i,
+    new RegExp('\\b(' + TOOL_KEYWORDS.map(escapeRegExp).join('|') + ')\\b', 'i')
+  ];
+  const resultPatterns = [
+    /\b(we found|we show|we demonstrate|we observed|we report|results? (show|indicate|reveal|demonstrate)|revealed|reveal|achieved|improved|increased|decreased|accuracy|performance|significantly|compared (with|to)|correlation|identified|detected|benchmark|outperform)\b/i
+  ];
+  const discPatterns = [
+    /\b(future|limitation|limitations|challenge|challenges|perspective|outlook|prospect|prospects|conclusion|conclusions|however|despite|further (study|research|work|investigation)|warrant|implication|implications)\b/i
+  ];
+  const problemPatterns = [
+    /\b(future|limitation|limitations|challenge|challenges|remain(s|ed)?|need(s|ed)? to|should be|to be (address|tackl|improv|explored)|open question|gap|gaps|yet to|not yet|currently (lack|limited)|unknown)\b/i
+  ];
+
+  const score = (s, pats) => pats.reduce((n, p) => n + (p.test(s) ? 1 : 0), 0);
+
+  const methods = [], results = [], discussion = [], problems = [];
+  sentences.forEach(s => {
+    const m = score(s, methodPatterns), r = score(s, resultPatterns),
+          d = score(s, discPatterns), p = score(s, problemPatterns);
+    if (m > 0) methods.push({ text: s, score: m });
+    if (r > 0) results.push({ text: s, score: r });
+    if (d > 0) discussion.push({ text: s, score: d });
+    if (p > 0) problems.push({ text: s, score: p });
+  });
+
+  const byScore = arr => arr.sort((a, b) => b.score - a.score).slice(0, 4).map(x => x.text);
+
+  return {
+    methods: byScore(methods),
+    results: byScore(results),
+    discussion: byScore(discussion),
+    problems: byScore(problems)
+  };
+}
+
+// ---- Deep-dive Explorer ----
+async function exploreArticle(idx) {
+  const article = articles[idx];
+  if (!article) return;
+  const modal = document.getElementById('explorerModal');
+  const body = document.getElementById('expBody');
+  const titleEl = document.getElementById('expTitle');
+  const subEl = document.getElementById('expSub');
+
+  modal.style.display = 'flex';
+  body.innerHTML = '<div class="loading active"><div class="spinner"></div><p>正在解析文献结构...</p></div>';
+  titleEl.textContent = article.title || 'Untitled';
+  const journal = (article.journalInfo?.journal?.title) || article.journalTitle || '';
+  subEl.innerHTML = `${escapeHtml(journal)} · ${article.pubYear || ''} · 引用 ${article.citedByCount || 0}` +
+    (article.isOpenAccess === 'Y' ? ' · <span style="color:var(--purple)">Open Access</span>' : '');
+
+  // Best-effort full text fetch (graceful fallback)
+  let full = null;
+  if (article.pmcid) {
+    try { full = await fetchFullText(article.pmcid.replace(/^PMC/, '')); }
+    catch (e) { console.warn('full text unavailable', e); }
+  }
+
+  body.innerHTML = buildExplorerHtml(article, full);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function closeExplorer() {
+  document.getElementById('explorerModal').style.display = 'none';
+}
+
+async function fetchFullText(pmcId) {
+  const id = pmcId.replace(/^PMC/, '');
+  const [ftRes, figRes] = await Promise.allSettled([
+    fetch(`${API_BASE}/PMC/${id}/fullTextXML`),
+    fetch(`${API_BASE}/PMC/${id}/figures`)
+  ]);
+  let xmlText = null, figs = [];
+  if (ftRes.status === 'fulfilled' && ftRes.value.ok) {
+    xmlText = await ftRes.value.text();
+  }
+  if (figRes.status === 'fulfilled' && figRes.value.ok) {
+    try {
+      const fj = await figRes.value.json();
+      figs = fj.figures || (fj.figureList && fj.figureList.figure) || [];
+    } catch (e) { figs = []; }
+  }
+  if (!xmlText && figs.length === 0) return null;
+  return parseJats(xmlText, figs);
+}
+
+function parseJats(xmlText, figs) {
+  const out = { methods: [], results: [], discussion: [], keywords: [], figures: [] };
+  if (figs && figs.length) {
+    out.figures = figs.map(f => ({
+      id: f.figId || '',
+      caption: stripTags(f.caption || ''),
+      src: f.src || ''
+    })).filter(f => f.src);
+  }
+  if (!xmlText) return out;
+  let doc;
+  try { doc = new DOMParser().parseFromString(xmlText, 'text/xml'); }
+  catch (e) { return out; }
+  if (doc.querySelector('parsererror')) return out;
+
+  // keywords
+  out.keywords = [...doc.querySelectorAll('kwd')].map(e => e.textContent.trim()).filter(Boolean);
+
+  // sections
+  const secs = [...doc.querySelectorAll('body sec')];
+  const grab = (keys) => {
+    const arr = [];
+    secs.forEach(sec => {
+      const tEl = sec.querySelector('title');
+      const t = (tEl ? tEl.textContent : '').toLowerCase();
+      if (keys.some(k => t.includes(k))) {
+        sec.querySelectorAll('p').forEach(p => {
+          const txt = p.textContent.trim();
+          if (txt.length > 30) arr.push(txt);
+        });
+      }
+    });
+    return arr;
+  };
+  const methods = grab(['method', 'material']);
+  const results = grab(['result']);
+  const discussion = grab(['discussion', 'conclusion', 'future']);
+  if (methods.length) out.methods = methods;
+  if (results.length) out.results = results;
+  if (discussion.length) out.discussion = discussion;
+  return out;
+}
+
+function stripTags(html) {
+  const div = document.createElement('div');
+  div.innerHTML = html || '';
+  return (div.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+function buildExplorerHtml(article, full) {
+  // Collect keywords
+  const kwList = (article.keywordList && article.keywordList.keyword) || [];
+  const meshList = (article.meshHeadingList && article.meshHeadingList.meshHeading) || [];
+  const meshTerms = meshList.map(m => m.descriptorName).filter(Boolean);
+
+  // Structure: prefer full text, fall back to abstract
+  const abstract = article.abstractText || '';
+  const struct = full
+    ? {
+        methods: full.methods.length ? full.methods : analyzeStructure(abstract).methods,
+        results: full.results.length ? full.results : analyzeStructure(abstract).results,
+        discussion: full.discussion.length ? full.discussion : analyzeStructure(abstract).discussion,
+        problems: analyzeStructure(abstract).problems
+      }
+    : analyzeStructure(abstract);
+
+  const srcUrl = articleSourceUrl(article);
+
+  let html = '';
+
+  // Keywords
+  html += `<div class="exp-section"><h3>🔑 关键词 <span class="tag">(点击可在上方重新检索)</span></h3><div class="kw-chips">`;
+  kwList.forEach(k => { html += `<span class="kw-chip" data-kw="${escapeHtml(k)}" onclick="searchByKeyword(this)">${escapeHtml(k)}</span>`; });
+  meshTerms.slice(0, 12).forEach(k => { html += `<span class="kw-chip mesh" data-kw="${escapeHtml(k)}" onclick="searchByKeyword(this)">${escapeHtml(k)}</span>`; });
+  if (!kwList.length && !meshTerms.length) html += `<p class="exp-note">未提供关键词</p>`;
+  html += `</div></div>`;
+
+  // Abstract
+  html += `<div class="exp-section"><h3>📄 摘要</h3><div class="exp-text">${highlightKeywords(escapeHtml(abstract)) || '<span class="exp-note">无摘要</span>'}</div></div>`;
+
+  // Methods & Tools
+  html += sectionList('🛠 方法 & 工具', 'method', struct.methods,
+    full && full.methods.length ? '来自全文' : '基于摘要推断');
+
+  // Results
+  html += sectionList('📊 结果', 'result', struct.results,
+    full && full.results.length ? '来自全文' : '基于摘要推断');
+
+  // Discussion & Future
+  html += sectionList('💬 讨论 & 未来', 'disc', struct.discussion,
+    full && full.discussion.length ? '来自全文' : '基于摘要推断');
+
+  // Open problems summary
+  html += sectionList('⚠️ 待解决问题总结', 'problem', struct.problems,
+    '基于摘要/全文推断', true);
+
+  // Figures
+  html += `<div class="exp-section"><h3>🖼 图表 <span class="tag">(Figure Content)</span></h3>`;
+  if (full && full.figures && full.figures.length) {
+    html += `<div class="fig-grid">`;
+    full.figures.forEach(f => {
+      html += `<div class="fig-item"><img src="${escapeHtml(f.src)}" alt="${escapeHtml(f.id)}" loading="lazy"><div class="cap">${escapeHtml(f.caption).slice(0,160)}</div></div>`;
+    });
+    html += `</div>`;
+  } else {
+    html += `<p class="exp-note">当前环境无法获取图表原文${article.pmcid ? '，请在 Europe PMC 查看：' : '。'}</p>`;
+  }
+  html += `<a class="ext-link" href="${srcUrl}" target="_blank">🔗 在新标签打开全文 / 图表</a></div>`;
+
+  // External links
+  html += `<div class="exp-section"><h3>🔗 外部链接</h3><div class="card-meta">`;
+  if (article.doi) html += `<span>DOI: <a href="https://doi.org/${escapeHtml(article.doi)}" target="_blank" style="color:var(--accent)">${escapeHtml(article.doi)}</a></span>`;
+  if (article.pmid) html += `<span>PMID: ${escapeHtml(article.pmid)}</span>`;
+  if (article.pmcid) html += `<span>PMCID: ${escapeHtml(article.pmcid)}</span>`;
+  html += `</div></div>`;
+
+  return html;
+}
+
+function sectionList(title, cls, items, note, isProblem) {
+  let html = `<div class="exp-section"><h3>${title} <span class="tag">${note}</span></h3>`;
+  if (items && items.length) {
+    html += `<ul class="exp-list">`;
+    items.forEach(t => {
+      const liCls = isProblem ? 'problem' : cls;
+      html += `<li class="${liCls}">${escapeHtml(t)}</li>`;
+    });
+    html += `</ul>`;
+  } else {
+    html += `<p class="exp-note">未检测到相关内容</p>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+function searchByKeyword(el) {
+  const kw = el.dataset.kw;
+  document.getElementById('keywordInput').value = kw;
+  closeExplorer();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  searchArticles();
+}
+
+function highlightInnovKeywords(text) {
+  const kws = ['novel', 'first', 'new method', 'new approach', 'new algorithm', 'new tool',
+    'new pipeline', 'new framework', 'we developed', 'we propose', 'we present', 'we introduce',
+    'unprecedented', 'breakthrough', 'innovative', 'state-of-the-art', 'outperforms', 'enables'];
+  let r = escapeHtml(text);
+  kws.forEach(kw => {
+    const re = new RegExp(`\\b(${kw.replace(/\s+/g, '\\s+')})\\b`, 'gi');
+    r = r.replace(re, '<span class="highlight-novel">$1</span>');
+  });
+  return r;
+}
+
+function highlightAppKeywords(text) {
+  const kws = ['can be used', 'can be applied', 'applied to', 'demonstrated', 'potential application',
+    'clinical application', 'practical application', 'enables', 'facilitates', 'useful for', 'valuable for'];
+  let r = escapeHtml(text);
+  kws.forEach(kw => {
+    const re = new RegExp(`\\b(${kw.replace(/\s+/g, '\\s+')})\\b`, 'gi');
+    r = r.replace(re, '<span class="highlight-app">$1</span>');
+  });
+  return r;
+}
+
+function highlightKeywords(text) {
+  const kws = [
+    'comparative genomics', 'pan-genome', 'synteny', 'ortholog', 'paralog',
+    'phylogenomic', 'genome evolution', 'genome alignment', 'whole genome',
+    'gene family', 'structural variation', 'copy number', 'horizontal gene transfer',
+    'genome annotation', 'functional genomics', 'metagenomics'
+  ];
+  let r = text;
+  kws.forEach(kw => {
+    const re = new RegExp(`\\b(${kw.replace(/\s+/g, '\\s+')})\\b`, 'gi');
+    r = r.replace(re, '<span class="highlight-novel">$1</span>');
+  });
+  return r;
+}
+
+function exportCSV() {
+  if (articles.length === 0) { showError('没有可导出的数据'); return; }
+  const headers = ['Title', 'Authors', 'Journal', 'Year', 'DOI', 'PMID', 'Citations', 'Open Access', 'Abstract'];
+  const rows = articles.map(a => [
+    `"${(a.title || '').replace(/"/g, '""')}"`,
+    `"${(a.authorString || '').replace(/"/g, '""')}"`,
+    `"${((a.journalInfo?.journal?.title) || a.journalTitle || '').replace(/"/g, '""')}"`,
+    a.pubYear || '',
+    a.doi || '',
+    a.pmid || a.id || '',
+    a.citedByCount || 0,
+    a.isOpenAccess === 'Y' ? 'Yes' : 'No',
+    `"${(a.abstractText || '').replace(/"/g, '""')}"`,
+  ]);
+  const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `comparative_genomics_articles_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('explorerModal').style.display === 'flex') closeExplorer();
+    if (document.getElementById('journalModal').style.display === 'flex') closeJournalManager();
+  }
+  if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); searchArticles(); }
+});
+
+// ---- Journal Manager (teacher / admin) ----
+function openJournalManager() {
+  document.getElementById('journalModal').style.display = 'flex';
+  loadJournalManager();
+}
+function closeJournalManager() {
+  document.getElementById('journalModal').style.display = 'none';
+}
+function loadJournalManager() {
+  fetch('/api/article_journals')
+    .then(r => r.json())
+    .then(d => {
+      const list = document.getElementById('journalList');
+      list.innerHTML = '';
+      if (!d.success || !d.journals.length) {
+        list.innerHTML = '<li class="exp-note">暂无期刊</li>';
+        return;
+      }
+      d.journals.forEach(j => {
+        const li = document.createElement('li');
+        li.className = 'jl-item';
+        li.innerHTML = `<span class="jl-name">${escapeHtml(j.name)}</span>
+          <span class="jl-actions">
+            <button class="jl-edit" onclick="renameJournal(${j.id}, ${JSON.stringify(j.name)})">重命名</button>
+            <button class="jl-del" onclick="deleteJournal(${j.id})">删除</button>
+          </span>`;
+        list.appendChild(li);
+      });
+    })
+    .catch(() => { document.getElementById('journalList').innerHTML = '<li class="exp-note">加载失败</li>'; });
+}
+function rebuildJournalSelect() {
+  fetch('/api/article_journals')
+    .then(r => r.json())
+    .then(d => {
+      const sel = document.getElementById('journalSelect');
+      if (!d.success) return;
+      sel.innerHTML = d.journals.map(j => `<option value="${escapeHtml(j.name)}" selected>${escapeHtml(j.name)}</option>`).join('');
+    });
+}
+function addJournal() {
+  const input = document.getElementById('newJournalInput');
+  const name = input.value.trim();
+  if (!name) return;
+  const fd = new FormData();
+  fd.append('name', name);
+  fetch('/article_journals/add', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => {
+      if (d.success) { input.value = ''; loadJournalManager(); rebuildJournalSelect(); }
+      else alert(d.message);
+    });
+}
+function renameJournal(id, oldName) {
+  const name = prompt('重命名期刊', oldName);
+  if (!name || !name.trim() || name.trim() === oldName) return;
+  const fd = new FormData();
+  fd.append('name', name.trim());
+  fetch(`/article_journals/update/${id}`, { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => {
+      if (d.success) { loadJournalManager(); rebuildJournalSelect(); }
+      else alert(d.message);
+    });
+}
+function deleteJournal(id) {
+  if (!confirm('确认删除该期刊？')) return;
+  fetch(`/article_journals/delete/${id}`, { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      if (d.success) { loadJournalManager(); rebuildJournalSelect(); }
+      else alert(d.message);
+    });
+}
+
+console.log('🧬 Bioinformatics 文献检索页面已就绪');
+console.log('  - 按 Ctrl+Enter 快速检索');
+console.log('  - 点击 "提取创新点与应用" 按钮进行智能分析');
+console.log('  - 点击 "深入研读" 可对单篇文献做结构化解析');
+console.log('  - 教师/管理员可点击期刊旁的 "⚙ 管理" 维护期刊列表');
+console.log('  - 数据来源: Europe PMC API');
+
+// 支持从知识图谱概念跳转：?q=概念名 自动填充并检索
+(function () {
+  const params = new URLSearchParams(window.location.search);
+  const q = params.get('q');
+  if (q) {
+    const kw = document.getElementById('keywordInput');
+    if (kw) kw.value = q;
+    const sel = document.getElementById('journalSelect');
+    if (sel && sel.selectedOptions.length === 0) {
+      Array.from(sel.options).forEach(o => { o.selected = true; });
+    }
+    // 等待期刊列表加载完成后自动检索
+    setTimeout(function () {
+      if (typeof searchArticles === 'function') searchArticles();
+    }, 600);
+  }
+})();
+</script>
+{% endblock %}

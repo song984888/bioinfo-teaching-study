@@ -258,6 +258,14 @@ def init_db():
             file_path VARCHAR(500),
             file_type VARCHAR(50),
             tags TEXT,
+            authors VARCHAR(500) COMMENT '文献作者（文献检索入库时使用）',
+            journal VARCHAR(255) COMMENT '来源期刊',
+            pub_year VARCHAR(20) COMMENT '发表年份',
+            doi VARCHAR(255) COMMENT 'DOI',
+            pmid VARCHAR(50) COMMENT 'PubMed ID',
+            pmcid VARCHAR(50) COMMENT 'PMC ID',
+            source_url VARCHAR(500) COMMENT '文献来源链接',
+            keywords TEXT COMMENT '关键词',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             FOREIGN KEY (knowledge_base_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE
@@ -297,6 +305,33 @@ def init_db():
             FOREIGN KEY (from_concept_id) REFERENCES knowledge_concepts(id) ON DELETE CASCADE,
             FOREIGN KEY (to_concept_id) REFERENCES knowledge_concepts(id) ON DELETE CASCADE
         )""",
+        """CREATE TABLE IF NOT EXISTS concept_view_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            student_id VARCHAR(50) NOT NULL COMMENT '学生工号(employee_id)',
+            kb_id INT NOT NULL,
+            concept_id INT NOT NULL,
+            concept_name VARCHAR(191),
+            viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_cvl_kb (kb_id),
+            INDEX idx_cvl_concept (concept_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学生概念点击浏览记录'""",
+        """CREATE TABLE IF NOT EXISTS document_view_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            student_id VARCHAR(50) NOT NULL COMMENT '学生工号(employee_id)',
+            kb_id INT NOT NULL,
+            document_id INT NOT NULL,
+            document_title VARCHAR(255),
+            viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_dvl_kb (kb_id),
+            INDEX idx_dvl_doc (document_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学生文档打开记录'""",
+        """CREATE TABLE IF NOT EXISTS kb_view_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            student_id VARCHAR(50) NOT NULL COMMENT '学生工号(employee_id)',
+            kb_id INT NOT NULL,
+            viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_kvl_kb (kb_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学生知识图谱打开记录'""",
         """CREATE TABLE IF NOT EXISTS exam_papers (
             id INT AUTO_INCREMENT PRIMARY KEY,
             paper_name VARCHAR(200) NOT NULL COMMENT '试卷名称',
@@ -320,11 +355,73 @@ def init_db():
             updated_by VARCHAR(191) COMMENT '更新者',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Prompt模版配置表'""",
+        """CREATE TABLE IF NOT EXISTS article_journals (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) NOT NULL COMMENT '期刊名称(用于检索)',
+            sort_order INT DEFAULT 0 COMMENT '排序',
+            created_by VARCHAR(50) COMMENT '创建者ID',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文献检索目标期刊表'""",
     ]
 
     for table in tables:
         cursor.execute(table)
+
+    # 为 knowledge_documents 补齐文献元数据字段（已有表通过 ALTER 幂等补齐）
+    _ensure_document_meta_columns(conn)
+
+    # 初始化默认期刊列表（仅当表为空时）
+    cursor.execute("SELECT COUNT(*) FROM article_journals")
+    if cursor.fetchone()[0] == 0:
+        defaults = [
+            "Bioinformatics", "Brief Bioinform", "Nucleic Acids Res", "Genome Biol",
+            "BMC Bioinformatics", "PLoS Comput Biol", "Genome Res",
+            "Nat Biotechnol", "Mol Biol Evol"
+        ]
+        for i, name in enumerate(defaults):
+            cursor.execute(
+                "INSERT INTO article_journals (name, sort_order, created_by) VALUES (%s, %s, 'system')",
+                (name, i)
+            )
+
     conn.commit()
     cursor.close()
     conn.close()
+
+
+def _ensure_document_meta_columns(conn):
+    """幂等地为 knowledge_documents 补齐文献元数据字段（journal/authors/year/...）。
+
+    CREATE TABLE IF NOT EXISTS 不会修改已存在的表，因此对在 init_db 之前已创建的表，
+    这里通过检查 INFORMATION_SCHEMA 后按需 ALTER 补齐，可重复执行、安全无害。
+    """
+    meta_columns = {
+        'authors': 'VARCHAR(500)',
+        'journal': 'VARCHAR(255)',
+        'pub_year': 'VARCHAR(20)',
+        'doi': 'VARCHAR(255)',
+        'pmid': 'VARCHAR(50)',
+        'pmcid': 'VARCHAR(50)',
+        'source_url': 'VARCHAR(500)',
+        'keywords': 'TEXT',
+    }
+    try:
+        cur = conn.cursor()
+        db_name = CONFIG['SYNC_DB_CONFIG']['database']
+        cur.execute(
+            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+            "WHERE TABLE_SCHEMA=%s AND TABLE_NAME='knowledge_documents'",
+            (db_name,)
+        )
+        existing = {row[0] for row in cur.fetchall()}
+        for name, col_type in meta_columns.items():
+            if name not in existing:
+                try:
+                    cur.execute(f"ALTER TABLE knowledge_documents ADD COLUMN {name} {col_type}")
+                    conn.commit()
+                except Exception as e:
+                    print(f"⚠️ 补齐字段 {name} 失败: {e}")
+        cur.close()
+    except Exception as e:
+        print(f"⚠️ 检查 knowledge_documents 字段失败: {e}")
 
