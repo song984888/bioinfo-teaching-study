@@ -539,6 +539,63 @@ def parse_json_response(raw_response: str) -> dict:
         cleaned = re.sub(r'(?s)^\s*```json\s*|\s*```\s*$', '', raw_response)
         return json.loads(cleaned)
 
+
+def auto_grade_theory(question_text, sample_answer, student_answer, grading_criteria, max_score=100):
+    """针对理论题目的AI评分（使用DeepSeek，不按编程题标准）"""
+    try:
+        prompt = f"""你是一位经验丰富的大学教师，需要对学生的理论题目回答进行评分。
+
+题目: {question_text}
+
+参考答案: {sample_answer}
+
+评分标准: {grading_criteria or '根据与参考答案的吻合度评估'}
+
+满分: {max_score} 分
+
+学生答案: {student_answer}
+
+请根据以下标准评分：
+1. 内容准确性（与参考答案的核心知识点匹配度）
+2. 表达完整性（是否覆盖关键要点）
+3. 逻辑清晰度（条理是否清楚）
+
+输出严格JSON格式：
+{{"score": 整数(0-{max_score})_分, "comment": "中文评语(包含优点和不足，以及改进建议)"}}"""
+
+        headers = {
+            "Authorization": f"Bearer {CONFIG['DEEPSEEK_API_KEY']}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": CONFIG["DEEPSEEK_MODEL"],
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.3,
+            "max_tokens": 512,
+        }
+        resp = requests.post(CONFIG['DEEPSEEK_ENDPOINT'], json=payload, headers=headers, timeout=45)
+        if resp.status_code == 200:
+            data = resp.json()
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            result = parse_json_response(content)
+            return {'score': int(result.get('score', 0)), 'comment': result.get('comment', '')}
+    except Exception as e:
+        app.logger.warning(f"Theory grading API failed: {e}, using fallback")
+    
+    # 回退：简单的关键词匹配+长度评分
+    import re as _re
+    keywords = _re.findall(r'[\w\u4e00-\u9fff]{2,}', str(sample_answer))
+    matched = sum(1 for kw in set(keywords) if kw in str(student_answer))
+    length_score = min(30, len(str(student_answer)) / 20)
+    keyword_score = min(70, (matched / max(1, len(set(keywords)))) * 70) if keywords else 30
+    score = max(5, min(max_score, int(length_score + keyword_score)))
+    return {
+        'score': score,
+        'comment': f'基础评分：{score}/{max_score}分。'
+                   f'（关键词匹配 {matched}/{len(set(keywords))}，答案长度 {len(str(student_answer))} 字）。'
+                   f'请参考答案补充完善。' if score < max_score * 0.6 else f'回答较完整，得分 {score}/{max_score} 分。'
+    }
+
 def default_grade(question_text, sample_answer, student_code, language):
     """简化版自动评分函数（备用）"""
     # 计算代码相似度作为基础分
@@ -2492,12 +2549,48 @@ def exercise_selection():
             'perl': {'display_name': 'perl', 'ext': 'pl'}
         }
         
+        # 知识库列表和概念映射（供理论题路径使用）
+        cursor.execute("""
+            SELECT kb.id AS kb_id, kb.name AS kb_name,
+                   c.concept_name, MIN(c.id) AS concept_id
+            FROM knowledge_concepts c
+            JOIN knowledge_documents kd ON c.knowledge_document_id = kd.id
+            JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+            WHERE kb.is_public = 1
+            GROUP BY kb.id, kb.name, c.concept_name
+            ORDER BY kb.id, c.concept_name
+        """)
+        kb_list = []
+        kb_concepts_map = {}
+        for row in cursor.fetchall():
+            kid = row['kb_id']
+            if kid not in kb_concepts_map:
+                kb_concepts_map[kid] = {'name': row['kb_name'], 'concepts': []}
+                kb_list.append({'id': kid, 'name': row['kb_name']})
+            kb_concepts_map[kid]['concepts'].append({
+                'concept_id': row['concept_id'], 'concept_name': row['concept_name']
+            })
+
+        # 理论题可用性数据（按 topic+difficulty）
+        cursor.execute("""
+            SELECT topic, difficulty, COUNT(*) AS cnt
+            FROM theory_questions WHERE is_approved = 1
+            GROUP BY topic, difficulty
+        """)
+        theory_availability = {}
+        for r in cursor.fetchall():
+            key = f"({r['topic']}, {r['difficulty']})"
+            theory_availability[key] = r['cnt']
+
         return render_template('exercise_selection.html',
                               topics=topics,
                               languages=languages,
                               topic_counts=topic_counts,
                               topic_icons=TOPIC_ICONS,
-                              topic_descriptions=CONFIG['EXERCISE_TOPIC'])
+                              topic_descriptions=CONFIG['EXERCISE_TOPIC'],
+                              kb_list=kb_list,
+                              kb_concepts_map=kb_concepts_map,
+                              theory_availability=theory_availability)
     
     except Exception as e:
         flash(f'加载题目选择失败: {str(e)}', 'danger')
@@ -2506,6 +2599,7 @@ def exercise_selection():
         cursor.close()
         conn.close()
 
+
 #学生抽题学习
 @app.route('/student/study')
 def study_with_samples():
@@ -2513,34 +2607,86 @@ def study_with_samples():
         return redirect(url_for('login'))
     # 获取查询参数
     topic = request.args.get('topic')
-    language = request.args.get('language')
+    language = request.args.get('language', '')
     difficulty = request.args.get('difficulty', type=int)
+    question_type_param = request.args.get('question_type', 'programming')
     
-    # 验证参数
-    if not topic or not language or not difficulty:
-        flash('请选择主题、语言和难度', 'warning')
+    # 验证参数（理论题不需要语言选择）
+    if not topic or not difficulty:
+        flash('请选择主题和难度', 'warning')
+        return redirect(url_for('exercise_selection'))
+    if question_type_param != 'theory' and not language:
+        flash('请选择编程语言', 'warning')
         return redirect(url_for('exercise_selection'))
      
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
-       # 随机获取一道题目
-       cursor.execute("""
-          SELECT * FROM questions 
-          WHERE topic = %s AND language = %s AND difficulty = %s AND is_approved = FALSE 
-          ORDER BY RAND() LIMIT 1
-       """,(topic, language, difficulty))
-       question = cursor.fetchone()
+        if question_type_param == 'theory':
+            # 理论题从 theory_questions 表抽取
+            cursor.execute("""
+                SELECT * FROM theory_questions 
+                WHERE topic = %s AND difficulty = %s AND is_approved = 1
+                ORDER BY RAND() LIMIT 1
+            """, (topic, difficulty))
+            question = cursor.fetchone()
+            hints = []
+            kb_context = {'doc': None, 'concepts': [], 'kb_id': None, 'kb_name': None}
+            if question:
+                question['language'] = question.get('question_type', '理论题')
+                question['hints'] = None
+                # 查询关联的知识库文档和概念
+                cursor.execute("""
+                    SELECT kd.id AS doc_id, kd.title AS doc_title,
+                           kb.id AS kb_id, kb.name AS kb_name
+                    FROM knowledge_questions kq
+                    JOIN theory_questions tq ON kq.question_id = tq.id
+                    JOIN knowledge_documents kd ON kq.knowledge_document_id = kd.id
+                    JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+                    WHERE tq.topic = %s AND tq.difficulty = %s AND tq.is_approved = 1
+                      AND EXISTS (SELECT 1 FROM knowledge_concepts kc WHERE kc.knowledge_document_id = kd.id)
+                    ORDER BY RAND() LIMIT 1
+                """, (topic, difficulty))
+                doc_row = cursor.fetchone()
+                if doc_row:
+                    kb_context['doc'] = doc_row
+                    kb_context['kb_id'] = doc_row['kb_id']
+                    kb_context['kb_name'] = doc_row['kb_name']
+                    cursor.execute("""
+                        SELECT id, concept_name, concept_type, frequency
+                        FROM knowledge_concepts
+                        WHERE knowledge_document_id = %s
+                        ORDER BY frequency DESC LIMIT 8
+                    """, (doc_row['doc_id'],))
+                    kb_context['concepts'] = cursor.fetchall()
+            public_kbs = []
+            if not kb_context.get('doc'):
+                cursor.execute("SELECT id, name FROM knowledge_bases WHERE is_public=TRUE ORDER BY id DESC")
+                public_kbs = cursor.fetchall()
+        else:
+            # 编程题从 questions 表抽取
+            cursor.execute("""
+                SELECT * FROM questions 
+                WHERE topic = %s AND language = %s AND difficulty = %s AND is_approved = FALSE 
+                ORDER BY RAND() LIMIT 1
+            """, (topic, language, difficulty))
+            question = cursor.fetchone()
+            hints = json.loads(question['hints']) if question and question.get('hints') else []
+            kb_context = {'doc': None, 'concepts': [], 'kb_id': None, 'kb_name': None}
+            public_kbs = []
     
-       if not question:
-          flash('当前没有符合要求的题目,请尝试其他条件', 'warning')
-          return redirect(url_for('exercise_selection'))
-       # 解析提示信息
-       hints = json.loads(question['hints']) if question['hints'] else[] 
-       return render_template('exercise.html', 
-                              question=question,
-                              hints=hints,
-                              topic_descriptions=question['question_text'])
+        if not question:
+            flash('当前没有符合要求的题目，请尝试其他条件', 'warning')
+            return redirect(url_for('exercise_selection'))
+        
+        return render_template('exercise.html', 
+                             question=question,
+                             hints=hints,
+                             question_type=question_type_param,
+                             is_theory=(question_type_param == 'theory'),
+                             topic_descriptions=question['question_text'],
+                             kb_context=kb_context,
+                             public_kbs=public_kbs)
     except Exception as e:
        flash(f'获取题目失败: {str(e)}','danger')
        return redirect(url_for('dashboard'))
@@ -2557,6 +2703,7 @@ def submit_exercise():
     data = request.json
     question_id = data.get('question_id')
     code = data.get('code')
+    question_type = data.get('question_type', 'programming')
     
     if not question_id or not code:
         return jsonify({'success': False, 'message': '缺少参数'}), 400
@@ -2565,19 +2712,29 @@ def submit_exercise():
     cursor = conn.cursor(dictionary=True)
     
     try:
-        # 获取题目信息
-        cursor.execute("SELECT * FROM questions WHERE id = %s", (question_id,))
-        question = cursor.fetchone()
-        question_text = question['question_text']
-        sample_answer = question['sample_answer']
-        language = question['language']
+        # 获取题目信息（根据题目类型查询不同表）
+        if question_type == 'theory':
+            cursor.execute("SELECT * FROM theory_questions WHERE id = %s", (question_id,))
+            question = cursor.fetchone()
+            if question:
+                question_text = question['question_text']
+                sample_answer = question['sample_answer']
+                grading_criteria = question.get('grading_criteria', '')
+                max_score = question.get('score', 100)
+                result = auto_grade_theory(question_text, sample_answer, code, grading_criteria, max_score)
+            else:
+                return jsonify({'success': False, 'message': '理论题不存在'}), 404
+        else:
+            cursor.execute("SELECT * FROM questions WHERE id = %s", (question_id,))
+            question = cursor.fetchone()
+            if question:
+                question_text = question['question_text']
+                sample_answer = question['sample_answer']
+                language = question['language']
+                result = auto_grade(question_id, question_text, sample_answer, code, language)
+            else:
+                return jsonify({'success': False, 'message': '题目不存在'}), 404
         
-        if not question:
-            return jsonify({'success': False, 'message': '题目不存在'}), 404
-         
-        # 自动评分（ollama model）
-        #result = auto_grade_ollama(question_id, question_text, sample_answer, code, language) 
-        result = auto_grade(question_id, question_text, sample_answer, code, language) 
         score = result['score']
         comment = result['comment']        
         #detailed = result['detailed']        
@@ -2611,6 +2768,9 @@ def submit_exercise():
     finally:
         cursor.close()
         conn.close()
+@app.route('/exercise_result')
+
+@app.route('/submit_exercise', methods=['POST'])
 @app.route('/exercise_result')
 def exercise_result():
      #展示练习提交后的评语HTML页面，数据由前端JavaScript通过sessionStorage传递
@@ -6935,6 +7095,474 @@ def api_student_log_concept_view():
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/student/feed')
+def api_student_feed():
+    """学生端学术动态面板数据：最新文献、热点概念、个性化推荐"""
+    if 'user_id' not in session or session['role'] != 'student':
+        return jsonify({'success': False, 'message': '未登录'}), 401
+    student_id = session['user_id']
+    conn = get_db_connection(); cur = conn.cursor(dictionary=True)
+    try:
+        # 1) 最新文献（公开知识库中最近上传的文档，带期刊/作者/年份）
+        cur.execute("""
+            SELECT kd.id, kd.title, kd.authors, kd.journal, kd.pub_year,
+                   kb.id AS kb_id, kb.name AS kb_name, kd.created_at
+            FROM knowledge_documents kd
+            JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+            WHERE kb.is_public = 1 AND kd.title IS NOT NULL
+            ORDER BY kd.created_at DESC LIMIT 6
+        """)
+        latest_docs = cur.fetchall()
+
+        # 2) 热点概念 Top 12（全站学生浏览热度）
+        cur.execute("""
+            SELECT concept_name, COUNT(*) AS views
+            FROM concept_view_logs
+            GROUP BY concept_name
+            ORDER BY views DESC LIMIT 12
+        """)
+        trending_concepts = cur.fetchall()
+
+        # 3) 个性化推荐：同 KB 下未读文档（排除已读，按热度推荐）
+        cur.execute("""
+            SELECT kd.id, kd.title, kb.name AS kb_name, kb.id AS kb_id, kd.created_at,
+                   (SELECT COUNT(*) FROM document_view_logs dvl2 WHERE dvl2.document_id=kd.id) AS read_count
+            FROM knowledge_documents kd
+            JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+            WHERE kb.is_public = 1
+              AND kd.id NOT IN (
+                  SELECT document_id FROM document_view_logs WHERE student_id=%s
+              )
+            ORDER BY kd.created_at DESC LIMIT 4
+        """, (student_id,))
+        recommendations = cur.fetchall()
+
+        # 4) 个人统计摘要
+        cur.execute("SELECT COUNT(DISTINCT concept_name) AS cnt FROM concept_view_logs WHERE student_id=%s", (student_id,))
+        my_concepts = cur.fetchone()['cnt']
+        cur.execute("SELECT COUNT(DISTINCT kb_id) AS cnt FROM kb_view_logs WHERE student_id=%s", (student_id,))
+        my_kbs = cur.fetchone()['cnt']
+        cur.execute("SELECT COUNT(*) AS cnt FROM exercises WHERE student_id=%s", (student_id,))
+        my_exercises = cur.fetchone()['cnt']
+        cur.execute("SELECT COUNT(*) AS cnt FROM student_notes WHERE student_id=%s", (student_id,))
+        my_notes = cur.fetchone()['cnt']
+
+        return jsonify({
+            'success': True,
+            'latest_docs': latest_docs,
+            'trending_concepts': trending_concepts,
+            'recommendations': recommendations,
+            'my_stats': {
+                'concepts_viewed': my_concepts,
+                'kbs_browsed': my_kbs,
+                'exercises_done': my_exercises,
+                'notes_written': my_notes
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route('/student/knowledge_bases/<int:kb_id>/document/<int:doc_id>/download')
+
+
+# ===================== 概念学习中心 =====================
+@app.route('/student/concepts')
+def student_concepts():
+    """学生端概念学习中心：聚合所有公开知识库的概念"""
+    if 'user_id' not in session or session['role'] != 'student':
+        return redirect(url_for('login'))
+    conn = get_db_connection(); cur = conn.cursor(dictionary=True)
+    try:
+        # 汇聚 public KBs 的概念，按名称去重，累加频率
+        cur.execute("""
+            SELECT c.concept_name, c.concept_type,
+                   SUM(c.frequency) AS total_freq,
+                   COUNT(DISTINCT c.knowledge_document_id) AS doc_count,
+                   MAX(c.frequency) AS max_freq,
+                   MIN(c.id) AS rep_id
+            FROM knowledge_concepts c
+            JOIN knowledge_documents kd ON c.knowledge_document_id = kd.id
+            JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+            WHERE kb.is_public = 1
+            GROUP BY c.concept_name, c.concept_type
+            ORDER BY total_freq DESC
+        """)
+        concepts = cur.fetchall()
+        cur.close(); conn.close()
+
+        # 类型分布统计
+        type_counts = {'entity': 0, 'relation': 0, 'attribute': 0}
+        for c in concepts:
+            t = c['concept_type'] or 'entity'
+            type_counts[t] = type_counts.get(t, 0) + 1
+
+        return render_template('student/concepts.html',
+                               concepts=concepts,
+                               total=len(concepts),
+                               type_counts=type_counts)
+    except Exception as e:
+        flash(f'加载概念失败: {str(e)}', 'danger')
+        return redirect(url_for('dashboard'))
+
+
+@app.route('/student/concepts/<int:concept_id>')
+def student_concept_detail(concept_id):
+    """学生端概念详情页：定义、来源文档、相关概念"""
+    if 'user_id' not in session or session['role'] != 'student':
+        return redirect(url_for('login'))
+    conn = get_db_connection(); cur = conn.cursor(dictionary=True)
+    try:
+        # 概念基本信息
+        cur.execute("""
+            SELECT c.id, c.concept_name, c.description, c.concept_type, c.frequency,
+                   kd.title AS doc_title, kd.id AS doc_id,
+                   kb.id AS kb_id, kb.name AS kb_name
+            FROM knowledge_concepts c
+            JOIN knowledge_documents kd ON c.knowledge_document_id = kd.id
+            JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+            WHERE c.id = %s AND kb.is_public = 1
+        """, (concept_id,))
+        concept = cur.fetchone()
+        if not concept:
+            flash('概念不存在或不可访问', 'danger')
+            return redirect(url_for('student_concepts'))
+
+        # 同概念名（跨文档出现的情况）
+        cur.execute("""
+            SELECT c.id, kd.title AS doc_title, kd.id AS doc_id,
+                   kb.id AS kb_id, kb.name AS kb_name, c.frequency
+            FROM knowledge_concepts c
+            JOIN knowledge_documents kd ON c.knowledge_document_id = kd.id
+            JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+            WHERE c.concept_name = %s AND kb.is_public = 1 AND c.id != %s
+        """, (concept['concept_name'], concept_id))
+        same_name_docs = cur.fetchall()
+
+        # 相关概念（通过 concept_relations 查找）
+        cur.execute("""
+            SELECT c.id, c.concept_name, c.concept_type, cr.relation_type,
+                   kb.id AS kb_id
+            FROM concept_relations cr
+            JOIN knowledge_concepts c ON (cr.to_concept_id = c.id OR cr.from_concept_id = c.id)
+            JOIN knowledge_documents kd ON c.knowledge_document_id = kd.id
+            JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+            WHERE (cr.from_concept_id = %s OR cr.to_concept_id = %s)
+              AND c.id != %s AND kb.is_public = 1
+            GROUP BY c.id, c.concept_name, c.concept_type, cr.relation_type, kb.id
+            LIMIT 15
+        """, (concept_id, concept_id, concept_id))
+        related = cur.fetchall()
+        cur.close(); conn.close()
+
+        # 记录概念浏览
+        _student_log('concept_view_logs', session['user_id'], concept.get('kb_id', 0),
+                     {'concept_id': concept_id, 'concept_name': concept['concept_name']}, dedupe=True)
+
+        return render_template('student/concept_detail.html',
+                               concept=concept,
+                               same_name_docs=same_name_docs,
+                               related=related)
+    except Exception as e:
+        flash(f'加载概念详情失败: {str(e)}', 'danger')
+        return redirect(url_for('student_concepts'))
+
+
+# ===================== 笔记与书签 =====================
+@app.route('/api/student/bookmark', methods=['POST'])
+def api_student_bookmark():
+    """收藏/取消收藏一个概念或文档"""
+    if 'user_id' not in session or session['role'] != 'student':
+        return jsonify({'success': False, 'message': '未授权'}), 403
+    data = request.get_json(silent=True) or {}
+    target_type = data.get('target_type')
+    target_id = data.get('target_id')
+    if not target_type or not target_id:
+        return jsonify({'success': False, 'message': '参数缺失'}), 400
+    student_id = session['user_id']
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT id FROM student_bookmarks WHERE student_id=%s AND target_type=%s AND target_id=%s",
+                    (student_id, target_type, target_id))
+        existing = cur.fetchone()
+        if existing:
+            cur.execute("DELETE FROM student_bookmarks WHERE id=%s", (existing[0],))
+            conn.commit()
+            bookmarked = False
+        else:
+            cur.execute("INSERT INTO student_bookmarks (student_id, target_type, target_id) VALUES (%s,%s,%s)",
+                        (student_id, target_type, target_id))
+            conn.commit()
+            bookmarked = True
+        return jsonify({'success': True, 'bookmarked': bookmarked})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route('/api/student/note', methods=['POST'])
+def api_student_note():
+    """保存或更新学习笔记"""
+    if 'user_id' not in session or session['role'] != 'student':
+        return jsonify({'success': False, 'message': '未授权'}), 403
+    data = request.get_json(silent=True) or {}
+    target_type = data.get('target_type')  # 'concept' | 'document' | 'idea'
+    target_id = data.get('target_id', 0)
+    content = (data.get('content') or '').strip()
+    parent_note_id = data.get('parent_note_id')
+    tags_str = (data.get('tags') or '').strip()[:255] or None
+    if not content:
+        return jsonify({'success': False, 'message': '内容不能为空'}), 400
+    student_id = session['user_id']
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        # 如果 target_id=0 但 target_type='concept'，尝试从 tags 解析概念名并查找 ID
+        if target_type == 'concept' and not target_id and tags_str:
+            # tags 格式: "文献检索,概念名,文章标题"
+            for tag in tags_str.split(','):
+                tag = tag.strip()
+                if len(tag) > 1 and tag not in ('文献检索', '抽题练习', '概念学习', '文献阅读'):
+                    cur.execute(
+                        "SELECT id FROM knowledge_concepts WHERE concept_name=%s LIMIT 1", (tag,))
+                    row = cur.fetchone()
+                    if row:
+                        target_id = row[0]
+                        break
+            if not target_id:
+                target_id = 0  # 概念名解析失败，保持0
+        
+        # 如果有 parent_note_id，从父笔记继承 target_type/target_id
+        if parent_note_id:
+            cur.execute("SELECT target_type, target_id FROM student_notes WHERE id=%s AND student_id=%s",
+                        (parent_note_id, student_id))
+            parent = cur.fetchone()
+            if parent:
+                target_type = target_type or parent[0]
+                target_id = target_id or parent[1]
+        if not target_type:
+            target_type = 'idea'  # 独立灵感笔记
+
+        if parent_note_id:
+            # 思路延续：始终新增（不覆盖父笔记）
+            cur.execute(
+                "INSERT INTO student_notes (student_id, target_type, target_id, content, parent_note_id, tags) "
+                "VALUES (%s,%s,%s,%s,%s,%s)",
+                (student_id, target_type, target_id, content, parent_note_id, tags_str))
+        else:
+            # 根笔记：始终新增（不同时间的想法各自独立，不互相覆盖）
+            cur.execute(
+                "INSERT INTO student_notes (student_id, target_type, target_id, content, tags) "
+                "VALUES (%s,%s,%s,%s,%s)",
+                (student_id, target_type or 'concept', target_id, content, tags_str))
+        conn.commit()
+        return jsonify({'success': True, 'message': '笔记已保存'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route('/student/collections')
+def student_collections():
+    """学生收藏与笔记总览页"""
+    if 'user_id' not in session or session['role'] != 'student':
+        return redirect(url_for('login'))
+    student_id = session['user_id']
+    conn = get_db_connection(); cur = conn.cursor(dictionary=True)
+    try:
+        cur.execute("""
+            SELECT sb.id AS bookmark_id, sb.created_at AS bookmarked_at,
+                   c.concept_name, c.id AS concept_id, c.concept_type,
+                   kd.title AS doc_title, kb.name AS kb_name
+            FROM student_bookmarks sb
+            JOIN knowledge_concepts c ON sb.target_id = c.id
+            JOIN knowledge_documents kd ON c.knowledge_document_id = kd.id
+            JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+            WHERE sb.student_id = %s AND sb.target_type = 'concept'
+            ORDER BY sb.created_at DESC
+        """, (student_id,))
+        bookmarked_concepts = cur.fetchall()
+
+        # 公开知识库的概念列表（按 KB 分组，供灵感捕捉级联选择）
+        cur.execute("""
+            SELECT kb.id AS kb_id, kb.name AS kb_name,
+                   c.concept_name, MIN(c.id) AS concept_id
+            FROM knowledge_concepts c
+            JOIN knowledge_documents kd ON c.knowledge_document_id = kd.id
+            JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+            WHERE kb.is_public = 1
+            GROUP BY kb.id, kb.name, c.concept_name
+            ORDER BY kb.id, c.concept_name
+        """)
+        kb_concepts_raw = cur.fetchall()
+        kb_list = []
+        kb_concepts_map = {}
+        for row in kb_concepts_raw:
+            kid = row['kb_id']
+            if kid not in kb_concepts_map:
+                kb_concepts_map[kid] = {'name': row['kb_name'], 'concepts': []}
+                kb_list.append({'id': kid, 'name': row['kb_name']})
+            kb_concepts_map[kid]['concepts'].append({
+                'concept_id': row['concept_id'], 'concept_name': row['concept_name']
+            })
+
+        cur.execute("""
+            SELECT sb.id AS bookmark_id, sb.created_at AS bookmarked_at,
+                   kd.title AS doc_title, kd.id AS doc_id,
+                   kb.id AS kb_id, kb.name AS kb_name
+            FROM student_bookmarks sb
+            JOIN knowledge_documents kd ON sb.target_id = kd.id
+            JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+            WHERE sb.student_id = %s AND sb.target_type = 'document'
+            ORDER BY sb.created_at DESC
+        """, (student_id,))
+        bookmarked_docs = cur.fetchall()
+
+        # 根笔记（非回复）+ 灵感笔记
+        cur.execute("""
+            SELECT sn.id AS note_id, sn.content, sn.target_type, sn.target_id,
+                   sn.updated_at, sn.tags, sn.parent_note_id,
+                   CASE WHEN sn.target_type='concept' THEN c.concept_name
+                        WHEN sn.target_type='document' THEN kd2.title
+                        WHEN sn.target_type='idea' THEN '灵感笔记' END AS target_name
+            FROM student_notes sn
+            LEFT JOIN knowledge_concepts c ON sn.target_type='concept' AND sn.target_id=c.id
+            LEFT JOIN knowledge_documents kd2 ON sn.target_type='document' AND sn.target_id=kd2.id
+            WHERE sn.student_id = %s AND sn.parent_note_id IS NULL
+            ORDER BY sn.updated_at DESC
+        """, (student_id,))
+        root_notes = cur.fetchall()
+
+        # 按 (target_type, target_name) 分组根笔记，形成以概念为单位的思路链条
+        groups = {}  # key: string "concept_id|concept_name"
+        for note in root_notes:
+            cid = str(note['target_id'] or 0)
+            cname = note['target_name'] or '灵感笔记'
+            key = f"{cid}|{cname}"
+            if key not in groups:
+                groups[key] = {'target_id': note['target_id'], 'target_name': cname,
+                               'target_type': note['target_type'], 'notes': []}
+            groups[key]['notes'].append(note)
+
+        # 子笔记
+        cur.execute("""
+            SELECT sn.id AS note_id, sn.content, sn.target_type, sn.updated_at, sn.parent_note_id
+            FROM student_notes sn
+            WHERE sn.student_id = %s AND sn.parent_note_id IS NOT NULL
+            ORDER BY sn.created_at ASC
+        """, (student_id,))
+        replies = cur.fetchall()
+
+        replies_by_parent = {}
+        for r in replies:
+            pid = r['parent_note_id']
+            if pid not in replies_by_parent:
+                replies_by_parent[pid] = []
+            replies_by_parent[pid].append(r)
+        # 最近查看的文档（基于 document_view_logs，去重取最新 10 条）
+        cur.execute("""
+            SELECT dvl.document_id, dvl.document_title,
+                   MAX(dvl.viewed_at) AS viewed_at,
+                   kb.id AS kb_id, kb.name AS kb_name
+            FROM document_view_logs dvl
+            JOIN knowledge_bases kb ON dvl.kb_id = kb.id
+            WHERE dvl.student_id = %s AND kb.is_public = 1
+            GROUP BY dvl.document_id, dvl.document_title, kb.id, kb.name
+            ORDER BY MAX(dvl.viewed_at) DESC LIMIT 10
+        """, (student_id,))
+        recent_docs = cur.fetchall()
+
+        # 文档→概念映射（用于最近阅读按概念筛选）
+        doc_concept_map = {}
+        if recent_docs:
+            doc_ids = [d['document_id'] for d in recent_docs]
+            placeholders = ','.join(['%s'] * len(doc_ids))
+            cur.execute(f"""
+                SELECT DISTINCT kc.knowledge_document_id AS doc_id, kc.concept_name
+                FROM knowledge_concepts kc
+                WHERE kc.knowledge_document_id IN ({placeholders})
+            """, doc_ids)
+            for row in cur.fetchall():
+                did = row['doc_id']
+                if did not in doc_concept_map:
+                    doc_concept_map[did] = []
+                doc_concept_map[did].append(row['concept_name'])
+
+        # 概念→KB文档映射（每个概念对应的知识库文档）
+        concept_docs = {}
+        if groups:
+            concept_names = list(set(g['target_name'] for g in groups.values()))
+            for cname in concept_names:
+                cur.execute("""
+                    SELECT DISTINCT kd.id AS doc_id, kd.title AS doc_title,
+                           kb.id AS kb_id, kb.name AS kb_name,
+                           kd.journal, kd.pub_year, kd.authors
+                    FROM knowledge_concepts kc
+                    JOIN knowledge_documents kd ON kc.knowledge_document_id = kd.id
+                    JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+                    WHERE kc.concept_name = %s AND kb.is_public = 1
+                    LIMIT 8
+                """, (cname,))
+                docs = cur.fetchall()
+                if docs:
+                    concept_docs[cname] = docs
+
+        # 将 datetime 转为字符串，避免 JSON 序列化报错
+        for key in groups:
+            for note in groups[key]['notes']:
+                if note.get('updated_at') and hasattr(note['updated_at'], 'isoformat'):
+                    note['updated_at'] = note['updated_at'].isoformat()
+        for pid in replies_by_parent:
+            for r in replies_by_parent[pid]:
+                if r.get('updated_at') and hasattr(r['updated_at'], 'isoformat'):
+                    r['updated_at'] = r['updated_at'].isoformat()
+
+        cur.close(); conn.close()
+
+        return render_template('student/collections.html',
+                               bookmarked_concepts=bookmarked_concepts,
+                               bookmarked_docs=bookmarked_docs,
+                               kb_list=kb_list,
+                               kb_concepts_map=kb_concepts_map,
+                               note_groups=groups,
+                               replies_by_parent=replies_by_parent,
+                               recent_docs=recent_docs,
+                               doc_concept_map=doc_concept_map,
+                               concept_docs=concept_docs)
+    except Exception as e:
+        app.logger.error(f'加载收藏失败: {str(e)}', exc_info=True)
+        flash(f'加载收藏失败: {str(e)}', 'danger')
+        return redirect(url_for('dashboard'))
+
+
+# ===================== 公用接口 =====================
+@app.route('/api/public_concepts')
+def api_public_concepts():
+    """返回所有公开知识库的概念（名称 + ID），供前端下拉选择"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': '未登录'}), 401
+    conn = get_db_connection(); cur = conn.cursor(dictionary=True)
+    try:
+        cur.execute("""
+            SELECT c.concept_name, MIN(c.id) AS concept_id
+            FROM knowledge_concepts c
+            JOIN knowledge_documents kd ON c.knowledge_document_id = kd.id
+            JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
+            WHERE kb.is_public = 1
+            GROUP BY c.concept_name
+            ORDER BY c.concept_name
+        """)
+        concepts = cur.fetchall()
+        return jsonify({'success': True, 'concepts': concepts})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        cur.close(); conn.close()
 
 
 @app.route('/student/knowledge_bases/<int:kb_id>/document/<int:doc_id>/download')

@@ -376,6 +376,32 @@
     </div>
   </div>
 </div>
+
+<!-- Note Modal (文献检索记录想法) -->
+<div class="modal-overlay" id="noteModal" style="display:none" onclick="if(event.target===this) closeNoteModal()">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-head">
+      <div><h2>💡 记录想法到学习笔记</h2><div class="sub" id="noteModalSub">将文献启发的灵感关联到概念</div></div>
+      <button class="modal-close" onclick="closeNoteModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="exp-section">
+        <h3>选择关联概念</h3>
+        <select id="noteConceptSelect" style="width:100%;padding:0.6rem 0.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text)">
+          <option value="">— 加载中 —</option>
+        </select>
+      </div>
+      <div class="exp-section">
+        <h3>记录想法</h3>
+        <textarea id="noteContent" style="width:100%;min-height:100px;padding:0.6rem 0.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);resize:vertical" placeholder="这篇文献给你什么启发？..."></textarea>
+      </div>
+      <div class="exp-section" style="display:flex;gap:0.5rem;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="closeNoteModal()">取消</button>
+        <button class="btn btn-primary" onclick="submitNote()">📤 保存到学习笔记</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -600,6 +626,9 @@ function createArticleCard(article, idx) {
       <button class="btn btn-secondary card-analyze-btn" onclick="exploreArticle(${idx})">
         🔍 深入研读
       </button>
+      <button class="btn btn-purple card-analyze-btn" onclick="openNoteModal(${idx})" style="background:#a371f7;color:#fff">
+        💡 记录想法
+      </button>
       ${canEditJournals ? `<button class="btn btn-primary card-analyze-btn" onclick="openUploadToKb(${idx})">📚 上传到知识库</button>` : ''}
     </div>
   `;
@@ -661,6 +690,108 @@ function openUploadToKb(idx) {
 function closeUploadToKb() {
   document.getElementById('uploadKbModal').style.display = 'none';
 }
+
+// ===== 文献检索 → 学习笔记 =====
+let currentNoteArticleIdx = null;
+let noteConceptListCache = null;
+
+async function loadNoteConcepts() {
+  if (noteConceptListCache) return noteConceptListCache;
+  const sel = document.getElementById('noteConceptSelect');
+  try {
+    const resp = await fetch('/api/public_concepts');
+    const data = await resp.json();
+    if (!data.success || !data.concepts || !data.concepts.length) {
+      sel.innerHTML = '<option value="">无可用概念</option>';
+      return [];
+    }
+    noteConceptListCache = data.concepts;
+    sel.innerHTML = '<option value="">— 选择概念 —</option>';
+    data.concepts.forEach(function(c) {
+      sel.innerHTML += '<option value="' + c.concept_id + '|' + escapeHtml(c.concept_name) + '">' + escapeHtml(c.concept_name) + '</option>';
+    });
+    return noteConceptListCache;
+  } catch(e) {
+    sel.innerHTML = '<option value="">加载失败</option>';
+    return [];
+  }
+}
+
+function openNoteModal(idx) {
+  currentNoteArticleIdx = idx;
+  var article = articles[idx];
+  if (!article) return;
+  document.getElementById('noteModalSub').textContent = '文献: ' + (article.title || 'Untitled').substring(0, 50);
+  document.getElementById('noteContent').value = '';
+  document.getElementById('noteModal').style.display = 'flex';
+  loadNoteConcepts().then(function() {
+    // 自动匹配检索关键词到概念下拉
+    var kw = (document.getElementById('keywordInput')?.value || '').trim();
+    if (kw) {
+      var sel = document.getElementById('noteConceptSelect');
+      for (var i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].text.toLowerCase().indexOf(kw.toLowerCase()) >= 0) {
+          sel.selectedIndex = i;
+          break;
+        }
+      }
+    }
+  }).catch(function(){});
+}
+
+function closeNoteModal() {
+  document.getElementById('noteModal').style.display = 'none';
+}
+
+async function submitNote() {
+  var conceptVal = document.getElementById('noteConceptSelect').value;
+  var content = document.getElementById('noteContent').value.trim();
+  if (!conceptVal) { alert('请选择关联概念'); return; }
+  if (!content) { alert('请输入你的想法'); return; }
+  var article = articles[currentNoteArticleIdx];
+  if (!article) { closeNoteModal(); return; }
+  var parts = conceptVal.split('|');
+  var conceptId = parseInt(parts[0]) || 0;
+  var conceptName = parts[1] || '';
+
+  // 构建文献元数据信息
+  var articleMeta = [];
+  if (article.title) articleMeta.push('文献: ' + article.title);
+  if (article.journalInfo?.journal?.title || article.journalTitle) 
+    articleMeta.push('期刊: ' + (article.journalInfo?.journal?.title || article.journalTitle));
+  if (article.pubYear) articleMeta.push('年份: ' + article.pubYear);
+  if (article.authorString) articleMeta.push('作者: ' + article.authorString);
+  if (article.doi) articleMeta.push('DOI: ' + article.doi);
+  if (article.pmid || article.id) articleMeta.push('PMID: ' + (article.pmid || article.id));
+  var sourceUrl = articleSourceUrl(article);
+  if (sourceUrl) articleMeta.push('全文: ' + sourceUrl);
+  
+  var fullContent = (articleMeta.length ? articleMeta.join('\n') + '\n\n---\n\n' : '') + content;
+  var tags = '文献检索,' + conceptName + ',' + (article.title || '').substring(0, 30);
+
+  try {
+    var resp = await fetch('/api/student/note', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        target_type: 'concept', target_id: conceptId,
+        content: fullContent,
+        tags: tags
+      })
+    });
+    var data = await resp.json();
+    if (data.success) {
+      closeNoteModal();
+      alert('✓ 想法已保存到学习笔记！可在首页 学习笔记 查看。');
+    } else {
+      alert('保存失败: ' + (data.message || '未知错误'));
+    }
+  } catch(e) {
+    alert('保存失败: ' + e.message);
+  }
+}
+
+// Make sure the existing escapeHtml is used (already defined in template)
+// ===== end 学习笔记 =====
 
 async function confirmUploadToKb() {
   const sel = document.getElementById('uploadKbSelect');

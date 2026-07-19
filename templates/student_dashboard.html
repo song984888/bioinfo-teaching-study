@@ -3,91 +3,194 @@
 {% block title %}学生控制台{% endblock %}
 
 {% block content %}
+<style>
+    .dashboard { max-width: 1100px; margin: 0 auto; padding: 20px; }
+    .user-profile-card { 
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+        border-radius: 14px; padding: 20px 28px; margin-bottom: 24px; 
+        color: #fff; display: flex; align-items: center; gap: 18px; 
+    }
+    .user-avatar { font-size: 3rem; }
+    .user-details h3 { margin: 0; font-size: 1.4rem; }
+    .user-details .badge { font-size: 0.8rem; padding: 3px 10px; border-radius: 12px; }
+    .badge-role { background: rgba(255,255,255,0.2); color: #fff; }
+    .badge-id { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.85); }
+    .btn-view-profile { font-size: 0.8rem; color: rgba(255,255,255,0.8); text-decoration: none; border: 1px solid rgba(255,255,255,0.3); padding: 4px 12px; border-radius: 20px; display: inline-block; margin-top: 6px; }
+    .btn-view-profile:hover { background: rgba(255,255,255,0.15); }
+
+    .section-title { font-size: 1rem; font-weight: 600; color: #555; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+
+    .dashboard-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
+    .card { 
+        background: #fff; border-radius: 12px; padding: 20px 18px; border: 1px solid #eef0f5;
+        text-decoration: none; color: #333; transition: all 0.2s;
+        display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px;
+    }
+    .card:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0,0,0,0.08); border-color: #dde4ff; }
+    .card h3 { font-size: 1.05rem; margin: 0; color: #4a69bd; }
+    .card p { font-size: 0.82rem; color: #888; margin: 0; }
+
+    .progress-panel { background: #fff; border-radius: 12px; border: 1px solid #eef0f5; padding: 20px 24px; margin-bottom: 20px; }
+    .progress-panel h4 { font-size: 1rem; margin: 0 0 14px; color: #555; }
+    .feed-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .feed-col { background: #fafbfc; border-radius: 10px; padding: 14px; }
+    .feed-col h5 { font-size: 0.9rem; margin: 0 0 10px; padding-bottom: 8px; border-bottom: 2px solid #f0f0f0; color: #555; }
+    .feed-item { padding: 6px 0; border-bottom: 1px solid #f0f0f0; font-size: 0.85rem; }
+    .feed-item:last-child { border-bottom: none; }
+    .feed-item a { color: #4a69bd; text-decoration: none; }
+    .feed-item a:hover { text-decoration: underline; }
+    .feed-item .meta { font-size: 0.75rem; color: #aaa; margin-top: 2px; }
+    .feed-tag { display: inline-block; background: #eef2ff; color: #4a69bd; padding: 3px 10px; border-radius: 14px; font-size: 0.8rem; margin: 3px 5px 3px 0; cursor: pointer; text-decoration: none; }
+    .feed-tag:hover { background: #dde4ff; }
+    .feed-loading { color: #aaa; text-align: center; padding: 20px; }
+    .feed-empty { color: #aaa; text-align: center; padding: 12px; font-size: 0.85rem; }
+
+    .stats-row { display: flex; gap: 14px; margin-bottom: 16px; }
+    .stat-card-mini { flex: 1; text-align: center; background: #f0f4ff; border-radius: 10px; padding: 14px 10px; }
+    .stat-card-mini span { display: block; font-size: 1.6rem; font-weight: 700; color: #4a69bd; }
+    .stat-card-mini small { font-size: 0.78rem; color: #888; margin-top: 2px; display: block; }
+
+    @media (max-width: 768px) {
+        .feed-grid { grid-template-columns: 1fr; }
+        .stats-row { flex-wrap: wrap; }
+        .stat-card-mini { min-width: 80px; }
+    }
+</style>
+
 <div class="dashboard">
-    <!-- 用户信息卡片 -->
     <div class="user-profile-card">
-        <div class="user-info">
-            <div class="user-avatar">🎓</div>
-            <div class="user-details">
-                <h3>{{ session.name }}同学</h3>
-                <p class="user-meta">
-                    <span class="badge badge-role">{{ session.role }}</span>
-                    <span class="badge badge-id">学号：{{ session.user_id }}</span>
-                </p>
-                <a href="{{ url_for('user_account') }}" class="btn-view-profile">查看个人详情</a>
+        <div class="user-avatar">🎓</div>
+        <div class="user-details">
+            <h3>{{ session.name }}同学</h3>
+            <div style="margin-top:4px">
+                <span class="badge badge-role">{{ session.role }}</span>
+                <span class="badge badge-id ms-1">学号：{{ session.user_id }}</span>
             </div>
+            <a href="{{ url_for('user_account') }}" class="btn-view-profile">查看个人详情</a>
         </div>
     </div>
-    
-    <h2>学生控制台</h2>
-    <div class="dashboard-cards">
-        <a href="{{ url_for('student_exam') }}" class="card">
-            <h3>开始考试</h3>
-            <p>参加正式编程考试</p>
-        </a>
-        
-        <a href="{{ url_for('view_grades') }}" class="card">
-            <h3>查看成绩</h3>
-            <p>查看历史考试成绩</p>
-        </a>
-        
-        <a href="{{ url_for('exercise_selection') }}" class="card">
-           <h3>抽题学习</h3>
-           <p>选择主题、语言和难度进行练习</p>
-        </a>
-        
-        <a href="{{url_for('student_exam_mock')}}" class="card">
-            <h3>模拟考试</h3>
-            <p>模拟真实考试环境</p>
-        </a>
-        
-        <a href="{{url_for('study_suggestion')}}" class="card">
-            <h3>学习反馈</h3>
-            <p>获取个性化学习建议</p>
-        </a>
 
-        <a href="{{url_for('bioinfo_articles')}}" class="card">
-            <h3>文献检索</h3>
+    <div class="section-title"><i class="fas fa-th-large" style="color:#4a69bd"></i> 功能模块</div>
+    <div class="dashboard-cards">
+        <a href="{{ url_for('student_concepts') }}" class="card">
+            <h3>🔬 概念学习</h3>
+            <p>浏览和学习生物信息学核心概念</p>
+        </a>
+        <a href="{{ url_for('exercise_selection') }}" class="card">
+            <h3>📝 抽题学习</h3>
+            <p>编程题 + 理论题混合练习</p>
+        </a>
+        <a href="{{ url_for('student_collections') }}" class="card">
+            <h3>💡 学习笔记</h3>
+            <p>记录学习心得、收藏概念和文档</p>
+        </a>
+        <a href="{{ url_for('student_knowledge_bases') }}" class="card">
+            <h3>🗺️ 知识库浏览</h3>
+            <p>查看公开知识库的概念图谱</p>
+        </a>
+        <a href="{{ url_for('bioinfo_articles') }}" class="card">
+            <h3>📚 文献检索</h3>
             <p>检索生物信息学文献并提取创新点</p>
         </a>
-
-        <a href="{{url_for('student_knowledge_bases')}}" class="card">
-            <h3>知识库浏览</h3>
-            <p>查看公开知识库的概念图谱，点击概念检索文献</p>
+        <a href="{{ url_for('study_suggestion') }}" class="card">
+            <h3>📊 学习反馈</h3>
+            <p>获取个性化学习建议</p>
         </a>
     </div>
 
-
-    <!-- 最近活动 -->
-    <div class="recent-activity">
-        <h3>快速入口</h3>
-        <div class="activity-list">
-            <div class="empty-activity">
-                <p style="font-size: 16px; color: #555;">
-                    当前学期课程：<strong>《生物信息学课程》</strong>
-                </p>
-                <p style="font-size: 14px; color: #888; margin-top: 10px;">
-                    点击上方卡片进入考试、练习或查看成绩页面
-                </p>
-            </div>
+    <!-- 最新文献 / 热点概念 / 为你推荐 -->
+    <div class="feed-grid" id="feedGrid">
+        <div class="feed-col" id="colLatest">
+            <h5>📄 最新文献</h5>
+            <div class="feed-loading">加载中...</div>
         </div>
+        <div class="feed-col" id="colTrending">
+            <h5>🔥 热点概念</h5>
+            <div class="feed-loading">加载中...</div>
+        </div>
+        <div class="feed-col" id="colRecommend">
+            <h5>🎯 为你推荐</h5>
+            <div class="feed-loading">加载中...</div>
+        </div>
+    </div>
+
+    <!-- 我的学习进度（底部，紧凑排列） -->
+    <div class="progress-panel" id="feedPanel">
+        <h4><i class="fas fa-chart-bar" style="color:#4a69bd"></i> 我的学习进度</h4>
+        <div class="stats-row" id="statsCards">
+            <div class="stat-card-mini"><span id="statConcepts">-</span><small>概念学习</small></div>
+            <div class="stat-card-mini"><span id="statExercises">-</span><small>抽题练习</small></div>
+            <div class="stat-card-mini"><span id="statDocs">-</span><small>文献检索</small></div>
+            <div class="stat-card-mini"><span id="statNotes">-</span><small>学习笔记</small></div>
+        </div>
+        <small class="text-muted" id="feedStats"></small>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    // 卡片悬停效果
-    document.querySelectorAll('.card').forEach(card => {
-        card.addEventListener('mouseenter', () => {
-            card.style.transform = 'translateY(-5px)';
-            card.style.boxShadow = '0 10px 20px rgba(0,0,0,0.1)';
+    (async function loadFeed() {
+        try {
+            const resp = await fetch('/api/student/feed');
+            const data = await resp.json();
+            if (!data.success) return;
+
+            const stats = data.my_stats || {};
+            document.getElementById('feedStats').textContent =
+                '已浏览 ' + (stats.kbs_browsed || 0) + ' 个知识库 · ' + (stats.concepts_viewed || 0) + ' 个概念 · '
+                + (stats.exercises_done || 0) + ' 次练习 · ' + (stats.notes_written || 0) + ' 条笔记';
+
+            document.getElementById('statConcepts').textContent = stats.concepts_viewed || 0;
+            document.getElementById('statExercises').textContent = stats.exercises_done || 0;
+            document.getElementById('statDocs').textContent = stats.kbs_browsed || 0;
+            document.getElementById('statNotes').textContent = stats.notes_written || 0;
+
+            renderLatest(data.latest_docs || []);
+            renderTrending(data.trending_concepts || []);
+            renderRecommend(data.recommendations || []);
+        } catch (e) {
+            console.error('学习进度加载失败:', e);
+        }
+    })();
+
+    function truncate(s, n) { if (!s) return ''; return s.length > n ? s.substring(0, n) + '…' : s; }
+
+    function renderLatest(docs) {
+        const col = document.getElementById('colLatest');
+        if (!docs.length) { col.innerHTML = '<h5>📄 最新文献</h5><div class=\"feed-empty\">暂无文献</div>'; return; }
+        let html = '<h5>📄 最新文献</h5>';
+        docs.forEach(d => {
+            const meta = [d.journal, d.pub_year, d.authors ? truncate(d.authors, 20) : ''].filter(Boolean).join(' · ');
+            html += '<div class=\"feed-item\">'
+                 +  '<a href=\"/student/knowledge_bases/' + d.kb_id + '/document/' + d.id + '\">' + truncate(d.title, 50) + '</a>'
+                 +  (meta ? '<div class=\"meta\">' + meta + '</div>' : '')
+                 +  '</div>';
         });
-        
-        card.addEventListener('mouseleave', () => {
-            card.style.transform = 'translateY(0)';
-            card.style.boxShadow = '0 5px 15px rgba(0,0,0,0.08)';
+        col.innerHTML = html;
+    }
+
+    function renderTrending(concepts) {
+        const col = document.getElementById('colTrending');
+        if (!concepts.length) { col.innerHTML = '<h5>🔥 热点概念</h5><div class=\"feed-empty\">暂无数据</div>'; return; }
+        let html = '<h5>🔥 热点概念</h5>';
+        concepts.forEach(c => {
+            html += '<a href=\"/bioinfo-articles?q=' + encodeURIComponent(c.concept_name) + '\" class=\"feed-tag\">' + c.concept_name + '</a>';
         });
-    });
+        col.innerHTML = html;
+    }
+
+    function renderRecommend(docs) {
+        const col = document.getElementById('colRecommend');
+        if (!docs.length) { col.innerHTML = '<h5>🎯 为你推荐</h5><div class=\"feed-empty\">全部文档已读</div>'; return; }
+        let html = '<h5>🎯 为你推荐</h5>';
+        docs.forEach(d => {
+            html += '<div class=\"feed-item\">'
+                 +  '<a href=\"/student/knowledge_bases/' + d.kb_id + '/document/' + d.id + '\">' + truncate(d.title, 50) + '</a>'
+                 +  '<div class=\"meta\">' + (d.kb_name || '') + ' · 未读</div>'
+                 +  '</div>';
+        });
+        col.innerHTML = html;
+    }
 </script>
 {% endblock %}

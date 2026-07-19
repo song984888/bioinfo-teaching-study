@@ -12,19 +12,19 @@
     <div class="selection-steps">
         <div class="step active" data-step="1">
             <span class="step-number">1</span>
-            <span class="step-label">选择题型</span>
+            <span class="step-label" id="step1Label">选择题型</span>
         </div>
         <div class="step" data-step="2">
             <span class="step-number">2</span>
-            <span class="step-label">选择主题</span>
+            <span class="step-label" id="step2Label">选择主题</span>
         </div>
         <div class="step" data-step="3">
             <span class="step-number">3</span>
-            <span class="step-label">选择语言</span>
+            <span class="step-label" id="step3Label">选择语言</span>
         </div>
         <div class="step" data-step="4">
             <span class="step-number">4</span>
-            <span class="step-label">选择难度</span>
+            <span class="step-label" id="step4Label">选择难度</span>
         </div>
     </div>
 
@@ -55,6 +55,42 @@
                 </div>
             </div>
             <input type="hidden" name="question_type" id="selectedQuestionType">
+        </div>
+
+        <!-- 理论题路径: KB → 概念 → 难度 -->
+        <div class="selection-step" id="stepTheoryKb" style="display:none">
+            <h4>选择知识库</h4>
+            <select id="theoryKbSelect" class="form-select" style="max-width:400px" onchange="onTheoryKbChange()">
+                <option value="">— 请选择知识库 —</option>
+                {% for kb in kb_list %}
+                <option value="{{ kb.id }}">{{ kb.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="selection-step" id="stepTheoryConcept" style="display:none">
+            <h4>选择概念</h4>
+            <select id="theoryConceptSelect" class="form-select" style="max-width:400px" onchange="onTheoryConceptChange()">
+                <option value="">— 请选择概念 —</option>
+            </select>
+        </div>
+
+        <div class="selection-step" id="stepTheoryDiff" style="display:none">
+            <h4>选择难度</h4>
+            <div class="difficulty-options" id="theoryDiffOptions">
+                <div class="difficulty-card" data-difficulty="1" onclick="selectTheoryDiff(this)">
+                    <div class="difficulty-stars">★☆☆</div>
+                    <div class="difficulty-name">简单</div>
+                </div>
+                <div class="difficulty-card" data-difficulty="2" onclick="selectTheoryDiff(this)">
+                    <div class="difficulty-stars">★★☆</div>
+                    <div class="difficulty-name">中等</div>
+                </div>
+                <div class="difficulty-card" data-difficulty="3" onclick="selectTheoryDiff(this)">
+                    <div class="difficulty-stars">★★★</div>
+                    <div class="difficulty-name">困难</div>
+                </div>
+            </div>
         </div>
 
         <!-- 步骤 2: 选择主题 -->
@@ -132,48 +168,103 @@
     let selectedTopic = '';
     let selectedLanguage = '';
     let selectedDifficulty = '';
+    let isTheoryPath = false;
+
+    // KB→概念级联数据
+    const kbConcepts = {{ kb_concepts_map|tojson|safe or '{}' }};
+    const theoryAvail = {{ theory_availability|tojson|safe or '{}' }};
+
+    function onTheoryKbChange() {
+        var kbId = document.getElementById('theoryKbSelect').value;
+        var sel = document.getElementById('theoryConceptSelect');
+        sel.innerHTML = '<option value=\"\">— 请选择概念 —</option>';
+        if (kbId && kbConcepts[kbId]) {
+            kbConcepts[kbId].concepts.forEach(function(c) {
+                sel.innerHTML += '<option value=\"' + c.concept_id + '|' + escapeHtml(c.concept_name) + '\">' + escapeHtml(c.concept_name) + '</option>';
+            });
+        }
+    }
+
+    function onTheoryConceptChange() {
+        var val = document.getElementById('theoryConceptSelect').value;
+        if (!val) return;
+        selectedTopic = val.split('|')[1];
+        document.getElementById('selectedTopic').value = selectedTopic;
+    }
+
+    function selectTheoryDiff(el) {
+        document.querySelectorAll('#theoryDiffOptions .difficulty-card').forEach(function(c) {
+            c.classList.remove('selected');
+        });
+        el.classList.add('selected');
+        selectedDifficulty = el.dataset.difficulty;
+        document.getElementById('selectedDifficulty').value = selectedDifficulty;
+        document.getElementById('startBtn').style.display = 'block';
+    }
+
+    function escapeHtml(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
     
     // 初始化步骤
     function updateStepDisplay() {
-        // 更新步骤指示器
         document.querySelectorAll('.step').forEach((step, index) => {
-           if (index + 1 <= currentStep) {
-               step.classList.add('active');
-            } else {
-               step.classList.remove('active');
-            }
+           step.classList.toggle('active', index + 1 <= currentStep);
         });
-        
-        // 显示当前步骤内容
+
         document.querySelectorAll('.selection-step').forEach(step => {
            step.style.display = 'none';
         });
-        document.getElementById(`step${currentStep}`).style.display = 'block';
-        
-        // 更新按钮状态
+
+        if (isTheoryPath) {
+            if (currentStep >= 2) { 
+                document.getElementById('stepTheoryKb').style.display = 'block'; 
+            }
+            if (currentStep >= 3) { 
+                document.getElementById('stepTheoryConcept').style.display = 'block'; 
+            }
+            if (currentStep >= 4) { 
+                document.getElementById('stepTheoryDiff').style.display = 'block'; 
+            }
+        } else {
+            var el = document.getElementById('step' + currentStep);
+            if (el) el.style.display = 'block';
+        }
+
         document.getElementById('prevBtn').disabled = currentStep === 1;
-        document.getElementById('nextBtn').style.display = currentStep < totalSteps ? 'block' : 'none';
-        document.getElementById('startBtn').style.display = currentStep === totalSteps ? 'block' : 'none';
+        document.getElementById('nextBtn').style.display = currentStep < totalSteps ? 'inline-block' : 'none';
+        document.getElementById('startBtn').style.display = currentStep === totalSteps ? 'inline-block' : 'none';
     }
     
     // 下一步按钮
     document.getElementById('nextBtn').addEventListener('click', function() {
-        // 验证当前步骤选择
-       if (currentStep === 1 && !selectedQuestionType) {
+        if (currentStep === 1 && !selectedQuestionType) {
             alert('请选择题目类型');
-           return;
+            return;
         }
-       if (currentStep === 2 && !selectedTopic) {
-            alert('请选择一个主题');
-           return;
+        if (currentStep === 2) {
+            if (isTheoryPath) {
+                if (!document.getElementById('theoryKbSelect').value) {
+                    alert('请选择知识库');
+                    return;
+                }
+            } else if (!selectedTopic) {
+                alert('请选择一个主题');
+                return;
+            }
         }
-       if (currentStep === 3 && !selectedLanguage) {
-            alert('请选择一种编程语言');
-           return;
+        if (currentStep === 3) {
+            if (isTheoryPath) {
+                if (!document.getElementById('theoryConceptSelect').value) {
+                    alert('请选择概念');
+                    return;
+                }
+            } else if (!selectedLanguage) {
+                alert('请选择一种编程语言');
+                return;
+            }
         }
-       if (currentStep === 4 && !selectedDifficulty) {
+        if (currentStep === 4 && !selectedDifficulty) {
             alert('请选择难度级别');
-           return;
+            return;
         }
         
         currentStep++;
@@ -197,9 +288,32 @@
             // 设置当前选择
             this.classList.add('selected');
             selectedQuestionType = this.dataset.type;
-            
-            // 更新隐藏字段值
+            isTheoryPath = (selectedQuestionType === 'theory');
             document.getElementById('selectedQuestionType').value = selectedQuestionType;
+
+            // 理论题：重新标记步骤标签
+            document.getElementById('step2Label').textContent = isTheoryPath ? '选择知识库' : '选择主题';
+            document.getElementById('step3Label').textContent = isTheoryPath ? '选择概念' : '选择语言';
+            document.getElementById('step4Label').textContent = '选择难度';
+
+            // 显示/隐藏对应步骤
+            document.getElementById('stepTheoryKb').style.display = isTheoryPath ? '' : 'none';
+            document.getElementById('stepTheoryConcept').style.display = 'none';
+            document.getElementById('stepTheoryDiff').style.display = 'none';
+            document.getElementById('step2').style.display = isTheoryPath ? 'none' : '';
+            document.getElementById('step3').style.display = isTheoryPath ? 'none' : '';
+            document.getElementById('step4').style.display = isTheoryPath ? 'none' : '';
+
+            // 按钮保持可见
+            document.getElementById('prevBtn').style.display = '';
+            document.getElementById('nextBtn').style.display = '';
+            document.getElementById('startBtn').style.display = 'none';
+            currentStep = 1;
+            updateStepDisplay();
+            document.getElementById('selectedTopic').value = '';
+            selectedTopic = '';
+            selectedLanguage = '';
+            selectedDifficulty = '';
             
             // 添加视觉反馈
             this.style.border = "2px solid #673AB7";
@@ -272,10 +386,15 @@
     
     // 表单提交前验证
     document.getElementById('exerciseForm').addEventListener('submit', function(e) {
-       if (!selectedQuestionType || !selectedTopic || !selectedLanguage || !selectedDifficulty) {
+       if (!selectedQuestionType || !selectedTopic || !selectedDifficulty) {
             e.preventDefault();
-            alert('请完成所有选择：题目类型、主题、语言和难度');
-           return false;
+            alert('请完成所有选择：题目类型、主题和难度');
+            return false;
+        }
+        if (!isTheoryPath && !selectedLanguage) {
+            e.preventDefault();
+            alert('请选择一种编程语言');
+            return false;
         }
         
         // 确保隐藏字段值是最新的

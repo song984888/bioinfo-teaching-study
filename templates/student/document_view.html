@@ -12,6 +12,9 @@
             <span class="ms-2 h5">{{ document.title }}</span>
         </div>
         <div>
+            <button class="btn btn-sm btn-outline-warning me-1" id="docBookmarkBtn" onclick="toggleBookmarkDoc({{ document.id }}, '{{ document.title }}')">
+                <i class="far fa-star"></i> 收藏文献
+            </button>
             <a href="{{ url_for('student_knowledge_graph', kb_id=kb_id) }}" class="btn btn-sm btn-outline-info">
                 <i class="fas fa-project-diagram"></i> 知识图谱
             </a>
@@ -53,5 +56,41 @@
             {% endif %}
         </div>
     </div>
+
+    <!-- 文献阅读 - 记录想法 -->
+    <div class="card border-warning mt-3">
+        <div class="card-header bg-warning bg-opacity-10 py-2">
+            <h6 class="mb-0"><i class="fas fa-lightbulb text-warning"></i> 文献阅读中的想法</h6>
+        </div>
+        <div class="card-body py-2">
+            <textarea id="docNoteContent" class="form-control form-control-sm mb-2" rows="2" 
+                placeholder="阅读这篇文献时有什么想法和启发？记录到学习笔记..."></textarea>
+            <button class="btn btn-warning btn-sm" onclick="saveDocNote()">
+                <i class="fas fa-save"></i> 保存想法（关联文献）
+            </button>
+            <span id="docNoteStatus" class="ms-2 small text-muted"></span>
+        </div>
+    </div>
 </div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 文献笔记保存（关联到文档本身，通过知识库概念间接关联）
+async function saveDocNote() {
+    const content = document.getElementById('docNoteContent').value.trim();
+    if (!content) { alert('请输入你的想法'); return; }
+    const resp = await fetch('/api/student/note', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            target_type: 'document', target_id: {{ document.id }},
+            content: content, tags: '文献阅读,' + '{{ document.title|e }}'
+        })
+    });
+    const data = await resp.json();
+    document.getElementById('docNoteStatus').textContent = data.success ? '✓ 想法已保存到学习笔记' : '保存失败';
+    if (data.success) document.getElementById('docNoteContent').value = '';
+}
+</script>
 {% endblock %}

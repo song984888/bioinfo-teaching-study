@@ -5,3 +5,4 @@ requests
 pygments
 PyPDF2
 python-docx
+aiohttp

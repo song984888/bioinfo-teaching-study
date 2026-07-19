@@ -132,7 +132,8 @@ def init_db():
         """CREATE TABLE IF NOT EXISTS exercises (
             id INT AUTO_INCREMENT PRIMARY KEY,
             student_id VARCHAR(191) NOT NULL,
-            question_id INT NOT NULL,
+            question_id INT NULL,
+            theory_question_id INT NULL COMMENT '关联 theory_questions.id (理论题记录)',
             student_answer TEXT NOT NULL,
             ai_score INT,
             ai_comment TEXT,
@@ -332,6 +333,27 @@ def init_db():
             viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_kvl_kb (kb_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学生知识图谱打开记录'""",
+        """CREATE TABLE IF NOT EXISTS student_bookmarks (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            student_id VARCHAR(50) NOT NULL COMMENT '学生工号(employee_id)',
+            target_type ENUM('concept','document','idea') NOT NULL,
+            target_id INT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_sb_student (student_id),
+            UNIQUE KEY uk_sb_student_target (student_id, target_type, target_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学生收藏（概念/文档）'""",
+        """CREATE TABLE IF NOT EXISTS student_notes (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            student_id VARCHAR(50) NOT NULL COMMENT '学生工号(employee_id)',
+            target_type ENUM('concept','document','idea') NOT NULL,
+            target_id INT NOT NULL,
+            content TEXT NOT NULL,
+            parent_note_id INT NULL COMMENT '父笔记ID（思路延续）',
+            tags VARCHAR(255) NULL COMMENT '标签',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_sn_student (student_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学生学习笔记'""",
         """CREATE TABLE IF NOT EXISTS exam_papers (
             id INT AUTO_INCREMENT PRIMARY KEY,
             paper_name VARCHAR(200) NOT NULL COMMENT '试卷名称',
