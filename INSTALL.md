@@ -12,8 +12,8 @@
 ## 1. 克隆项目
 
 ```bash
-git clone https://github.com/song984888/perl-exam.git
-cd perl-exam
+git clone https://github.com/song984888/bioinfo-teaching-study.git
+cd bioinfo-teaching-study
 ```
 
 ## 2. 创建 Python 虚拟环境
@@ -74,7 +74,7 @@ FLUSH PRIVILEGES;
 EXIT;
 ```
 
-> **注意：** 如需使用其他用户名/密码，请修改 `my_config.py` 中的 `SYNC_DB_CONFIG` 配置。
+> **注意：** 如需使用其他用户名/密码，请修改 `myscripts/config_modules/my_config.py` 中的 `SYNC_DB_CONFIG` 配置。
 
 ## 5. 配置 AI API
 
@@ -84,7 +84,7 @@ EXIT;
 
 在 [platform.deepseek.com](https://platform.deepseek.com) 注册并获取 API Key。
 
-编辑 `my_config.py`，确认以下配置：
+编辑 `myscripts/config_modules/my_config.py`，确认以下配置：
 
 ```python
 CONFIG = {
@@ -199,11 +199,10 @@ pip install PyPDF2
 ## 目录结构
 
 ```
-perl-exam/
+bioinfo-teaching-study/
 ├── app.py                  # 主应用（所有路由和业务逻辑）
-├── my_config.py            # 数据库配置、表结构、API 密钥
-├── prompt_templates.py     # AI Prompt 模板
-├── topic_config.py         # 题目主题配置
+├── requirements.txt        # Python 依赖
+├── README.md               # 项目说明
 ├── templates/              # Jinja2 模板
 │   ├── base.html           # 基础布局
 │   ├── student/            # 学生端模板
@@ -211,11 +210,16 @@ perl-exam/
 │   └── admin/              # 管理员模板
 ├── static/                 # CSS/JS 静态资源
 ├── uploads/                # 上传文件目录
-└── docs/                   # 项目文档
+├── docs/                   # 项目文档
+└── myscripts/              # 辅助脚本
+    ├── admin_tools/        # 管理工具
+    ├── config_modules/     # 配置文件
+    ├── db_utils/           # 数据库工具
+    └── debug_tools/        # 调试脚本
 ```
 
 ## 技术支持
 
 - **Author:** Songht
-- **Version:** 2.0
+- **Version:** 2.1
 - **Email:** songhongtao@bnu.edu.cn

@@ -135,35 +135,38 @@ Questions now use a 3-state `review_status` column:
 - All dashboards updated with correct links and navigation
 - Knowledge graph accessible from knowledge base cards and admin dashboard
 
+## Installation
+
+See **[INSTALL.md](INSTALL.md)** for complete setup instructions.
+
+### Quick Start
+
+```bash
+git clone https://github.com/song984888/bioinfo-teaching-study.git
+cd bioinfo-teaching-study
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python app.py
+# → http://localhost:1234
+```
+
+### Test Accounts
+
+| Role | ID | Password |
+|------|-----|----------|
+| Admin | admin | 123456 |
+| Teacher | teacher | 123456 |
+| Student | s001 | 123456 |
+
 ## Prerequisites
 
 | Dependency | Purpose |
 |-----------|---------|
 | Python 3.7+ | Runtime |
 | MySQL Server | Database (localhost, database: `code_exam`) |
-| [Ollama](https://ollama.com) | Local LLM server for question generation (model: `qwen2.5-coder:32b`) |
-| Python 3 | Required for Python code execution |
-| GCC | Required for C code compilation |
-| JDK | Required for Java code compilation |
-| Perl | Required for Perl code execution |
-
-### Python Packages
-
-```bash
-pip install flask flask-session mysql-connector-python requests aiohttp aiomysql pygments
-```
-
-### Setup
-
-```bash
-# Start MySQL and create database
-mysql -u root -e "CREATE DATABASE IF NOT EXISTS code_exam DEFAULT CHARSET utf8mb4"
-
-# Pull Ollama model
-ollama pull qwen2.5-coder:32b
-
-# Start Flask app
-python app.py
+| DeepSeek API Key | AI question generation, grading, suggestions |
+| [Ollama](https://ollama.com) | Optional: Local LLM (model: `qwen2.5-coder:32b`) |
+| GCC / JDK / Perl | Code execution for C, Java, Perl
 # Access at http://localhost:1234
 ```
 
@@ -203,14 +206,15 @@ python app.py
 
 | File | Description |
 |------|-------------|
-| `app.py` | **Main Flask application.** All routes, models, and business logic |
-| `my_config.py` | Database configuration, Ollama settings, prompts, and table schemas |
-| `topic_config.py` | Programming question topic templates |
-| `templates/` | Jinja2 HTML templates for all pages |
-| `static/` | CSS, JS, and static assets |
-| `code-system-v3.5.py` | Legacy TUI-based exam system (async version) |
-| `code-system-v3.py` | Legacy TUI-based exam system (synchronous) |
+| `app.py` | Main Flask application |
+| `requirements.txt` | Python dependencies |
+| `INSTALL.md` | Installation guide |
+| `templates/` | Jinja2 HTML templates |
+| `static/` | CSS/JS static assets |
+| `myscripts/config_modules/` | Configuration files (my_config.py, prompts, topics) |
+| `myscripts/` | Utility scripts (admin, debug, DB tools) |
+| `docs/` | Documentation
 
 ## Author
 
-Songht (Janney) -- Version V2.0, June 2026
+Songht — Version 2.1, July 2026
