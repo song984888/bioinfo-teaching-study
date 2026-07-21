@@ -60,6 +60,7 @@
                             <th>角色</th>
                             <th>登录状态</th>
                             <th>操作</th>
+                            <th>重置密码</th>
                             <th>学习详情</th>
                         </tr>
                     </thead>
@@ -77,6 +78,12 @@
                             <td>
                                 <a href="/toggle_login/{{ user.id }}" class="toggle-btn {{ 'btn-disable' if user.can_login else 'btn-enable' }}">
                                     {{ "禁用" if user.can_login else "启用" }}
+                                </a>
+                            </td>
+                            <td>
+                                <a href="/reset_password/{{ user.id }}" class="reset-btn"
+                                   onclick="return confirm('确定要重置 {{ user.name }} 的密码吗？密码将随机生成6位数字。')">
+                                    🔄 重置
                                 </a>
                             </td>
                             <td>
@@ -442,6 +449,24 @@ h1 {
 
 .study-detail-link:hover {
     text-decoration: underline;
+}
+
+.reset-btn {
+    display: inline-block;
+    padding: 5px 12px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-decoration: none;
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffc107;
+    transition: all 0.2s;
+}
+.reset-btn:hover {
+    background: #ffe69c;
+    color: #664d03;
+    text-decoration: none;
 }
 
 /* 模态框样式 */

@@ -6,7 +6,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>学习建议报告 - 学生学习&考试</title>
+    <title>学习建议报告 - 生物信息学课程</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://unpkg.com/chart.js@3.9.1/dist/chart.min.js"></script>
@@ -131,24 +131,8 @@
                         <div class="row metrics">
                             <div class="col-md-4 mb-4">
                                 <div class="metric-card">
-                                    <div class="metric-value">{{exam_metrics.total_exams}}</div>
-                                    <div class="metric-label">考试次数(依次成绩)</div>
-                                    <div class="metric-trend text-success">
-                                        <i class="fas fa-arrow-up me-1"></i>{{exam_metrics.score_trend}}(满分100)
-                                    </div>
-                                </div>
-                            </div>
-           
-                            <div class="col-md-4 mb-4">
-                                <div class="metric-card">
-                                    <div class="metric-value">{{exam_metrics.avg_ai_score}}</div>
-                                    <div class="metric-label">AI-平均分</div>
-                                </div>
-                            </div>
-                            <div class="col-md-4 mb-4">
-                                <div class="metric-card">
-                                    <div class="metric-value">{{exam_metrics.avg_teacher_score}}</div>
-                                    <div class="metric-label">人工-平均分</div>
+                                    <div class="metric-value">{{exercise_metrics.total_exercises}}</div>
+                                    <div class="metric-label">练习次数</div>
                                 </div>
                             </div>
                             <div class="col-md-4 mb-4">
@@ -342,26 +326,8 @@
             </div>
         </div>
 
-        <!-- 语言分布 -->
-        <div class="card mb-5">
-            <div class="card-header bg-purple text-white">
-                <h5><i class="fas fa-code me-2"></i>语言分布</h5>
-            </div>
-            <div class="card-body">
-                <div class="chart-container">
-                    <canvas id="languageChart"></canvas>
-                </div>
-            </div>
-        </div>
-
         <!-- 操作按钮 -->
         <div class="text-center mt-5">
-            <button class="btn btn-primary btn-lg me-3">
-                <i class="fas fa-download me-2"></i>下载完整报告
-            </button>
-            <button class="btn btn-success btn-lg me-3">
-                <i class="fas fa-calendar-plus me-2"></i>添加到学习计划
-            </button>
             <button class="btn btn-outline-secondary btn-lg">
                 <i class="fas fa-redo me-2"></i>重新生成建议
             </button>
@@ -371,15 +337,9 @@
     <script>
         let topicDis;
         let difficultyDis;
-        let languageDis;
         try {
-                // 修复：添加引号确保JSON正确解析
                 topicDis = {{ exercise_metrics.topic_distribution|tojson|safe }};
-                console.log("数据获取成功:", topicDis);
                 difficultyDis = {{ exercise_metrics.difficulty_distribution|tojson|safe }};
-                console.log("数据获取成功:", difficultyDis);
-                languageDis = {{ exercise_metrics.language_distribution|tojson|safe }};
-                console.log("数据获取成功:", languageDis);
         } catch (e) {
                 console.error("数据获取失败:", e);
                 // 使用备用数据
@@ -393,18 +353,11 @@
                     "2-median": 20,
                     "3-hard": 10
                 };
-                languageDis = {
-                    "perl": 30,
-                    "python": 20,
-                    "c": 10
-                };
         }
         const tvalues = Object.values(topicDis);
         const tkeys = Object.keys(topicDis);
         const dvalues = Object.values(difficultyDis);
         const dkeys = Object.keys(difficultyDis);
-        const lvalues = Object.values(languageDis);
-        const lkeys = Object.keys(languageDis);
 
 
 
@@ -624,45 +577,7 @@
                 }
             });
             
-            // 语言分布图表
-            const languageCtx = document.getElementById('languageChart').getContext('2d');
-            const languageChart = new Chart(languageCtx, {
-                type: 'doughnut',
-                data: {
-                    labels: ['Perl', 'Python', 'C'],
-                    datasets: [{
-                        label: '语言分布',
-                        data: lvalues,
-                        backgroundColor: [
-                            'rgba(255, 99, 132, 0.5)',
-                            'rgba(54, 162, 235, 0.5)',
-                            'rgba(255, 206, 86, 0.5)'
-                        ],
-                        borderColor: [
-                            'rgba(255, 99, 132, 1)',
-                            'rgba(54, 162, 235, 1)',
-                            'rgba(255, 206, 86, 1)'
-                        ],
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        title: {
-                            display: true,
-                            text: '编程语言使用分布',
-                            font: {
-                                size: 16
-                            }
-                        },
-                        legend: {
-                            position: 'right',
-                        }
-                    }
-                }
-            });
+            // 语言分布图表（已移除）
         });
         
 

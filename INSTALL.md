@@ -119,7 +119,19 @@ python app.py
 - `exams` / `exercises` — 考试和练习记录
 - 以及其他辅助表
 
-## 7. 创建初始账户
+## 7. 导入演示数据（可选）
+
+项目提供了演示数据文件，包含用户账户、知识库、概念和理论题：
+
+```bash
+mysql -u songht -psonght123 code_exam < docs/demo_data.sql
+```
+
+详细说明见 **[docs/DEMO_DATA.md](docs/DEMO_DATA.md)**。
+
+导入后可直接使用以下账户登录，无需手动创建。
+
+## 8. 创建初始账户（手动）
 
 系统首次启动后需要手动创建管理员账户。连接 MySQL 并执行：
 
@@ -139,7 +151,7 @@ INSERT INTO users (name, employee_id, password_hash, role, can_login)
 VALUES ('student001', 's001', SHA2('123456', 256), 'student', 1);
 ```
 
-## 8. 启动应用
+## 9. 启动应用
 
 ```bash
 source .venv/bin/activate
@@ -160,7 +172,7 @@ nohup .venv/bin/python app.py > /tmp/flask_app.log 2>&1 &
 lsof -ti:1234 | xargs kill
 ```
 
-## 9. 验证安装
+## 10. 验证安装
 
 打开浏览器访问 `http://localhost:1234`，使用以下账户登录：
 
@@ -170,7 +182,7 @@ lsof -ti:1234 | xargs kill
 | 教师 | teacher | 123456 |
 | 学生 | s001 | 123456 |
 
-## 10. 常见问题
+## 11. 常见问题
 
 ### Q: 数据库连接失败
 检查 MySQL 是否运行：

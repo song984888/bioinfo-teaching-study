@@ -444,6 +444,7 @@ function renderUsers(users) {
             </td>
             <td class="action-btns">
                 <button class="btn btn-sm btn-secondary" onclick="editUser(${u.id})">编辑</button>
+                <button class="btn btn-sm btn-warning" onclick="resetPassword(${u.id})">重置密码</button>
                 <button class="btn btn-sm btn-danger" onclick="deleteUser(${u.id})">删除</button>
             </td>
         </tr>
@@ -483,6 +484,21 @@ async function deleteUser(userId) {
         }
     } catch (err) {
         alert('删除失败: ' + err.message);
+    }
+}
+
+async function resetPassword(userId) {
+    if (!confirm('确定要重置该用户密码吗？将随机生成6位数字密码。')) return;
+    try {
+        const resp = await fetch('/api/admin/reset_password/' + userId, { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            alert('密码已重置为: ' + data.password);
+        } else {
+            alert('重置失败: ' + data.message);
+        }
+    } catch (err) {
+        alert('重置失败: ' + err.message);
     }
 }
 

@@ -19,6 +19,9 @@ import hashlib
 import html
 import secrets
 from datetime import datetime, timedelta, date
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'myscripts/config_modules'))
+
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash, abort, send_file
 from flask_session import Session
 from collections import defaultdict
@@ -3847,6 +3850,47 @@ def toggle_login(user_id):
     conn.close()
     
     return redirect(url_for('account_management'))
+
+# 重置密码（随机生成6位数字）
+@app.route('/reset_password/<int:user_id>')
+def reset_password(user_id):
+    if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
+        return redirect(url_for('login'))
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # 生成随机6位数字密码
+    import random
+    new_password = str(random.randint(100000, 999999))
+    password_hash = hashlib.sha256(new_password.encode('utf-8')).hexdigest()
+    
+    cursor.execute("UPDATE users SET password_hash = %s WHERE id = %s", (password_hash, user_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    
+    flash(f'密码已重置为: {new_password}', 'success')
+    return redirect(url_for('account_management'))
+
+# 重置密码 JSON API（供管理员前端调用）
+@app.route('/api/admin/reset_password/<int:user_id>', methods=['POST'])
+def api_admin_reset_password(user_id):
+    if 'user_id' not in session or session['role'] != 'admin':
+        return jsonify({'success': False, 'message': '未授权'}), 403
+    
+    import random
+    new_password = str(random.randint(100000, 999999))
+    password_hash = hashlib.sha256(new_password.encode('utf-8')).hexdigest()
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET password_hash = %s WHERE id = %s", (password_hash, user_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    
+    return jsonify({'success': True, 'password': new_password, 'message': f'密码已重置为: {new_password}'})
 
 # ==================== 管理员 API 路由 ====================
 
