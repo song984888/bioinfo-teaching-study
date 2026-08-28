@@ -1,0 +1,382 @@
+{% extends "base.html" %}
+
+{% block title %}{{ knowledge_base.name }} - 知识图谱{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <script>
+        var knowledge_base = {{ knowledge_base|tojson|safe }};
+        var concepts = {{ concepts|tojson|safe }};
+        var relations = {{ relations|tojson|safe }};
+        var max_frequency = {{ max_frequency|tojson|safe }};
+        var documents = {{ documents|tojson|safe }};
+
+        var docColorMap = {};
+        var docTitleMap = {};
+        if (documents && documents.length) {
+            documents.forEach(function (d) { docColorMap[d.id] = d.color; docTitleMap[d.id] = d.title; });
+        }
+        function getDocColor(docId) { return docColorMap[docId] || '#95a5a6'; }
+    </script>
+
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('student_knowledge_bases') }}">公开知识库</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('student_knowledge_base_detail', kb_id=knowledge_base.id) }}">{{ knowledge_base.name }}</a></li>
+            <li class="breadcrumb-item active">知识图谱</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div>
+            <h2><i class="fas fa-project-diagram"></i> {{ knowledge_base.name }} - 知识图谱</h2>
+            <p class="text-muted mb-0">点击任意概念节点即可检索相关文献。</p>
+        </div>
+        <div>
+            <button type="button" class="btn btn-outline-primary me-2" id="toggleFullscreenBtn">
+                <i class="fas fa-expand"></i> 全屏
+            </button>
+            <button type="button" class="btn btn-outline-secondary me-2" id="relayoutBtn">
+                <i class="fas fa-sync-alt"></i> 重新布局
+            </button>
+            <a href="{{ url_for('student_knowledge_base_detail', kb_id=knowledge_base.id) }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> 返回
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-9">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-network-wired"></i> 知识图谱可视化</h5>
+                </div>
+                <div class="card-body">
+                    <div id="knowledge-graph" style="height: 600px; border: 1px solid #ddd; border-radius: 4px; position: relative;">
+                        <div id="loading-indicator" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
+                            <div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div>
+                            <p class="mt-2">正在加载知识图谱...</p>
+                        </div>
+                        <svg id="graph-svg" width="100%" height="100%" style="display: none;"></svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-header"><h5 class="mb-0"><i class="fas fa-info-circle"></i> 图谱信息</h5></div>
+                <div class="card-body">
+                    <div class="stat-item mb-3"><div class="d-flex justify-content-between"><span>概念总数</span><strong>{{ concepts|length }}</strong></div></div>
+                    <div class="stat-item"><div class="d-flex justify-content-between"><span>关系总数</span><strong>{{ relations|length }}</strong></div></div>
+                </div>
+            </div>
+
+            <div class="card mt-3">
+                <div class="card-header"><h5 class="mb-0"><i class="fas fa-palette"></i> 文档颜色图例</h5></div>
+                <div class="card-body"><div id="document-legend"><div class="small text-muted mb-2">勾选文档以显示对应概念（默认全部）</div>{% for doc in documents %}<label class="kg-document-option" title="{{ doc.title or ('文档 ' ~ doc.id) }}"><span class="kg-document-swatch" style="background: {{ doc.color }};"></span><span class="kg-document-name" style="display:block;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;color:#212529 !important;font-size:13px !important;line-height:1.5 !important;visibility:visible !important;opacity:1 !important;">{{ doc.title or ('文档 ' ~ doc.id) }}</span><input type="checkbox" checked value="{{ doc.id }}" aria-label="显示文档 {{ doc.title or doc.id }}"></label>{% endfor %}</div></div>
+            </div>
+
+            <div class="card mt-3">
+                <div class="card-header"><h5 class="mb-0"><i class="fas fa-sliders-h"></i> 显示控制</h5></div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="frequencyFilter" class="form-label">最低频率：<span id="frequencyFilterValue">1</span></label>
+                        <input type="range" class="form-range" id="frequencyFilter" min="1" max="{{ max_frequency or 1 }}" value="1">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">节点大小</label>
+                        <input type="range" class="form-range" id="nodeSize" min="10" max="50" value="20">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">连线粗细</label>
+                        <input type="range" class="form-range" id="linkWidth" min="1" max="10" value="2">
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="showLabels" checked>
+                        <label class="form-check-label" for="showLabels">显示标签</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mt-3 border-info">
+                <div class="card-body text-info small">
+                    <i class="fas fa-lightbulb"></i> 提示：点击概念节点会记录你的浏览并跳转到文献检索页，使用所选概念作为检索词。
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<style>
+#document-legend {
+    max-height: 180px;
+    overflow-y: auto;
+    padding: 4px 6px;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    background: #fafafa;
+}
+.kg-document-option {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    margin-bottom: 8px; padding: 2px 0; white-space: nowrap; color: #212529;
+}
+.kg-document-swatch {
+    display: inline-block; width: 14px; height: 14px; border-radius: 50%; flex: 0 0 auto;
+}
+.kg-document-name {
+    display: block; flex: 1 1 auto; min-width: 0; overflow: hidden;
+    text-overflow: ellipsis; color: #212529;
+}
+.kg-document-option input[type="checkbox"] {
+    margin-left: auto; flex: 0 0 auto;
+    width: 16px !important; height: 16px !important; min-width: 16px !important;
+    padding: 0 !important; border: 1px solid #6c757d !important; border-radius: 3px !important;
+    appearance: auto !important; -webkit-appearance: checkbox !important;
+}
+
+.tooltip {
+    position: absolute; background: rgba(0,0,0,0.8); color: white; padding: 10px;
+    border-radius: 5px; pointer-events: none; font-size: 12px; z-index: 1000; max-width: 250px; word-wrap: break-word;
+}
+.card { box-shadow: 0 2px 10px rgba(0,0,0,0.1); border: none; margin-bottom: 20px; }
+.card-header { background-color: #f8f9fa; border-bottom: 1px solid #dee2e6; }
+.stat-item { padding: 8px 0; border-bottom: 1px solid #eee; }
+.stat-item:last-child { border-bottom: none; }
+#graph-svg { background-color: white !important; }
+#graph-svg .nodes circle { display: block !important; visibility: visible !important; opacity: 1 !important; cursor: pointer; }
+#graph-svg .links line { display: block !important; visibility: visible !important; opacity: 0.6 !important; }
+#graph-svg .labels text { display: block !important; visibility: visible !important; opacity: 1 !important; }
+.kg-filtered-out { display: none !important; }
+#graph-svg .nodes .node.kg-filtered-out,
+#graph-svg .labels text.kg-filtered-out,
+#graph-svg .links line.kg-filtered-out {
+    display: none !important;
+    visibility: hidden !important;
+}
+#knowledge-graph.kg-fullscreen { position: fixed !important; top: 0; left: 0; width: 100vw !important; height: 100vh !important; z-index: 1080; background: #fff; border-radius: 0; margin: 0; border: 1px solid #ddd; }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const container = document.getElementById('knowledge-graph');
+    if (!container) return;
+
+    const svgElement = document.getElementById('graph-svg');
+    let width = container.clientWidth;
+    let height = container.clientHeight;
+    svgElement.setAttribute('width', width);
+    svgElement.setAttribute('height', height);
+    const svg = d3.select(svgElement);
+
+    if (!concepts || concepts.length === 0) {
+        const li = document.getElementById('loading-indicator');
+        if (li) { li.style.display = 'block'; li.innerHTML = '<div style="color:orange;">⚠️ 暂无概念数据</div>'; }
+        return;
+    }
+
+    const simulationData = {
+        nodes: concepts.map(c => ({
+            id: c.id, name: c.concept_name, frequency: c.frequency || 1, size: c.size || 30,
+            type: c.concept_type, confidence: c.confidence || 0,
+            document_id: c.document_id, docColor: getDocColor(c.document_id), source_documents: c.source_documents || []
+        })),
+        links: relations.map(r => ({ source: r.from_concept_id, target: r.to_concept_id, confidence: r.confidence || 1 }))
+    };
+
+    const simulation = d3.forceSimulation(simulationData.nodes)
+        .force('link', d3.forceLink(simulationData.links).id(d => d.id).distance(150))
+        .force('charge', d3.forceManyBody().strength(-300))
+        .force('center', d3.forceCenter(width / 2, height / 2))
+        .force('collide', d3.forceCollide().radius(d => d.size + 35).iterations(2))
+        .force('x', d3.forceX(width / 2).strength(0.05))
+        .force('y', d3.forceY(height / 2).strength(0.05));
+
+    simulationData.nodes.forEach((node, i) => {
+        node.x = width / 2 + (Math.random() - 0.5) * 200;
+        node.y = height / 2 + (Math.random() - 0.5) * 200;
+    });
+
+    const linkGroup = svg.append('g').attr('class', 'links');
+    const nodeGroup = svg.append('g').attr('class', 'nodes');
+    const labelGroup = svg.append('g').attr('class', 'labels');
+
+    const links = linkGroup.selectAll('line').data(simulationData.links).enter().append('line')
+        .attr('stroke', '#7f8c8d').attr('stroke-opacity', '0.7')
+        .attr('stroke-width', d => Math.sqrt(d.confidence || 1) * 2.5).attr('stroke-linecap', 'round');
+
+    let kgDragged = false;
+    function dragstarted(event, d) { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; }
+    function dragged(event, d) { kgDragged = true; d.fx = event.x; d.fy = event.y; }
+    function dragended(event, d) { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; setTimeout(() => { kgDragged = false; }, 50); }
+
+    const nodes = nodeGroup.selectAll('.node').data(simulationData.nodes).enter().append('g')
+        .attr('class', 'node').attr('transform', d => `translate(${d.x},${d.y})`)
+        .call(d3.drag().on('start', dragstarted).on('drag', dragged).on('end', dragended))
+        .on('click', function (event, d) {
+            if (kgDragged) return;            // 拖拽结束不触发跳转
+            onConceptClick(d);
+        })
+        .on('mouseover', function (event, d) {
+            d3.select(this).transition().duration(200).attr('stroke-width', '6').attr('stroke', '#ff4757');
+            showTooltip(event, d);
+        })
+        .on('mouseout', function (event, d) {
+            d3.select(this).transition().duration(200)
+                .attr('stroke-width', d.frequency > 3 ? '5' : (d.frequency > 1 ? '3.5' : '2.5'))
+                .attr('stroke', d.frequency > 3 ? '#e74c3c' : (d.frequency > 1 ? '#f39c12' : '#2c3e50'));
+            hideTooltip();
+        });
+
+    nodes.append('circle').attr('r', d => d.size).attr('fill', d => d.docColor)
+        .attr('stroke', d => d.frequency > 3 ? '#e74c3c' : (d.frequency > 1 ? '#f39c12' : '#2c3e50'))
+        .attr('stroke-width', '3px')
+        .append('title')
+        .text(d => `${d.name}\n类型：${d.type}\n频率：${d.frequency}\n来源文档：${docTitleMap[d.document_id] || '未知'}\n\n点击检索相关文献`);
+
+    const labels = labelGroup.selectAll('text').data(simulationData.nodes).enter().append('text')
+        .attr('text-anchor', 'middle').attr('fill', '#000').attr('font-weight', 'bold')
+        .attr('font-size', d => { const n = d.name.length; return n > 12 ? '10px' : (n > 8 ? '11px' : '12px'); })
+        .attr('stroke', '#fff').attr('stroke-width', '2px').attr('paint-order', 'stroke')
+        .attr('x', d => d.x).attr('y', d => d.y - d.size - 15)
+        .text(d => { const dn = d.name.length > 12 ? d.name.substring(0, 12) + '...' : d.name; return `${dn} (${d.frequency})`; });
+
+    simulation.on('tick', () => {
+        links.attr('x1', d => d.source.x).attr('y1', d => d.source.y).attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+        nodes.attr('transform', d => `translate(${d.x},${d.y})`);
+        labels.attr('x', d => d.x).attr('y', d => d.y - d.size - 15);
+    });
+
+    // 文档名称和颜色图例由模板渲染，避免依赖后续脚本才能显示。
+    const selectedDocuments = new Set(documents.map(d => String(d.id)));
+    const documentFilter = document.getElementById('document-legend');
+    if (documentFilter) {
+        documentFilter.querySelectorAll('input[type="checkbox"]').forEach(function (checkbox) {
+            checkbox.addEventListener('change', function () {
+                const docId = String(this.value);
+                this.checked ? selectedDocuments.add(docId) : selectedDocuments.delete(docId);
+                applyGraphFilters();
+            });
+        });
+    }
+    const frequencyFilter = document.getElementById('frequencyFilter');
+    const frequencyFilterValue = document.getElementById('frequencyFilterValue');
+    function applyGraphFilters() {
+        const minimum = Number(frequencyFilter ? frequencyFilter.value : 1);
+        if (frequencyFilterValue) frequencyFilterValue.textContent = minimum;
+        const visibleNodes = simulationData.nodes.filter(n => n.frequency >= minimum &&
+            (n.source_documents || []).some(d => selectedDocuments.has(String(d.id))));
+        const visibleIds = new Set(visibleNodes.map(n => n.id));
+        const visibleLinks = simulationData.links.filter(d =>
+            visibleIds.has(d.source.id || d.source) && visibleIds.has(d.target.id || d.target));
+        visibleNodes.forEach((node, index) => {
+            const angle = (2 * Math.PI * index) / Math.max(visibleNodes.length, 1);
+            const radius = Math.min(width, height) * 0.28;
+            node.x = width / 2 + Math.cos(angle) * radius;
+            node.y = height / 2 + Math.sin(angle) * radius;
+        });
+        // 使用 SVG display 属性：过滤掉的对象不绘制、不占图形布局空间。
+        nodes.classed('kg-filtered-out', d => !visibleIds.has(d.id));
+        labels.classed('kg-filtered-out', d => !visibleIds.has(d.id));
+        links.classed('kg-filtered-out', d => !visibleIds.has(d.source.id || d.source) || !visibleIds.has(d.target.id || d.target));
+        simulation.nodes(visibleNodes);
+        simulation.force('link').links(visibleLinks);
+        simulation.alpha(0.9).restart();
+    }
+    if (frequencyFilter) frequencyFilter.addEventListener('input', applyGraphFilters);
+    applyGraphFilters();
+
+    const loadingIndicator = document.getElementById('loading-indicator');
+    if (loadingIndicator) loadingIndicator.style.display = 'none';
+    svgElement.style.display = 'block';
+
+    // 文档颜色图例已与筛选复选框合并渲染。
+
+    // 全屏 / 自适应 / 重新布局（与教师端一致）
+    function resizeGraph() {
+        if (!container || !svgElement || !simulation) return;
+        width = container.clientWidth; height = container.clientHeight;
+        if (width <= 0 || height <= 0) return;
+        svgElement.setAttribute('width', width); svgElement.setAttribute('height', height);
+        simulation.force('center').x(width / 2).y(height / 2);
+        simulation.force('x').x(width / 2); simulation.force('y').y(height / 2);
+        simulation.alpha(0.5).restart();
+    }
+    const fsBtn = document.getElementById('toggleFullscreenBtn');
+    if (fsBtn) fsBtn.addEventListener('click', function () {
+        const isFs = container.classList.toggle('kg-fullscreen');
+        fsBtn.innerHTML = isFs ? '<i class="fas fa-compress"></i> 退出全屏' : '<i class="fas fa-expand"></i> 全屏';
+        requestAnimationFrame(() => requestAnimationFrame(resizeGraph));
+    });
+    const rlBtn = document.getElementById('relayoutBtn');
+    if (rlBtn) rlBtn.addEventListener('click', resizeGraph);
+    let kgTimer = null;
+    window.addEventListener('resize', function () { if (kgTimer) clearTimeout(kgTimer); kgTimer = setTimeout(resizeGraph, 200); });
+
+    function relayoutForNodeSize(size) {
+        const activeNodes = simulation.nodes();
+        const radius = Math.min(width, height) * (0.10 + size / 140);
+        activeNodes.forEach((node, index) => {
+            const angle = (2 * Math.PI * index) / Math.max(activeNodes.length, 1);
+            node.x = width / 2 + Math.cos(angle) * radius;
+            node.y = height / 2 + Math.sin(angle) * radius;
+        });
+        simulation.force('collide').radius(d => d.size + 16).iterations(2);
+        simulation.force('link').distance(45 + size * 2);
+        simulation.alpha(0.95).restart();
+    }
+
+    // 节点大小变化后重设间距并重新布局；小节点获得更紧凑的全景布局。
+    const nodeSizeSlider = document.getElementById('nodeSize');
+    if (nodeSizeSlider) nodeSizeSlider.addEventListener('input', function () {
+        const val = +this.value;
+        simulationData.nodes.forEach(n => { n.size = val; });
+        nodes.select('circle').attr('r', val);
+        labels.attr('y', d => d.y - val - 15);
+        relayoutForNodeSize(val);
+    });
+    const linkWidthSlider = document.getElementById('linkWidth');
+    if (linkWidthSlider) linkWidthSlider.addEventListener('input', function () {
+        links.attr('stroke-width', +this.value);
+    });
+    const showLabelsCheck = document.getElementById('showLabels');
+    if (showLabelsCheck) showLabelsCheck.addEventListener('change', function () {
+        labels.style('display', this.checked ? null : 'none');
+    });
+
+    // 点击概念：记录浏览 + 跳转文献检索
+    function onConceptClick(d) {
+        const target = '/bioinfo-articles?q=' + encodeURIComponent(d.name);
+        fetch('/api/student/log_concept_view', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ kb_id: knowledge_base.id, concept_id: d.id, concept_name: d.name })
+        }).finally(function () {
+            window.location.href = target;
+        });
+    }
+});
+
+function escapeHtml(value) {
+    const node = document.createElement('div');
+    node.textContent = value == null ? '' : String(value);
+    return node.innerHTML;
+}
+
+function showTooltip(event, d) {
+    const tooltip = document.createElement('div');
+    tooltip.id = 'node-tooltip';
+    tooltip.style.cssText = 'position:absolute;background:rgba(0,0,0,0.8);color:white;padding:8px 12px;border-radius:4px;font-size:12px;pointer-events:none;z-index:9999;max-width:260px;';
+    const sourceNames = (d.source_documents || []).map(item => item.title || ('文档 ' + item.id));
+    tooltip.innerHTML = `<strong>${escapeHtml(d.name)}</strong><br>类型：${escapeHtml(d.type || 'entity')}<br>总频率：${d.frequency}<br>来源文档（${sourceNames.length}）：${sourceNames.map(escapeHtml).join('、') || '未知'}`;
+    document.body.appendChild(tooltip);
+    const move = (e) => { tooltip.style.left = (e.pageX + 15) + 'px'; tooltip.style.top = (e.pageY - 28) + 'px'; };
+    move(event); document.addEventListener('mousemove', move);
+}
+function hideTooltip() { const t = document.getElementById('node-tooltip'); if (t) t.remove(); }
+</script>
+{% endblock %}

@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}知识库管理{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>知识库管理</h2>
+        <a href="{{ url_for('create_knowledge_base') }}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> 创建知识库
+        </a>
+    </div>
+
+    {% if knowledge_bases %}
+    <div class="row">
+        {% for kb in knowledge_bases %}
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        {{ kb.name }}
+                        {% if kb.is_public %}
+                            <span class="badge bg-success">公开</span>
+                        {% else %}
+                            <span class="badge bg-secondary">私有</span>
+                        {% endif %}
+                    </h5>
+                    <p class="card-text text-muted">
+                        {{ kb.description or '暂无描述' }}
+                    </p>
+                    <div class="d-flex justify-content-between align-items-center gap-3">
+                        <small class="text-muted">
+                            <i class="fas fa-file-alt"></i> {{ kb.document_count }} 个文档
+                        </small>
+                        <small class="text-muted">
+                            <i class="fas fa-question-circle"></i> {{ kb.question_count if kb.question_count else 0 }} 道题目
+                        </small>
+                        <small class="text-muted" title="创建者：{{ kb.owner_name }}">
+                            <i class="fas fa-user"></i> {{ kb.owner_name[:2] }}
+                        </small>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <a href="{{ url_for('view_knowledge_base', kb_id=kb.id) }}" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-eye"></i> 查看
+                    </a>
+                    <a href="{{ url_for('knowledge_graph', kb_id=kb.id) }}" class="btn btn-sm btn-outline-purple" style="border-color:#6f42c1; color:#6f42c1;">
+                        <i class="fas fa-project-diagram"></i> 图谱
+                    </a>
+                    <a href="{{ url_for('generate_theory_questions', source_type='knowledge_base') }}" class="btn btn-sm btn-outline-info">
+                        <i class="fas fa-robot"></i> 基于此出题
+                    </a>
+                    {% if kb.owner_id == session.user_id or session.role == 'admin' %}
+                    <a href="{{ url_for('upload_document', kb_id=kb.id) }}" class="btn btn-sm btn-outline-success">
+                        <i class="fas fa-upload"></i> 上传文档
+                    </a>
+                    <button class="btn btn-sm btn-outline-danger delete-kb-btn" 
+                            data-kb-id="{{ kb.id }}"
+                            data-kb-name="{{ kb.name }}"
+                            onclick="confirmDeleteKnowledgeBase(this.dataset.kbId, this.dataset.kbName)">
+                        <i class="fas fa-trash"></i> 删除
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+        <i class="fas fa-book fa-3x text-muted mb-3"></i>
+        <h4 class="text-muted">暂无知识库</h4>
+        <p class="text-muted">创建您的第一个知识库来管理学习资料</p>
+        <a href="{{ url_for('create_knowledge_base') }}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> 创建知识库
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 删除知识库确认函数
+function confirmDeleteKnowledgeBase(kbId, kbName) {
+    if (confirm(`确定要删除知识库 "${kbName}" 吗？\n\n警告：此操作将同时删除该知识库下的所有文档和概念，且不可恢复！`)) {
+        // 创建表单并提交删除请求
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/teacher/knowledge_bases/${kbId}/delete`;
+        
+        // 添加 CSRF token（如果需要）
+        const csrfToken = document.querySelector('meta[name="csrf-token"]');
+        if (csrfToken) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'csrf_token';
+            input.value = csrfToken.content;
+            form.appendChild(input);
+        }
+        
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+</script>
+{% endblock %}

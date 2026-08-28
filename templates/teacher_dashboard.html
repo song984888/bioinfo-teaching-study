@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}教师控制台{% endblock %}
+
+{% block content %}
+<div class="dashboard teacher-dashboard">
+    <!-- 用户信息卡片 -->
+    <div class="user-profile-card">
+        <div class="user-info">
+            <div class="user-avatar">👨‍🏫</div>
+            <div class="user-details">
+                <h3 class="user-name">{{ session.name }}老师</h3>
+                <p class="user-meta">
+                    <span class="badge badge-role">{{ session.role }}</span>
+                    <span class="badge badge-id">工号：{{ session.user_id }}</span>
+                </p>
+                <a href="{{ url_for('user_account') }}" class="btn-view-profile">查看个人详情</a>
+            </div>
+        </div>
+    </div>
+    
+    <h1 class="dashboard-title">教师控制台</h1>
+    <p class="welcome-msg">欢迎，{{ session.name }}老师！今天是 {{ current_date }}</p>
+    
+    <!-- 快速统计信息 -->
+    <div class="stats-container">
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.total_questions if stats else 0 }}</div>
+            <div class="stat-label">题库总数</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.pending_reviews if stats else 0 }}</div>
+            <div class="stat-label">待审核题目</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.unreviewed_exams if stats else 0 }}</div>
+            <div class="stat-label">待批改考试</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.active_tasks if stats else 0 }}</div>
+            <div class="stat-label">后台任务</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.knowledge_bases_count if stats else 0 }}</div>
+            <div class="stat-label">我的知识库</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.knowledge_documents_count if stats else 0 }}</div>
+            <div class="stat-label">知识库文档</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.knowledge_questions_count if stats else 0 }}</div>
+            <div class="stat-label">知识库题目</div>
+        </div>
+    </div>
+    
+    <!-- 功能卡片 -->
+    <div class="dashboard-cards">
+        <a href="{{ url_for('generate_theory_questions') }}" class="card card-theory">
+            <div class="card-icon">📚</div>
+            <h3>理论题生成</h3>
+            <p>基于课件生成名词/简答等题目</p>
+        </a>
+
+        <a href="{{ url_for('knowledge_bases') }}" class="card card-knowledge">
+            <div class="card-icon">📖</div>
+            <h3>知识库管理</h3>
+            <p>维护个人学习资料库，查看知识图谱</p>
+        </a>
+
+        <a href="{{ url_for('teacher_generate_questions') }}" class="card card-ai">
+            <div class="card-icon">💻</div>
+            <h3>程序设计题目生成</h3>
+            <p>基于 AI 生成编程实践题目</p>
+        </a>
+        
+        <a href="{{ url_for('review_questions') }}" class="card card-review">
+            <div class="card-icon">✅</div>
+            <h3>题库审核</h3>
+            <p>审核 AI 生成的题目</p>
+        </a>
+        
+        <a href="{{ url_for('question_bank') }}" class="card card-question">
+            <div class="card-icon">📚</div>
+            <h3>题库浏览</h3>
+            <p>查看已通过的题目</p>
+        </a>
+        
+        <a href="{{ url_for('create_exam_paper') }}" class="card card-exam">
+            <div class="card-icon">📋</div>
+            <h3>智能组卷</h3>
+            <p>从题库生成 A/B 卷</p>
+        </a>
+        
+        <a href="{{ url_for('paper_management') }}" class="card card-exam-manage">
+            <div class="card-icon">🗂️</div>
+            <h3>试卷管理</h3>
+            <p>查看和管理历史试卷</p>
+        </a>
+        
+        <a href="{{ url_for('view_exam_records') }}" class="card card-record">
+            <div class="card-icon">📝</div>
+            <h3>考试记录</h3>
+            <p>查看学生考试情况</p>
+        </a>
+        
+        <a href="{{ url_for('view_background_tasks') }}" class="card card-task">
+            <div class="card-icon">⚙️</div>
+            <h3>后台任务</h3>
+            <p>管理题目生成任务</p>
+        </a>
+        
+        <a href="{{ url_for('question_summary')}}" class="card card-stat">
+            <div class="card-icon">📊</div>
+            <h3>试题库统计</h3>
+            <p>查看题库分析报告</p>
+        </a>
+        
+        <a href="{{ url_for('account_management')}}" class="card card-student">
+            <div class="card-icon">👨‍🏫</div>
+            <h3>学生管理</h3>
+            <p>管理学生账号及监测学习情况</p>
+        </a>
+
+        <a href="{{ url_for('user_account') }}" class="card card-account">
+            <div class="card-icon">🔐</div>
+            <h3>账号管理</h3>
+            <p>修改密码和查看账户信息</p>
+        </a>
+
+        <a href="{{ url_for('bioinfo_articles') }}" class="card">
+            <div class="card-icon">📚</div>
+            <h3>文献检索</h3>
+            <p>检索生物信息学文献并提取创新点</p>
+        </a>
+    </div>
+    
+    <!-- 最近活动 -->
+    <div class="recent-activity">
+        <h3>教学入口</h3>
+        <div class="activity-list">
+            <div class="empty-activity">
+                <p style="font-size: 16px; color: #555;">
+                    当前学期课程：<strong>《生物信息学课程》</strong>
+                </p>
+                <p style="font-size: 14px; color: #888;">
+                    请使用上方功能卡片或顶部菜单栏进入对应模块
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 实时时钟更新
+    function updateClock() {
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('zh-CN', { 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric',
+            weekday: 'long'
+        });
+        
+        const timeStr = now.toLocaleTimeString('zh-CN');
+        
+        document.querySelector('.welcome-msg').textContent = 
+            `欢迎, {{ session.name }}老师！今天是 ${dateStr} ${timeStr}`;
+    }
+    
+    // 每分钟更新一次时间
+    updateClock();
+    setInterval(updateClock, 60000);
+    
+    // 卡片悬停效果
+    document.querySelectorAll('.card').forEach(card => {
+        card.addEventListener('mouseenter', () => {
+            card.style.transform = 'translateY(-5px)';
+            card.style.boxShadow = '0 10px 20px rgba(0,0,0,0.1)';
+        });
+        
+        card.addEventListener('mouseleave', () => {
+            card.style.transform = 'translateY(0)';
+            card.style.boxShadow = '0 5px 15px rgba(0,0,0,0.08)';
+        });
+    });
+</script>
+{% endblock %}

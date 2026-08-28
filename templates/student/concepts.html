@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}概念学习中心{% endblock %}
+
+{% block content %}
+<style>
+    .concept-table { color: #212529; }
+    .concept-table th { color: #333; }
+    .concept-table td { color: #333; }
+    .concept-table .text-muted { color: #6c757d !important; }
+    .concept-table .badge { color: #fff; }
+    .concept-table .badge.bg-warning { color: #212529; }
+    .concept-table tr:hover td { color: #212529; background: #f8f9fa; }
+    .concept-table a { color: #4a69bd; }
+    .stat-card .fs-4 { color: inherit; }
+</style>
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2><i class="fas fa-lightbulb"></i> 概念学习中心</h2>
+            <p class="text-muted mb-0">汇聚所有公开知识库的核心概念，按热度排序</p>
+        </div>
+        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-arrow-left"></i> 返回首页
+        </a>
+    </div>
+
+    <!-- 统计卡片 -->
+    <div class="row mb-3">
+        <div class="col-md-3 mb-3">
+            <div class="card text-center border-primary">
+                <div class="card-body py-2">
+                    <div class="fs-4 fw-bold text-primary">{{ total }}</div>
+                    <small class="text-muted">概念总数</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card text-center" style="background:#eef2ff">
+                <div class="card-body py-2">
+                    <div class="fs-4 fw-bold text-dark">{{ type_counts.get('entity', 0) }}</div>
+                    <small class="text-muted">实体概念</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card text-center" style="background:#fff4e6">
+                <div class="card-body py-2">
+                    <div class="fs-4 fw-bold text-dark">{{ type_counts.get('relation', 0) }}</div>
+                    <small class="text-muted">关系概念</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card text-center" style="background:#e6ffe6">
+                <div class="card-body py-2">
+                    <div class="fs-4 fw-bold text-dark">{{ type_counts.get('attribute', 0) }}</div>
+                    <small class="text-muted">属性概念</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 搜索和过滤 -->
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <input type="text" id="conceptSearch" class="form-control" placeholder="搜索概念名称...">
+        </div>
+        <div class="col-md-4">
+            <select id="typeFilter" class="form-select">
+                <option value="">全部类型</option>
+                <option value="entity">实体</option>
+                <option value="relation">关系</option>
+                <option value="attribute">属性</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <button class="btn btn-outline-primary w-100" id="flashcardBtn">
+                <i class="fas fa-clone"></i> 闪卡模式
+            </button>
+        </div>
+    </div>
+
+    <!-- 概念列表 -->
+    <div class="table-responsive">
+        <table class="table table-hover concept-table" id="conceptTable">
+            <thead class="table-light">
+                <tr>
+                    <th>#</th>
+                    <th>概念名称</th>
+                    <th>类型</th>
+                    <th>总频率</th>
+                    <th>涉及文档</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in concepts %}
+                <tr data-type="{{ c.concept_type }}" data-name="{{ c.concept_name }}" class="concept-row" style="cursor:pointer"
+                    onclick="window.location.href='{{ url_for('student_concept_detail', concept_id=c.rep_id) }}'">
+                    <td class="text-muted">{{ loop.index }}</td>
+                    <td><strong>{{ c.concept_name }}</strong></td>
+                    <td>
+                        {% if c.concept_type == 'entity' %}
+                        <span class="badge bg-primary">实体</span>
+                        {% elif c.concept_type == 'relation' %}
+                        <span class="badge bg-warning text-dark">关系</span>
+                        {% else %}
+                        <span class="badge bg-success">属性</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ c.total_freq }}</td>
+                    <td>{{ c.doc_count }} 篇</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if not concepts %}
+    <div class="text-center py-5 text-muted">
+        <i class="fas fa-inbox fa-3x mb-3"></i>
+        <p>暂无可学习的公开概念</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 搜索 + 类型过滤
+    const searchInput = document.getElementById('conceptSearch');
+    const typeFilter = document.getElementById('typeFilter');
+    const rows = document.querySelectorAll('.concept-row');
+
+    function filterConcepts() {
+        const query = (searchInput.value || '').toLowerCase();
+        const type = typeFilter.value;
+        rows.forEach(row => {
+            const name = (row.dataset.name || '').toLowerCase();
+            const rowType = row.dataset.type || '';
+            const matchName = !query || name.includes(query);
+            const matchType = !type || rowType === type;
+            row.style.display = (matchName && matchType) ? '' : 'none';
+        });
+    }
+
+    searchInput.addEventListener('input', filterConcepts);
+    typeFilter.addEventListener('change', filterConcepts);
+
+    // 闪卡模式按钮
+    document.getElementById('flashcardBtn').addEventListener('click', function() {
+        window.location.href = '{{ url_for('student_concepts') }}?flashcard=1';
+    });
+</script>
+{% endblock %}

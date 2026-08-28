@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}{{ document.title }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div>
+            <a href="{{ url_for('student_knowledge_base_detail', kb_id=kb_id) }}" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> 返回
+            </a>
+            <span class="ms-2 h5">{{ document.title }}</span>
+        </div>
+        <div>
+            <button class="btn btn-sm btn-outline-warning me-1" id="docBookmarkBtn" onclick="toggleBookmarkDoc({{ document.id }}, '{{ document.title }}')">
+                <i class="far fa-star"></i> 收藏文献
+            </button>
+            <a href="{{ url_for('student_knowledge_graph', kb_id=kb_id) }}" class="btn btn-sm btn-outline-info">
+                <i class="fas fa-project-diagram"></i> 知识图谱
+            </a>
+            <a href="{{ url_for('student_document_download', kb_id=kb_id, doc_id=document.id) }}" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-download"></i> 下载
+            </a>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            {% set has_meta = doc_meta.journal or doc_meta.authors or doc_meta.pub_year or doc_meta.doi or doc_meta.pmid or doc_meta.pmcid or doc_meta.source_url or doc_meta.keywords %}
+            {% if document.file_type == 'pdf' %}
+            <iframe src="{{ url_for('student_document_pdf', kb_id=kb_id, doc_id=document.id) }}"
+                    width="100%" height="700px" style="border:0;"></iframe>
+            {% elif document.file_type in ['txt', 'md', 'py', 'java', 'c', 'cpp', 'js', 'html'] %}
+                {% if has_meta %}
+                <div class="mb-3 pb-2 border-bottom">
+                    <h4 class="mb-1">{{ document.title }}</h4>
+                    {% if doc_meta.authors %}<div class="text-muted small mb-1">{{ doc_meta.authors }}</div>{% endif %}
+                    <div class="text-muted small mb-1">
+                        {% if doc_meta.journal %}<span>{{ doc_meta.journal }}</span>{% endif %}
+                        {% if doc_meta.pub_year %}<span class="ms-1">{{ doc_meta.pub_year }}</span>{% endif %}
+                    </div>
+                    {% if doc_meta.keywords %}<div class="small mb-1"><b>关键词：</b>{{ doc_meta.keywords }}</div>{% endif %}
+                    <div class="small text-muted">
+                        {% if doc_meta.doi %}<span class="me-2">DOI: {{ doc_meta.doi }}</span>{% endif %}
+                        {% if doc_meta.pmid %}<span class="me-2">PMID: {{ doc_meta.pmid }}</span>{% endif %}
+                        {% if doc_meta.pmcid %}<span class="me-2">{{ doc_meta.pmcid }}</span>{% endif %}
+                        {% if doc_meta.source_url %}<a href="{{ doc_meta.source_url }}" target="_blank" rel="noopener">来源链接 ↗</a>{% endif %}
+                    </div>
+                </div>
+                <div style="white-space:pre-wrap;line-height:1.85;">{{ document.content }}</div>
+                {% else %}
+                <pre class="code-display"><code>{{ document.content }}</code></pre>
+                {% endif %}
+            {% else %}
+            <div class="alert alert-warning">该文件格式（{{ document.file_type|upper }}）不支持在线预览，请下载查看。</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 文献阅读 - 记录想法 -->
+    <div class="card border-warning mt-3">
+        <div class="card-header bg-warning bg-opacity-10 py-2">
+            <h6 class="mb-0"><i class="fas fa-lightbulb text-warning"></i> 文献阅读中的想法</h6>
+        </div>
+        <div class="card-body py-2">
+            <textarea id="docNoteContent" class="form-control form-control-sm mb-2" rows="2" 
+                placeholder="阅读这篇文献时有什么想法和启发？记录到学习笔记..."></textarea>
+            <button class="btn btn-warning btn-sm" onclick="saveDocNote()">
+                <i class="fas fa-save"></i> 保存想法（关联文献）
+            </button>
+            <span id="docNoteStatus" class="ms-2 small text-muted"></span>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 文献笔记保存（关联到文档本身，通过知识库概念间接关联）
+async function saveDocNote() {
+    const content = document.getElementById('docNoteContent').value.trim();
+    if (!content) { alert('请输入你的想法'); return; }
+    const resp = await fetch('/api/student/note', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            target_type: 'document', target_id: {{ document.id }},
+            content: content, tags: '文献阅读,' + '{{ document.title|e }}'
+        })
+    });
+    const data = await resp.json();
+    document.getElementById('docNoteStatus').textContent = data.success ? '✓ 想法已保存到学习笔记' : '保存失败';
+    if (data.success) document.getElementById('docNoteContent').value = '';
+}
+</script>
+{% endblock %}

@@ -1,0 +1,11 @@
+flask
+gunicorn
+reportlab
+flask-session
+mysql-connector-python
+requests
+pygments
+PyPDF2
+python-docx
+aiohttp
+jieba

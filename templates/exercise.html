@@ -1,0 +1,418 @@
+{% extends "base.html" %}
+
+{% block title %}抽题学习{% endblock %}
+
+{% block content %}
+<div class="exercise-container">
+    <div class="exercise-header">
+        <h2>抽题学习: {{ question.topic }}</h2>
+        <div class="header-info">
+            <span class="language-badge">{% if is_theory %}{{ question.question_type }}{% else %}{{ question.language | upper }}{% endif %}</span>
+            <span class="difficulty-badge">
+                难度: 
+                {% for i in range(1,4) %}
+                    {% if i <= question.difficulty %}
+                    ★
+                    {% else %}
+                    ☆
+                    {% endif %}
+                {% endfor %}
+            </span>
+            <span class="approval-status">
+                {% if question.is_approved %}
+                <span class="status-approved">✅ 已审核</span>
+                {% else %}
+                <span class="status-pending">⏳ 未审核</span>
+                {% endif %}
+            </span>
+        </div>
+        <a href="{{ url_for('exercise_selection') }}" class="btn">返回选题</a>
+    </div>
+
+    <!-- 题目内容 -->
+    <div class="question-section">
+        <h3>题目要求</h3>
+        <div class="question-content">
+            <pre>{{ question.question_text }}</pre>
+        </div>
+    </div>
+
+    <!-- 提示信息 -->
+    <div class="hints-section">
+        <h3>
+            学习提示 
+            <span class="toggle-hints" id="toggleHints">[展开]</span>
+        </h3>
+        <div class="hints-content" id="hintsContent" style="display: none;">
+            {% if hints %}
+            <ul>
+                {% for hint in hints %}
+                <li>{{ hint }}</li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <div class="empty-hints">暂无提示信息</div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if is_theory %}
+    <!-- 相关知识库 -->
+    <div class="demo-section" style="border-left: 4px solid #4e73df;">
+        <h3>📚 相关知识库内容</h3>
+        {% if kb_context.doc %}
+        <p class="text-muted mb-2">本题基于知识库「<b>{{ kb_context.kb_name }}</b>」中的文档生成，以下内容可助你理解题目背景。</p>
+        <div class="mb-3">
+            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('student_document_view', kb_id=kb_context.kb_id, doc_id=kb_context.doc['doc_id']) }}">
+                📄 查看源文档：{{ kb_context.doc['doc_title'] }}
+            </a>
+            <a class="btn btn-sm btn-outline-info ms-2" href="{{ url_for('student_knowledge_graph', kb_id=kb_context.kb_id) }}">
+                🗺️ 查看知识图谱
+            </a>
+        </div>
+        {% if kb_context.concepts %}
+        <div class="mt-3">
+            <strong>核心概念：</strong>
+            <div class="d-flex flex-wrap mt-2">
+                {% for c in kb_context.concepts %}
+                <a href="{{ url_for('student_knowledge_graph', kb_id=kb_context.kb_id) }}"
+                   class="badge bg-light border me-2 mb-2 text-decoration-none"
+                   style="font-size:0.9rem;cursor:pointer;color:#212529;font-weight:normal;"
+                   title="点击查看知识图谱（频率 {{ c.frequency }}）">
+                   {{ c.concept_name }}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        {% else %}
+        <p class="text-muted mb-2">本题暂未关联特定知识库文档，你可浏览公开知识库作为参考。</p>
+        <div class="mb-2">
+            {% if public_kbs %}
+            {% for kb in public_kbs %}
+            <a class="btn btn-sm btn-outline-secondary me-2 mb-2" 
+               href="{{ url_for('student_knowledge_base_detail', kb_id=kb.id) }}">
+                📚 {{ kb.name }}
+            </a>
+            {% endfor %}
+            {% else %}
+            <span class="text-muted">暂无公开知识库</span>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    {% else %}
+    <!-- 求助示范代码 -->
+    <div class="demo-section">
+        <h3>
+            示范代码
+            <span class="toggle-help" id="toggleHelp">[展开]</span>
+        </h3>
+        <div class="help-content" id="helpContent" style="display: none;">
+            <ul>
+            <pre>{{ question.sample_answer }}</pre>
+            </ul>
+        </div>
+        <div class="code-actions">
+            <button class="btn" id="newQuestionBtn">
+                <span class="icon">🔄</span> 换一题
+            </button>
+        </div>
+    </div>
+    {% endif %}
+
+
+    {% if not is_theory %}
+    <!-- 代码运行区域 -->
+    <div class="execution-section">
+        <div class="execution-controls">
+            <h3>代码运行</h3>
+            <div class="controls-row">
+                <div class="control-group">
+                    <label for="commandArgs">命令行参数:</label>
+                    <input type="text" id="commandArgs" placeholder="输入参数，用空格分隔">
+                </div>
+                <div class="control-group">
+                    <label for="inputData">标准输入:</label>
+                    <button class="btn small" id="clearInputBtn">清空</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="input-output-container">
+            <div class="input-panel">
+                <textarea id="inputData" placeholder="输入程序运行所需的数据..."></textarea>
+            </div>
+            
+            <div class="output-panel">
+                <div class="output-header">
+                    <span>运行结果</span>
+                    <button class="btn small" id="clearOutputBtn">清空结果</button>
+                </div>
+                <div id="outputContent"></div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 练习提交 -->
+    <div class="submit-section">
+        <h3>尝试解答</h3>
+        {% if is_theory %}
+        <p class="instruction">请输入你的理论回答：</p>
+        <div class="code-editor">
+            <textarea id="studentCode" placeholder="在此处编写你的答案..." style="min-height:200px;"></textarea>
+        </div>
+        {% else %}
+        <p class="instruction">请尝试编写你自己的代码实现题目要求：</p>
+        <div class="code-editor">
+            <textarea id="studentCode" placeholder="在此处编写你的代码...">{{ question.sample_answer }}</textarea>
+        </div>
+        {% endif %}
+        
+        <div class="submit-actions">
+            <button class="btn" id="newQuestionBtn">
+                <span class="icon">🔄</span> 换一题
+            </button>
+            {% if not is_theory %}
+            <button class="btn" id="runMyCodeBtn">
+                <span class="icon">▶️</span> 运行我的代码
+            </button>
+            {% endif %}
+            <button class="btn primary" id="submitExerciseBtn">
+                <span class="icon">📤</span> 提交练习
+            </button>
+        </div>
+    </div>
+
+    <!-- 抽题练习 - 记录想法（仅理论题有关联概念时） -->
+    {% if question_type == 'theory' and kb_context.concepts %}
+    <div class="card border-warning mt-3">
+        <div class="card-header bg-warning bg-opacity-10 py-2">
+            <h6 class="mb-0"><i class="fas fa-lightbulb text-warning"></i> 抽题练习中的想法</h6>
+        </div>
+        <div class="card-body py-2">
+            <textarea id="exNoteContent" class="form-control form-control-sm mb-2" rows="2" 
+                placeholder="做这道题时有什么灵感和思考？记录下来..."></textarea>
+            <button class="btn btn-warning btn-sm" onclick="saveExNote({{ kb_context.concepts[0].concept_id|default(0) }}, '{{ kb_context.concepts[0].concept_name|default('') }}')">
+                <i class="fas fa-save"></i> 关联到概念「{{ kb_context.concepts[0].concept_name }}」
+            </button>
+            <span id="exNoteStatus" class="ms-2 small text-muted"></span>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 初始化代码编辑器
+    const isTheory = {{ 'true' if is_theory else 'false' }};
+    const langMap = {'python': 'python', 'perl': 'perl', 'java': 'text/x-java', 'c': 'text/x-csrc'};
+    const editorLanguage = isTheory ? '' : (langMap['{{ question.language }}'] || '{{ question.language }}');
+    const editor = CodeMirror.fromTextArea(document.getElementById('studentCode'), {
+        lineNumbers: true,
+        mode: editorLanguage || '',
+        theme: "default",
+        indentUnit: 4,
+        indentWithTabs: false,
+        extraKeys: {"Ctrl-Space": "autocomplete"}
+    });
+    
+    // 理论题隐藏「运行代码」按钮
+    if (isTheory) {
+        const runBtn = document.getElementById('runMyCodeBtn');
+        if (runBtn) runBtn.style.display = 'none';
+    }
+
+    // 抽题练习中保存笔记（打上"抽题练习"来源标签）
+    async function saveExNote(conceptId, conceptName) {
+        const content = document.getElementById('exNoteContent').value.trim();
+        if (!content) { alert('请输入你的想法'); return; }
+        const resp = await fetch('/api/student/note', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                target_type: 'concept', target_id: conceptId,
+                content: content,
+                tags: '抽题练习,' + conceptName
+            })
+        });
+        const data = await resp.json();
+        document.getElementById('exNoteStatus').textContent = data.success ? '✓ 想法已保存到学习笔记' : '保存失败';
+        if (data.success) document.getElementById('exNoteContent').value = '';
+    }
+    
+    // 提示信息切换
+    document.getElementById('toggleHints').addEventListener('click', function() {
+        const hintsContent = document.getElementById('hintsContent');
+        if (hintsContent.style.display === 'none') {
+            hintsContent.style.display = 'block';
+            this.textContent = '[收起]';
+        } else {
+            hintsContent.style.display = 'none';
+            this.textContent = '[展开]';
+        }
+    });
+
+    
+    // 求助信息展开
+    const toggleHelp = document.getElementById('toggleHelp');
+    if (toggleHelp) {
+        toggleHelp.addEventListener('click', function() {
+            const helpContent = document.getElementById('helpContent');
+            if (helpContent.style.display === 'none') {
+                helpContent.style.display = 'block';
+                this.textContent = '[收起]';
+            } else {
+                helpContent.style.display = 'none';
+                this.textContent = '[展开]';
+            }
+        });
+    }
+
+    
+    // 运行学生代码
+    const runMyCodeBtn = document.getElementById('runMyCodeBtn');
+    if (runMyCodeBtn) {
+        runMyCodeBtn.addEventListener('click', async function() {
+            const code = editor.getValue();
+            const language = "{{ question.language }}";
+        const args = document.getElementById('commandArgs').value;
+        const inputData = document.getElementById('inputData').value;
+        
+        // 禁用按钮并显示加载状态
+        this.innerHTML = '<span class="spinner"></span> 运行中...';
+        this.disabled = true;
+        
+        try {
+            const response = await fetch("{{ url_for('run_code') }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    language: language,
+                    code: code,
+                    args: args.split(' ').filter(arg => arg.trim() !== ''),
+                    inputs: inputData
+                })
+            });
+            
+            const result = await response.json();
+            displayOutput(result);
+        } catch (error) {
+            displayOutput({
+                stdout: '',
+                stderr: `运行出错: ${error.message}`
+            });
+        } finally {
+            // 恢复按钮状态
+            this.innerHTML = '<span class="icon">▶️</span> 运行我的代码';
+            this.disabled = false;
+        }
+    });
+    }
+    
+    // 清空输入
+    const clearInputBtn = document.getElementById('clearInputBtn');
+    if (clearInputBtn) {
+        clearInputBtn.addEventListener('click', function() {
+            document.getElementById('inputData').value = '';
+        });
+    }
+    
+    // 清空输出
+    const clearOutputBtn = document.getElementById('clearOutputBtn');
+    if (clearOutputBtn) {
+        clearOutputBtn.addEventListener('click', function() {
+            document.getElementById('outputContent').innerHTML = '';
+        });
+    }
+    
+    // 换一题
+    const newQuestionBtn = document.getElementById('newQuestionBtn');
+    if (newQuestionBtn) {
+        newQuestionBtn.addEventListener('click', function() {
+            if (confirm('确定要换一题吗？当前页面内容将会丢失。')) {
+                window.location.href = "{{ url_for('study_with_samples') }}";
+            }
+        });
+    }
+    
+    // 提交练习
+    document.getElementById('submitExerciseBtn').addEventListener('click', async function() {
+        const code = editor.getValue();
+        
+        if (!code.trim()) {
+            alert('请编写代码后再提交');
+            return;
+        }
+        
+        if (!confirm('确定要提交你的练习代码吗？')) {
+            return;
+        }
+        
+        // 禁用按钮并显示加载状态
+        this.innerHTML = '<span class="spinner"></span> 提交中...';
+        this.disabled = true;
+        
+        try {
+            const response = await fetch("{{ url_for('submit_exercise') }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    question_id: "{{ question.id }}",
+                    question_type: "{{ question_type }}",
+                    code: code
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok) {
+                alert(`${isTheory ? '理论题' : '练习'}提交成功！\n----------------------\nAI评分: ${result.score}分\n-----------\n\n评语: ${result.comment}\n`);
+                /*
+                // 如果评论内容比较丰富，建议将结果存入sessionStorage
+                sessionStorage.setItem('exerciseResult', JSON.stringify({
+                  score: result.score,
+                  comment: result.comment,
+                }));
+                // 打开新窗口显示结果
+                console.log("URL to open: ", "{{ url_for('exercise_result') }}");
+                window.open("{{ url_for('exercise_result') }}",'_blank');
+                */
+            } else {
+                alert(`提交失败: ${result.message || '未知错误'}`);
+            }
+        } catch (error) {
+            alert('网络错误，请重试');
+            console.error('提交失败:', error);
+        } finally {
+            // 恢复按钮状态
+            this.innerHTML = '<span class="icon">📤</span> 提交练习';
+            this.disabled = false;
+        }
+    });
+    
+    // 显示运行结果
+    function displayOutput(result) {
+        let output = '';
+        
+        if (result.stdout) {
+            output += `<div class="stdout">${result.stdout}</div>`;
+        }
+        
+        if (result.stderr) {
+            output += `<div class="stderr">${result.stderr}</div>`;
+        }
+        
+        if (!result.stdout && !result.stderr) {
+            output = '<div class="info">程序已执行，没有输出</div>';
+        }
+        
+        document.getElementById('outputContent').innerHTML = output;
+    }
+</script>
+{% endblock %}

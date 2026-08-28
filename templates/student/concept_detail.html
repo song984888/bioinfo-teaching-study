@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block title %}{{ concept.concept_name }} - 概念详情{% endblock %}
+
+{% block content %}
+<style>
+    .badge.bg-warning { color: #212529 !important; }
+    .card-body { color: #333; }
+    .breadcrumb a { color: #4a69bd; }
+    .text-muted { color: #6c757d !important; }
+    h1, h5 { color: #212529; }
+</style>
+<div class="container py-4">
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">首页</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('student_concepts') }}">概念学习中心</a></li>
+            <li class="breadcrumb-item active">{{ concept.concept_name }}</li>
+        </ol>
+    </nav>
+
+    <!-- 概念头部 -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <h1 class="mb-2">{{ concept.concept_name }}</h1>
+                    <div class="mb-3">
+                        {% if concept.concept_type == 'entity' %}
+                        <span class="badge bg-primary me-2">实体概念</span>
+                        {% elif concept.concept_type == 'relation' %}
+                        <span class="badge bg-warning text-dark me-2">关系概念</span>
+                        {% else %}
+                        <span class="badge bg-success me-2">属性概念</span>
+                        {% endif %}
+                        <span class="text-muted small">频率: {{ concept.frequency }}</span>
+                    </div>
+                    {% if concept.description %}
+                    <div class="p-3 bg-light rounded">
+                        <h5 class="text-muted">概念说明</h5>
+                        <p class="mb-0">{{ concept.description }}</p>
+                    </div>
+                    {% else %}
+                    <div class="p-3 bg-light rounded text-muted">
+                        暂无详细说明。该概念来源于文档内容提取。
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="text-end">
+                    <button class="btn btn-outline-warning btn-sm me-1" id="bookmarkBtn" onclick="toggleBookmark('concept', {{ concept.id }})">
+                        <i class="far fa-star"></i> 收藏
+                    </button>
+                    <a href="{{ url_for('student_knowledge_graph', kb_id=concept.kb_id) }}" class="btn btn-outline-info btn-sm">
+                        <i class="fas fa-project-diagram"></i> 查看知识图谱
+                    </a>
+                    <a href="{{ url_for('bioinfo_articles') }}?q={{ concept.concept_name }}" class="btn btn-outline-primary btn-sm ms-1">
+                        <i class="fas fa-search"></i> 检索文献
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- 来源文档 -->
+        <div class="col-md-7 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-file-alt"></i> 来源文档</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <strong>主要来源：</strong><br>
+                        <a href="{{ url_for('student_document_view', kb_id=concept.kb_id, doc_id=concept.doc_id) }}"
+                           class="btn btn-sm btn-outline-primary mt-1">
+                           {{ concept.doc_title }}
+                        </a>
+                        <small class="text-muted ms-2">知识库: {{ concept.kb_name }}</small>
+                    </div>
+                    {% if same_name_docs %}
+                    <div>
+                        <strong>其他相关文档：</strong>
+                        <ul class="list-unstyled mt-2">
+                            {% for d in same_name_docs %}
+                            <li class="mb-1">
+                                <a href="{{ url_for('student_document_view', kb_id=d.kb_id, doc_id=d.doc_id) }}">
+                                    {{ d.doc_title }}
+                                </a>
+                                <small class="text-muted">（{{ d.kb_name }}，频率 {{ d.frequency }}）</small>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- 相关概念 -->
+        <div class="col-md-5 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-link"></i> 相关概念</h5>
+                </div>
+                <div class="card-body">
+                    {% if related %}
+                    <div class="d-flex flex-wrap">
+                        {% for r in related %}
+                        <a href="{{ url_for('student_concept_detail', concept_id=r.id) }}"
+                           class="btn btn-sm btn-outline-secondary m-1">
+                           {{ r.concept_name }}
+                           {% if r.relation_type %}<small class="text-muted">({{ r.relation_type }})</small>{% endif %}
+                        </a>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted">暂无已知相关概念</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 笔记区域 -->
+    <div class="card mb-4">
+        <div class="card-header"><h5 class="mb-0"><i class="fas fa-pen"></i> 我的笔记</h5></div>
+        <div class="card-body">
+            <textarea id="noteContent" class="form-control mb-2" rows="4" placeholder="记录你对这个概念的理解和思考..."></textarea>
+            <button class="btn btn-primary btn-sm" onclick="saveNote('concept', {{ concept.id }})">保存笔记</button>
+            <span id="noteStatus" class="ms-2 small text-muted"></span>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function toggleBookmark(type, id) {
+    const resp = await fetch('/api/student/bookmark', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({target_type: type, target_id: id})
+    });
+    const data = await resp.json();
+    const btn = document.getElementById('bookmarkBtn');
+    if (data.bookmarked) {
+        btn.innerHTML = '<i class="fas fa-star"></i> 已收藏';
+        btn.className = 'btn btn-warning btn-sm me-1';
+    } else {
+        btn.innerHTML = '<i class="far fa-star"></i> 收藏';
+        btn.className = 'btn btn-outline-warning btn-sm me-1';
+    }
+}
+
+async function saveNote(type, id) {
+    const content = document.getElementById('noteContent').value.trim();
+    if (!content) { alert('请输入笔记内容'); return; }
+    const resp = await fetch('/api/student/note', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({target_type: type, target_id: id, content: content})
+    });
+    const data = await resp.json();
+    document.getElementById('noteStatus').textContent = data.success ? '✓ 笔记已保存' : data.message;
+}
+</script>
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Exam Records{% endblock %}
+{% block content %}
+<h2>All Exam Records</h2>
+
+{% if records %}
+<table class="table table-hover mt-3">
+    <thead class="table-dark">
+        <tr>
+            <th>#</th>
+            <th>Student</th>
+            <th>Question</th>
+            <th>Language</th>
+            <th>Score</th>
+            <th>Date</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in records %}
+        <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ r.student_name }}</td>
+            <td>{{ r.question_text[:40] }}...</td>
+            <td><span class="badge bg-secondary">{{ r.language }}</span></td>
+            <td><strong>{{ r.score }}/100</strong></td>
+            <td>{{ r.submitted_at.strftime('%Y-%m-%d %H:%M') if r.submitted_at else 'N/A' }}</td>
+            <td>
+                {% if r.is_reviewed %}
+                <span class="badge bg-success">Reviewed</span>
+                {% else %}
+                <span class="badge bg-warning">Pending</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="alert alert-info">No exam records yet.</div>
+{% endif %}
+
+<a href="{{ url_for('teacher_dashboard') }}" class="btn btn-outline-secondary">Back to Dashboard</a>
+{% endblock %}

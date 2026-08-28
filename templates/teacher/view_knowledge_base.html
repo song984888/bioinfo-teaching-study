@@ -1,0 +1,589 @@
+ {% extends "base.html" %}
+
+{% block title %}{{ knowledge_base.name }} - 知识库详情{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="padding: 0 30px;">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('knowledge_bases') }}">知识库管理</a>
+            </li>
+            <li class="breadcrumb-item active">{{ knowledge_base.name }}</li>
+        </ol>
+    </nav>
+
+    <div class="kb-header-card mb-4">
+        <div class="d-flex justify-content-between align-items-center">
+            <div class="kb-info">
+                <h1 class="kb-title">{{ knowledge_base.name }}</h1>
+                <p class="kb-description">{{ knowledge_base.description or '暂无描述' }}</p>
+                <div class="kb-meta">
+                    <span class="meta-item">
+                        <i class="fas fa-user"></i> 
+                        <strong>创建者:</strong> {{ knowledge_base.owner_name }}
+                    </span>
+                    <span class="meta-item">
+                        <i class="fas fa-calendar"></i> 
+                        <strong>创建时间:</strong> {{ knowledge_base.created_at.strftime('%Y-%m-%d') }}
+                    </span>
+                    {% if knowledge_base.is_public %}
+                        <span class="badge bg-success">公开知识库</span>
+                    {% else %}
+                        <span class="badge bg-secondary">私有知识库</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="kb-actions">
+                <a href="{{ url_for('knowledge_graph', kb_id=knowledge_base.id) }}" class="btn btn-info me-2">
+                    <i class="fas fa-project-diagram"></i> 知识图谱
+                </a>
+                <a href="{{ url_for('upload_document', kb_id=knowledge_base.id) }}" class="btn btn-success">
+                    <i class="fas fa-upload"></i> 上传文档
+                </a>
+                <a href="{{ url_for('knowledge_bases') }}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> 返回
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="mb-0">
+                        <i class="fas fa-file-alt"></i> 文档列表
+                        <span class="badge bg-primary float-end">{{ documents|length }}</span>
+                    </h3>
+                </div>
+                <div class="card-body">
+                    {% if documents %}
+                    <div class="list-group">
+                        {% for doc in documents %}
+                        <a href="{{ url_for('view_document', kb_id=knowledge_base.id, doc_id=doc.id) }}" 
+                           class="list-group-item list-group-item-action">
+                            <div class="d-flex w-100 justify-content-between align-items-start">
+                                <div class="flex-grow-1">
+                                    <h4 class="doc-title">{{ doc.title }}</h4>
+                                    <p class="doc-summary text-muted mb-2">
+                                        {{ doc.content[:150] }}{% if doc.content|length > 150 %}...{% endif %}
+                                    </p>
+                                    <div class="doc-meta d-flex gap-3 align-items-center flex-wrap">
+                                        <span class="meta-badge">
+                                            <i class="fas fa-question-circle"></i> {{ doc.question_count }} 个问题
+                                        </span>
+                                        <span class="meta-badge">
+                                            <i class="fas fa-clock"></i> {{ (doc.updated_at or doc.created_at).strftime('%Y-%m-%d') }}
+                                        </span>
+                                        {% if doc.tags %}
+                                            {% for tag in doc.tags.split(',')[:3] %}
+                                                <span class="badge bg-light text-dark border">{{ tag.strip() }}</span>
+                                            {% endfor %}
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="doc-actions d-flex gap-2">
+                                    <a href="{{ url_for('extract_concepts', kb_id=knowledge_base.id, doc_id=doc.id) }}" 
+                                       class="btn btn-sm btn-action btn-action-primary extract-concept-btn" 
+                                       data-bs-toggle="tooltip" 
+                                       data-bs-placement="top" 
+                                       title="提取概念"
+                                       onclick="event.stopPropagation(); event.preventDefault(); extractConcepts({{ knowledge_base.id }}, {{ doc.id }})">
+                                        <i class="fas fa-lightbulb"></i>
+                                        <span class="btn-text">提取概念</span>
+                                    </a>
+                                    <button class="btn btn-sm btn-action btn-action-danger delete-doc-btn" 
+                                            data-kb-id="{{ knowledge_base.id }}"
+                                            data-doc-id="{{ doc.id }}"
+                                            data-doc-title="{{ doc.title }}"
+                                            data-bs-toggle="tooltip" 
+                                            data-bs-placement="top" 
+                                            title="删除文档"
+                                            onclick="event.stopPropagation(); confirmDeleteDocument(this.dataset.kbId, this.dataset.docId, this.dataset.docTitle)">
+                                        <i class="fas fa-trash-alt"></i>
+                                        <span class="btn-text">删除文档</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </a>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-file fa-2x text-muted mb-2"></i>
+                        <p class="text-muted">该知识库中还没有文档</p>
+                        <a href="{{ url_for('upload_document', kb_id=knowledge_base.id) }}" class="btn btn-outline-primary">
+                            <i class="fas fa-upload"></i> 上传第一个文档
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="mb-0">
+                        <i class="fas fa-chart-pie"></i> 统计信息
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <div class="statistics">
+                        <div class="stat-item mb-3">
+                            <div class="d-flex justify-content-between">
+                                <span>文档总数</span>
+                                <strong>{{ documents|length }}</strong>
+                            </div>
+                        </div>
+                        <div class="stat-item mb-3">
+                            <div class="d-flex justify-content-between">
+                                <span>问题总数</span>
+                                <strong>{{ documents|sum(attribute='question_count') }}</strong>
+                            </div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="d-flex justify-content-between">
+                                <span>最近更新</span>
+                                <strong>{{ (knowledge_base.updated_at or knowledge_base.created_at).strftime('%Y-%m-%d') }}</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h3 class="mb-0">
+                        <i class="fas fa-lightbulb"></i> 使用建议
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled small">
+                        <li class="mb-2">
+                            <i class="fas fa-check text-success me-2"></i>
+                            上传 PDF 或 TXT 格式的教材章节
+                        </li>
+                        <li class="mb-2">
+                            <i class="fas fa-check text-success me-2"></i>
+                            为文档添加相关标签便于检索
+                        </li>
+                        <li class="mb-2">
+                            <i class="fas fa-check text-success me-2"></i>
+                            在理论出题时选择此知识库作为内容源
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+/* 面包屑导航样式 */
+.breadcrumb {
+    background: #f8f9fa;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    border: 1px solid #e9ecef;
+}
+
+.breadcrumb-item {
+    font-size: 0.95rem;
+    color: #495057;
+    font-weight: 500;
+}
+
+.breadcrumb-item a {
+    color: #0d6efd;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+
+.breadcrumb-item a:hover {
+    color: #0a58ca;
+    text-decoration: underline;
+}
+
+.breadcrumb-item.active {
+    color: #6c757d;
+    font-weight: 600;
+}
+
+.breadcrumb-item + .breadcrumb-item::before {
+    color: #adb5bd;
+}
+
+/* 知识库头部卡片样式 */
+/* 知识库头部卡片样式 */
+.kb-header-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 2.5rem;
+    border-radius: 16px;
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+    margin-bottom: 2rem;
+}
+
+.kb-title {
+    font-size: 2.2rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    color: white;
+    letter-spacing: -0.5px;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.kb-description {
+    font-size: 1.2rem;
+    opacity: 1;
+    margin-bottom: 1.5rem;
+    line-height: 1.6;
+    font-weight: 400;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.kb-actions {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.kb-actions .btn {
+    padding: 0.7rem 1.4rem;
+    font-weight: 600;
+    transition: all 0.3s;
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.kb-actions .btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.25);
+}
+
+.kb-actions .btn-info {
+    background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+    color: white;
+}
+
+.kb-actions .btn-success {
+    background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+    color: white;
+}
+
+.kb-actions .btn-secondary {
+    background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
+    color: white;
+}
+
+/* 文档标题样式 */
+.doc-title {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin-bottom: 0.5rem;
+    line-height: 1.4;
+}
+
+.doc-summary {
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+.doc-meta {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.meta-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    color: #666;
+    background: #f8f9fa;
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+}
+
+.meta-badge i {
+    color: #667eea;
+}
+
+/* 操作按钮样式 - 提取概念和删除文档 */
+.doc-actions {
+    display: flex;
+    gap: 0.8rem;
+    flex-shrink: 0;
+}
+
+.btn-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    padding: 0.6rem 1.2rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border-radius: 10px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 2px solid transparent;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    position: relative;
+    overflow: hidden;
+    min-width: 120px; /* 确保按钮有足够宽度显示文字 */
+}
+
+.btn-action i {
+    font-size: 1.1rem;
+    transition: transform 0.3s;
+}
+
+.btn-action .btn-text {
+    font-size: 0.95rem;
+    font-weight: 600;
+    white-space: nowrap;
+    line-height: 1.2;
+}
+
+/* 提取概念按钮 - 蓝色渐变 */
+.btn-action-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-color: transparent;
+}
+
+.btn-action-primary:hover {
+    background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    border-color: rgba(102, 126, 234, 0.3);
+}
+
+.btn-action-primary:hover i {
+    transform: scale(1.15) rotate(-10deg);
+}
+
+.btn-action-primary:active {
+    transform: translateY(-1px);
+}
+
+/* 删除文档按钮 - 红色渐变 */
+.btn-action-danger {
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+    color: white;
+    border-color: transparent;
+}
+
+.btn-action-danger:hover {
+    background: linear-gradient(135deg, #ee5a6f 0%, #ff6b6b 100%);
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
+    border-color: rgba(255, 107, 107, 0.3);
+}
+
+.btn-action-danger:hover i {
+    transform: scale(1.15) rotate(10deg);
+}
+
+.btn-action-danger:active {
+    transform: translateY(-1px);
+}
+
+/* 加载状态 */
+.btn-action.btn-loading {
+    pointer-events: none;
+}
+
+.btn-action.btn-loading i {
+    animation: fa-spin 1s linear infinite;
+}
+
+/* 移动端优化 */
+@media (max-width: 768px) {
+    .doc-actions {
+        gap: 0.4rem;
+    }
+    
+    .btn-action {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.85rem;
+    }
+    
+    .btn-action i {
+        font-size: 1rem;
+    }
+    
+    .btn-action .btn-text {
+        font-size: 0.85rem;
+    }
+}
+
+/* 列表项样式 */
+.list-group-item {
+    border: 1px solid #e0e0e0;
+    margin-bottom: 1rem;
+    border-radius: 8px;
+    transition: all 0.3s;
+}
+
+.list-group-item:hover {
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+    border-color: #667eea;
+    transform: translateX(4px);
+}
+
+.delete-doc-btn {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.3s;
+}
+
+.delete-doc-btn:hover {
+    background: #dc3545;
+    color: white;
+    transform: rotate(90deg);
+}
+
+/* 列表项样式 */
+.stat-item {
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+.stat-item strong {
+    font-size: 1.5rem;
+    color: #667eea;
+}
+
+/* 使用建议卡片 */
+.card.bg-light {
+    background: #f8f9fa !important;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .container {
+        padding: 0 15px;
+    }
+    
+    .breadcrumb {
+        font-size: 0.85rem;
+        padding: 0.6rem 0.8rem;
+    }
+    
+    .kb-header-card {
+        padding: 1.8rem;
+    }
+    
+    .kb-title {
+        font-size: 1.6rem;
+    }
+    
+    .kb-description {
+        font-size: 1rem;
+    }
+    
+    .kb-meta {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    
+    .kb-actions {
+        flex-direction: column;
+        margin-top: 1.5rem;
+        width: 100%;
+    }
+    
+    .kb-actions .btn {
+        width: 100%;
+    }
+    
+    .doc-title {
+        font-size: 1.1rem;
+    }
+}
+</style>
+
+<script>
+// 全局变量
+const KB_ID = {{ knowledge_base.id }};
+
+// 删除文档确认函数
+function confirmDeleteDocument(kbId, docId, docTitle) {
+    const confirmed = confirm(
+        `⚠️ 警告：删除操作不可恢复！\n\n` +
+        `确定要删除文档 "${docTitle}" 吗？\n\n` +
+        `删除后将永久移除以下内容：\n` +
+        `  • 文档文件本身\n` +
+        `  • 所有相关问题（包括已生成的题目）\n` +
+        `  • 提取的所有概念和关系\n` +
+        `  • 该文档的所有统计数据\n\n` +
+        `此操作无法撤销，请谨慎操作！`
+    );
+    
+    if (confirmed) {
+        // 创建表单并提交
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/teacher/knowledge_bases/${kbId}/documents/${docId}/delete`;
+        
+        // 添加 CSRF token
+        const csrfToken = document.querySelector('meta[name="csrf-token"]');
+        if (csrfToken) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'csrf_token';
+            input.value = csrfToken.content;
+            form.appendChild(input);
+        }
+        
+        // 显示加载提示
+        const btn = event.target.closest('.delete-doc-btn');
+        if (btn) {
+            btn.classList.add('btn-loading');
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span class="btn-text">删除中...</span>';
+            btn.style.opacity = '0.8';
+            btn.style.cursor = 'not-allowed';
+        }
+        
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+// 提取概念函数
+function extractConcepts(kbId, docId) {
+    if (confirm('确定要从此文档中提取概念吗？\n\n系统将使用 AI 分析文档内容并提取关键概念。\n\n注意：首次提取可能需要较长时间，请耐心等待。')) {
+        // 显示加载提示
+        const btn = event.target.closest('.extract-concept-btn');
+        if (btn) {
+            btn.classList.add('btn-loading');
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span class="btn-text">处理中...</span>';
+            btn.style.opacity = '0.8';
+            btn.style.cursor = 'not-allowed';
+        }
+        
+        // 跳转到概念提取页面
+        window.location.href = `/teacher/knowledge_bases/${kbId}/document/${docId}/concepts`;
+    }
+}
+</script>
+{% endblock %}

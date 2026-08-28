@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>简化知识图谱测试</title>
+    <script src="{{ url_for('static', filename='js/d3.min.js') }}"></script>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            background-color: #f5f5f5; 
+        }
+        .container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+        }
+        #knowledge-graph { 
+            width: 100%; 
+            height: 600px; 
+            border: 2px solid #4361ee; 
+            border-radius: 8px; 
+            position: relative; 
+            background: #fafafa; 
+        }
+        .loading { 
+            position: absolute; 
+            top: 50%; 
+            left: 50%; 
+            transform: translate(-50%, -50%); 
+            text-align: center; 
+            color: #666; 
+        }
+        .debug-console {
+            background: #000;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            margin: 20px 0;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>简化知识图谱测试</h1>
+        <p>正在测试知识图谱渲染功能...</p>
+        
+        <div id="knowledge-graph">
+            <div class="loading" id="loading">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">加载中...</span>
+                </div>
+                <p class="mt-2">正在初始化知识图谱...</p>
+            </div>
+        </div>
+        
+        <div class="debug-console">
+            <div id="debug-output">调试信息将显示在这里...</div>
+        </div>
+    </div>
+
+    <script>
+        // 调试输出函数
+        function debugLog(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${message}\n`;
+            const debugOutput = document.getElementById('debug-output');
+            debugOutput.textContent += logEntry;
+            debugOutput.scrollTop = debugOutput.scrollHeight;
+            console.log(message);
+        }
+        
+        // 测试数据
+        const testData = {
+            concepts: [
+                {id: 1, concept_name: '算法', description: '基础算法概念', concept_type: 'entity', frequency: 5, size: 35},
+                {id: 2, concept_name: '数据结构', description: '基础数据结构', concept_type: 'entity', frequency: 4, size: 30},
+                {id: 3, concept_name: '编程语言', description: '编程语言基础', concept_type: 'entity', frequency: 3, size: 25},
+                {id: 4, concept_name: '面向对象', description: 'OOP概念', concept_type: 'entity', frequency: 3, size: 25},
+                {id: 5, concept_name: '数据库', description: '数据库系统', concept_type: 'entity', frequency: 2, size: 20},
+                {id: 6, concept_name: '网络', description: '计算机网络', concept_type: 'entity', frequency: 2, size: 20}
+            ],
+            relations: [
+                {id: 1, from_concept_id: 1, to_concept_id: 2, relation_type: '相关', confidence: 0.9},
+                {id: 2, from_concept_id: 2, to_concept_id: 3, relation_type: '依赖', confidence: 0.8},
+                {id: 3, from_concept_id: 3, to_concept_id: 4, relation_type: '支持', confidence: 0.7},
+                {id: 4, from_concept_id: 4, to_concept_id: 5, relation_type: '应用', confidence: 0.8},
+                {id: 5, from_concept_id: 5, to_concept_id: 6, relation_type: '交互', confidence: 0.6}
+            ]
+        };
+
+        document.addEventListener('DOMContentLoaded', function() {
+            debugLog('=== 知识图谱渲染调试开始 ===');
+            debugLog('页面DOM加载完成');
+            
+            try {
+                // 检查D3.js
+                if (typeof d3 === 'undefined') {
+                    throw new Error('D3.js未加载');
+                }
+                debugLog(`D3.js版本: ${d3.version}`);
+                
+                // 获取容器
+                const container = document.getElementById('knowledge-graph');
+                if (!container) {
+                    throw new Error('找不到知识图谱容器');
+                }
+                debugLog('找到知识图谱容器');
+                
+                // 隐藏加载指示器
+                const loading = document.getElementById('loading');
+                if (loading) {
+                    loading.style.display = 'none';
+                }
+                
+                // 创建SVG
+                const svg = d3.select(container)
+                    .append('svg')
+                    .attr('width', '100%')
+                    .attr('height', '100%');
+                
+                const width = container.clientWidth;
+                const height = container.clientHeight;
+                debugLog(`容器尺寸: ${width} x ${height}`);
+                
+                // 使用网格布局
+                const gridSize = Math.ceil(Math.sqrt(testData.concepts.length));
+                const cellSize = Math.min(width / gridSize, height / gridSize) * 0.8;
+                
+                debugLog(`网格大小: ${gridSize} x ${gridSize}, 单元格大小: ${cellSize}`);
+                
+                // 计算节点位置
+                testData.concepts.forEach((concept, i) => {
+                    const row = Math.floor(i / gridSize);
+                    const col = i % gridSize;
+                    concept.x = (col + 0.5) * cellSize;
+                    concept.y = (row + 0.5) * cellSize;
+                });
+                
+                debugLog('节点位置计算完成');
+                
+                // 绘制关系连线
+                if (testData.relations.length > 0) {
+                    const linkGroup = svg.append('g')
+                        .attr('stroke', '#999')
+                        .attr('stroke-opacity', 0.6);
+                    
+                    testData.relations.forEach(rel => {
+                        const source = testData.concepts.find(c => c.id === rel.from_concept_id);
+                        const target = testData.concepts.find(c => c.id === rel.to_concept_id);
+                        
+                        if (source && target) {
+                            linkGroup.append('line')
+                                .attr('x1', source.x)
+                                .attr('y1', source.y)
+                                .attr('x2', target.x)
+                                .attr('y2', target.y)
+                                .attr('stroke-width', Math.sqrt(rel.confidence) * 3)
+                                .attr('stroke', '#666');
+                        }
+                    });
+                    
+                    debugLog('关系连线绘制完成');
+                }
+                
+                // 绘制节点
+                const nodeGroup = svg.append('g');
+                
+                testData.concepts.forEach(concept => {
+                    // 节点圆圈
+                    nodeGroup.append('circle')
+                        .attr('cx', concept.x)
+                        .attr('cy', concept.y)
+                        .attr('r', concept.size)
+                        .attr('fill', '#4361ee')
+                        .attr('stroke', concept.frequency > 3 ? '#ffd700' : '#fff')
+                        .attr('stroke-width', concept.frequency > 3 ? 3 : 2)
+                        .on('mouseover', function() {
+                            d3.select(this).attr('stroke-width', 4);
+                        })
+                        .on('mouseout', function() {
+                            d3.select(this).attr('stroke-width', concept.frequency > 3 ? 3 : 2);
+                        });
+                    
+                    // 节点标签
+                    nodeGroup.append('text')
+                        .attr('x', concept.x)
+                        .attr('y', concept.y + 5)
+                        .attr('text-anchor', 'middle')
+                        .attr('fill', '#333')
+                        .attr('font-size', Math.max(10, concept.size / 3))
+                        .attr('font-weight', 'bold')
+                        .text(concept.concept_name);
+                    
+                    // 频率标签
+                    if (concept.frequency > 2) {
+                        nodeGroup.append('text')
+                            .attr('x', concept.x)
+                            .attr('y', concept.y - 2)
+                            .attr('text-anchor', 'middle')
+                            .attr('fill', '#fff')
+                            .attr('font-weight', 'bold')
+                            .attr('font-size', 12)
+                            .text(concept.frequency);
+                    }
+                });
+                
+                debugLog('节点和标签绘制完成');
+                debugLog('=== 知识图谱渲染完成 ===');
+                
+            } catch (error) {
+                debugLog(`渲染错误: ${error.message}`);
+                debugLog(`错误堆栈: ${error.stack}`);
+                console.error('知识图谱渲染失败:', error);
+            }
+        });
+    </script>
+</body>
+</html>

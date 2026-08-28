@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% block title %}试题库统计 - 教师控制台{% endblock %}
+{% block content %}
+
+<div class="dashboard">
+  <div class="stats-container">
+    <div class="stat-card">
+      <i class="icon">📊</i>
+      <h3>{{ stats.total_questions }}</h3>
+      <p>题库总数</p>
+    </div>
+    <div class="stat-card">
+      <i class="icon">💻</i>
+      <h3>{{ stats.total_coding if stats.total_coding is defined else 0}}</h3>
+      <p>程序设计题目</p>
+    </div>
+    <div class="stat-card">
+      <i class="icon">📝</i>
+      <h3>{{ stats.total_theory if stats.total_theory is defined else 0}}</h3>
+      <p>理论题目</p>
+    </div>
+    <div class="stat-card">
+      <i class="icon">🏷️</i>
+      <h3>{{ stats.total_topics if stats.total_topics is defined else 0}}</h3>
+      <p>主题数量</p>
+    </div>
+    <div class="stat-card">
+      <i class="icon">🔢</i>
+      <h3>
+         {% if stats.avg_number_per_topic is defined and stats.avg_number_per_topic is not none %}
+            {{ stats.avg_number_per_topic|round(1) }}
+         {% else %}
+            0.0
+         {% endif %}
+      </h3>
+      <p>主题平均题目数</p>
+    </div>
+    <div class="stat-card">
+      <i class="icon">⚖️</i>
+      <h3>
+         {% if stats.avg_difficulty is defined and stats.avg_difficulty is not none %}
+            {{ stats.avg_difficulty|round(1) }}
+         {% else %}
+            0.0
+         {% endif %}
+      </h3>
+      <p>平均难度（编程）</p>
+    </div>
+    <div class="stat-card">
+      <i class="icon">🔠</i>
+      <h3>
+         {% if stats.avg_word_count is defined and stats.avg_word_count is not none %}
+            {{ stats.avg_word_count|round(0)|int }}
+         {% else %}
+            0
+         {% endif %}
+      </h3>
+      <p>题目平均字符数</p>
+    </div>
+    <div class="stat-card">
+      <i class="icon">🌐</i>
+      <h3>{{ stats.language_count }}</h3>
+      <p>题目编程语言数量</p>
+    </div>
+  </div>
+
+  <div class="chart-section">
+    <h2><i class="icon">📋</i> 题目主题分布</h2>
+    <table class="bordered-table">
+      <thead>
+        <tr>
+          <th>主题</th>
+          <th>题目数量</th>
+          <th>占比</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for topic in topic_distribution %}
+        <tr>
+          <td>{{ topic.topic }}</td>
+          <td>{{ topic.count }}</td>
+          <td>
+            {% if stats.total_coding > 0 %}
+              {{ (topic.count / stats.total_coding * 100)|round(1) }}%
+            {% else %}
+              0.0%
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+
+  <!-- Difficulty Distribution Table -->
+  <div class="chart-section">
+    <h2><i class="icon">📈</i> 题目难度分布</h2>
+    <table class="bordered-table">
+      <thead>
+        <tr>
+          <th>难度</th>
+          <th>题目数量</th>
+          <th>占比</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for diff in difficulty_distribution %}
+        <tr>
+          <td>{{ diff.difficulty }} - {{ diff.label }}</td>
+          <td>{{ diff.count }}</td>
+          <td>
+            {% if stats.total_coding > 0 %}
+              {{ (diff.count / stats.total_coding * 100)|round(1) }}%
+            {% else %}
+              0.0%
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Language Distribution Table -->
+  <div class="chart-section">
+    <h2><i class="icon">💻</i> 编程语言分布</h2>
+    <table class="bordered-table">
+      <thead>
+        <tr>
+          <th>语言</th>
+          <th>题目数量</th>
+          <th>占比</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for lang in language_distribution %}
+        <tr>
+          <td>{{ lang.language }}</td>
+          <td>{{ lang.count }}</td>
+          <td>
+            {% if stats.total_coding > 0 %}
+              {{ (lang.count / stats.total_coding * 100)|round(1) }}%
+            {% else %}
+              0.0%
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- AI Model Distribution Table -->
+  <div class="chart-section">
+    <h2><i class="icon">🤖</i> AI模型分布</h2>
+    <table class="bordered-table">
+      <thead>
+        <tr>
+          <th>AI模型</th>
+          <th>题目数量</th>
+          <th>占比</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for model in ai_model_distribution %}
+        <tr>
+          <td>{{ model.aiModel }}</td>
+          <td>{{ model.count }}</td>
+          <td>
+            {% if stats.total_coding > 0 %}
+              {{ (model.count / stats.total_coding * 100)|round(1) }}%
+            {% else %}
+              0.0%
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 理论题类型分布表 -->
+  <div class="chart-section">
+    <h2><i class="icon">📚</i> 理论题类型分布</h2>
+    <table class="bordered-table">
+      <thead>
+        <tr>
+          <th>题目类型</th>
+          <th>题目数量</th>
+          <th>占比</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for theory_type in theory_type_distribution %}
+        <tr>
+          <td>{{ theory_type.question_type }}</td>
+          <td>{{ theory_type.count }}</td>
+          <td>
+            {% if stats.total_theory > 0 %}
+              {{ (theory_type.count / stats.total_theory * 100)|round(1) }}%
+            {% else %}
+              0.0%
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="3" style="text-align: center; color: #999;">暂无理论题目数据</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 理论题总体统计 -->
+  <div class="chart-section">
+    <h2><i class="icon">📊</i> 理论题总体统计</h2>
+    <div class="stats-container">
+      <div class="stat-card">
+        <i class="icon">📝</i>
+        <h3>{{ stats.total_theory if stats.total_theory is defined else 0}}</h3>
+        <p>理论题总数</p>
+      </div>
+      <div class="stat-card">
+        <i class="icon">⚖️</i>
+        <h3>
+          {% if stats.theory_avg_difficulty is defined and stats.theory_avg_difficulty is not none %}
+            {{ stats.theory_avg_difficulty|round(1) }}
+          {% else %}
+            0.0
+          {% endif %}
+        </h3>
+        <p>理论题平均难度</p>
+      </div>
+      <div class="stat-card">
+        <i class="icon">🎯</i>
+        <h3>
+          {% if stats.theory_avg_score is defined and stats.theory_avg_score is not none %}
+            {{ stats.theory_avg_score|round(1) }}
+          {% else %}
+            0.0
+          {% endif %}
+        </h3>
+        <p>理论题平均分</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block styles %}
+<style>
+  .icon { margin-right: 10px; }
+  .bordered-table {
+    border-collapse: collapse;
+    width: 100%;
+    border: 1px solid #e0e0e0;
+  }
+  .bordered-table th, 
+  .bordered-table td {
+    border-right: 1px solid #e0e0e0;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 12px 15px;
+    text-align: left;
+  }
+  .bordered-table th {
+    background-color: #f8f9fa;
+    border-top: 1px solid #e0e0e0;
+  }
+  .bordered-table tr:last-child td {
+    border-bottom: 1px solid #e0e0e0;
+  }
+  .stats-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    margin-bottom: 30px;
+    gap: 15px;
+  }
+  .stat-card {
+    flex: 1;
+    min-width: 180px;
+    text-align: center;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    background: white;
+    transition: transform 0.3s ease;
+  }
+  .stat-card:hover {
+    transform: translateY(-5px);
+  }
+  .chart-section {
+    margin-bottom: 40px;
+    padding: 20px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 添加表格行悬停效果
+    document.querySelectorAll('.distribution-table tr').forEach(row => {
+        row.addEventListener('mouseover', function() {
+            this.style.backgroundColor = '#f8f9fa';
+        });
+        
+        row.addEventListener('mouseout', function() {
+            this.style.backgroundColor = '';
+        });
+    });
+    
+    // 卡片悬停效果
+    document.querySelectorAll('.stat-card').forEach(card => {
+        card.addEventListener('mouseenter', () => {
+            card.style.transform = 'translateY(-5px)';
+            card.style.boxShadow = '0 10px 20px rgba(0,0,0,0.1)';
+        });
+        card.addEventListener('mouseleave', () => {
+            card.style.transform = 'translateY(0)';
+            card.style.boxShadow = '0 5px 15px rgba(0,0,0,0.08)';
+        });
+    });
+</script>
+{% endblock %}

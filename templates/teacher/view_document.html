@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block title %}{{ document.title }} - 文档详情{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('knowledge_bases') }}">知识库管理</a>
+            </li>
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('view_knowledge_base', kb_id=document.knowledge_base_id) }}">{{ knowledge_base_name }}</a>
+            </li>
+            <li class="breadcrumb-item active">{{ document.title }}</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2>{{ document.title }}</h2>
+            <p class="text-muted">
+                <i class="fas fa-file-alt"></i> {{ document.file_type|upper }} 文档
+                {% if document.tags %}
+                    | <i class="fas fa-tags"></i> 
+                    {% for tag in document.tags.split(',') %}
+                        <span class="badge bg-secondary">{{ tag.strip() }}</span>
+                    {% endfor %}
+                {% endif %}
+            </p>
+        </div>
+        <div>
+            <button id="extractConceptsBtn" class="btn btn-primary me-2">
+                <i class="fas fa-brain"></i> 提取概念
+            </button>
+            <a href="{{ url_for('view_knowledge_base', kb_id=document.knowledge_base_id) }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> 返回知识库
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-file-lines"></i> 文档内容
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="document-content">
+                        {% if document.content %}
+                            <pre class="document-text">{{ document.content }}</pre>
+                        {% else %}
+                            <div class="text-center py-5">
+                                <i class="fas fa-file fa-3x text-muted mb-3"></i>
+                                <h4 class="text-muted">文档内容为空</h4>
+                                <p class="text-muted">该文档没有内容或内容无法显示</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-info-circle"></i> 文档信息
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="info-item mb-3">
+                        <small class="text-muted">文件类型</small>
+                        <div class="fw-bold">{{ document.file_type|upper }}</div>
+                    </div>
+                    <div class="info-item mb-3">
+                        <small class="text-muted">创建时间</small>
+                        <div class="fw-bold">{{ document.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+                    </div>
+                    <div class="info-item mb-3">
+                        <small class="text-muted">更新时间</small>
+                        <div class="fw-bold">{{ document.updated_at.strftime('%Y-%m-%d %H:%M') }}</div>
+                    </div>
+                    {% if document.file_path %}
+                    <div class="info-item mb-3">
+                        <small class="text-muted">文件路径</small>
+                        <div class="fw-bold text-truncate" title="{{ document.file_path }}">
+                            {{ document.file_path }}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-bar"></i> 统计数据
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="stat-item mb-3">
+                        <div class="d-flex justify-content-between">
+                            <span>相关问题</span>
+                            <strong>{{ question_count }}</strong>
+                        </div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="d-flex justify-content-between">
+                            <span>提取概念</span>
+                            <strong>{{ concept_count }}</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-lightbulb"></i> 操作建议
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled small">
+                        <li class="mb-2">
+                            <i class="fas fa-check text-success me-2"></i>
+                            点击"提取概念"按钮分析文档内容
+                        </li>
+                        <li class="mb-2">
+                            <i class="fas fa-check text-success me-2"></i>
+                            基于提取的概念生成相关题目
+                        </li>
+                        <li class="mb-2">
+                            <i class="fas fa-check text-success me-2"></i>
+                            在理论出题时可选择此文档作为内容源
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const extractBtn = document.getElementById('extractConceptsBtn');
+    
+    if (extractBtn) {
+        extractBtn.addEventListener('click', function() {
+            // 调用后端提取接口
+            window.location.href = '{{ url_for("extract_concepts", kb_id=document.knowledge_base_id, doc_id=document.id) }}';
+        });
+    }
+});
+</script>
+<style>
+.document-content {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.document-text {
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    padding: 20px;
+    margin: 0;
+    color: #333;
+}
+
+.info-item {
+    padding: 10px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.info-item:last-child {
+    border-bottom: none;
+}
+
+.stat-item {
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.stat-item:last-child {
+    border-bottom: none;
+}
+
+.card {
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    border: none;
+    margin-bottom: 20px;
+}
+
+.card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+</style>
+{% endblock %}

@@ -1,0 +1,54 @@
+# Local/runtime state
+.venv/
+.venv-hermes/
+.venv-*/
+__pycache__/
+*.py[cod]
+flask_session/
+logs/
+*.log
+
+# Local data and generated runtime files
+uploads/
+users/
+src/tmp/
+*.db
+*.sqlite*
+.env
+.env.*
+
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+
+# Local configuration may contain database credentials/API keys
+my_config.py
+prompt_templates.py
+topic_config.py
+myscripts/config_modules/my_config.py
+my_scripts/config_modules/my_config.py
+*/my_config.py
+*/topic_config.py
+*/prompt_templates.py
+**/user_passwords.txt
+
+# Backups, diagnostics, and local exports
+*.bak
+*.bk*
+*.backup
+nohup.out
+cookies.txt
+qodana.sarif.json
+MYSQL_local_INSTALL.md
+tools/README_密码修复说明.md
+docs/DEMO_DATA.md
+docs/system-manual.md
+flask_app/config.py
+my_scripts/select_ques.py
+my_scripts/student_exer_summary.py
+tools/user_add.pl
+*.csv
+*.xlsx
+student_records/
+test_account.txt

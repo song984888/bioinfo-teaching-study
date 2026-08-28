@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>知识图谱调试页面</title>
+    <script src="/static/js/d3.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #test-container { 
+            width: 800px; 
+            height: 600px; 
+            border: 2px solid #4361ee; 
+            border-radius: 8px; 
+            position: relative;
+            background: #fafafa;
+        }
+        .loading { 
+            position: absolute; 
+            top: 50%; 
+            left: 50%; 
+            transform: translate(-50%, -50%); 
+            text-align: center; 
+            color: #666; 
+        }
+        .debug-info { 
+            background: #f8f9fa; 
+            padding: 15px; 
+            border-radius: 5px; 
+            margin: 20px 0; 
+            max-height: 300px; 
+            overflow-y: auto; 
+        }
+        button { 
+            background: #4361ee; 
+            color: white; 
+            border: none; 
+            padding: 10px 20px; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            margin: 5px; 
+        }
+        button:hover { background: #3a56d4; }
+    </style>
+</head>
+<body>
+    <h1>知识图谱调试页面</h1>
+    
+    <div>
+        <button onclick="testBasicRender()">测试基础渲染</button>
+        <button onclick="testWithData()">测试带数据渲染</button>
+        <button onclick="clearContainer()">清空容器</button>
+        <span id="status">准备就绪</span>
+    </div>
+    
+    <div id="test-container">
+        <div class="loading" id="loading">点击按钮开始测试</div>
+    </div>
+    
+    <div class="debug-info">
+        <h3>调试信息:</h3>
+        <pre id="debug-log"></pre>
+    </div>
+
+    <script>
+        let debugLog = [];
+        
+        function log(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${message}`;
+            debugLog.push(logEntry);
+            document.getElementById('debug-log').textContent = debugLog.join('\n');
+            console.log(message);
+        }
+        
+        function clearContainer() {
+            const container = document.getElementById('test-container');
+            container.innerHTML = '<div class="loading" id="loading">点击按钮开始测试</div>';
+            debugLog = [];
+            document.getElementById('debug-log').textContent = '';
+            document.getElementById('status').textContent = '准备就绪';
+            log('容器已清空');
+        }
+        
+        function testBasicRender() {
+            log('开始基础渲染测试...');
+            
+            const container = document.getElementById('test-container');
+            const loading = document.getElementById('loading');
+            loading.style.display = 'none';
+            
+            try {
+                // 测试D3.js是否正常工作
+                log(`D3.js可用性: ${typeof d3 !== 'undefined' ? '是' : '否'}`);
+                if (typeof d3 !== 'undefined') {
+                    log(`D3.js版本: ${d3.version}`);
+                } else {
+                    throw new Error('D3.js未加载');
+                }
+                
+                // 创建SVG
+                const svg = d3.select(container)
+                    .append('svg')
+                    .attr('width', '100%')
+                    .attr('height', '100%');
+                
+                const width = container.clientWidth;
+                const height = container.clientHeight;
+                log(`容器尺寸: ${width} x ${height}`);
+                
+                // 测试简单图形绘制
+                const circle = svg.append('circle')
+                    .attr('cx', width/2)
+                    .attr('cy', height/2)
+                    .attr('r', 50)
+                    .attr('fill', '#4361ee')
+                    .attr('stroke', '#fff')
+                    .attr('stroke-width', 3);
+                
+                const text = svg.append('text')
+                    .attr('x', width/2)
+                    .attr('y', height/2 + 5)
+                    .attr('text-anchor', 'middle')
+                    .attr('fill', 'white')
+                    .attr('font-size', '16px')
+                    .attr('font-weight', 'bold')
+                    .text('测试');
+                
+                log('基础图形绘制完成');
+                document.getElementById('status').textContent = '基础渲染成功!';
+                
+            } catch (error) {
+                log(`渲染错误: ${error.message}`);
+                document.getElementById('status').textContent = '渲染失败';
+            }
+        }
+        
+        function testWithData() {
+            log('开始带数据渲染测试...');
+            
+            const container = document.getElementById('test-container');
+            const loading = document.getElementById('loading');
+            loading.style.display = 'none';
+            
+            // 模拟从Flask获取的数据结构
+            const testData = {
+                concepts: [
+                    {id: 1, concept_name: '算法', description: '基础算法概念', concept_type: 'entity', frequency: 5, size: 35, x: 100, y: 100},
+                    {id: 2, concept_name: '数据结构', description: '基础数据结构', concept_type: 'entity', frequency: 4, size: 30, x: 200, y: 150},
+                    {id: 3, concept_name: '编程语言', description: '编程语言基础', concept_type: 'entity', frequency: 3, size: 25, x: 300, y: 100}
+                ],
+                relations: [
+                    {id: 1, from_concept_id: 1, to_concept_id: 2, relation_type: '相关', confidence: 0.9},
+                    {id: 2, from_concept_id: 2, to_concept_id: 3, relation_type: '依赖', confidence: 0.8}
+                ]
+            };
+            
+            log(`测试数据: ${testData.concepts.length}个概念, ${testData.relations.length}个关系`);
+            
+            try {
+                // 检查D3.js
+                if (typeof d3 === 'undefined') {
+                    throw new Error('D3.js未加载');
+                }
+                
+                // 清空容器
+                container.innerHTML = '';
+                
+                // 创建SVG
+                const svg = d3.select(container)
+                    .append('svg')
+                    .attr('width', '100%')
+                    .attr('height', '100%');
+                
+                const width = container.clientWidth;
+                const height = container.clientHeight;
+                
+                // 绘制关系连线
+                if (testData.relations.length > 0) {
+                    const linkGroup = svg.append('g')
+                        .attr('stroke', '#999')
+                        .attr('stroke-opacity', 0.6);
+                    
+                    testData.relations.forEach(rel => {
+                        const source = testData.concepts.find(c => c.id === rel.from_concept_id);
+                        const target = testData.concepts.find(c => c.id === rel.to_concept_id);
+                        
+                        if (source && target) {
+                            const line = linkGroup.append('line');
+                            line.attr('x1', source.x)
+                                .attr('y1', source.y)
+                                .attr('x2', target.x)
+                                .attr('y2', target.y)
+                                .attr('stroke-width', Math.sqrt(rel.confidence) * 3)
+                                .attr('stroke', '#666');
+                        }
+                    });
+                }
+                
+                // 绘制节点
+                const nodeGroup = svg.append('g');
+                
+                testData.concepts.forEach(concept => {
+                    // 节点圆圈
+                    const circle = nodeGroup.append('circle');
+                    circle.attr('cx', concept.x)
+                          .attr('cy', concept.y)
+                          .attr('r', concept.size)
+                          .attr('fill', '#4361ee')
+                          .attr('stroke', concept.frequency > 3 ? '#ffd700' : '#fff')
+                          .attr('stroke-width', concept.frequency > 3 ? 3 : 2);
+                    
+                    // 节点标签
+                    const text = nodeGroup.append('text');
+                    text.attr('x', concept.x)
+                        .attr('y', concept.y + 5)
+                        .attr('text-anchor', 'middle')
+                        .attr('fill', '#333')
+                        .attr('font-size', Math.max(10, concept.size / 3))
+                        .attr('font-weight', 'bold')
+                        .text(concept.concept_name);
+                });
+                
+                log('带数据渲染完成');
+                document.getElementById('status').textContent = '数据渲染成功!';
+                
+            } catch (error) {
+                log(`数据渲染错误: ${error.message}`);
+                log(`错误堆栈: ${error.stack}`);
+                document.getElementById('status').textContent = '数据渲染失败';
+            }
+        }
+        
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            log('调试页面加载完成');
+            log(`D3.js可用性: ${typeof d3 !== 'undefined' ? '是' : '否'}`);
+            if (typeof d3 !== 'undefined') {
+                log(`D3.js版本: ${d3.version}`);
+            }
+        });
+    </script>
+</body>
+</html>
