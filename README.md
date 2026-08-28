@@ -1,6 +1,8 @@
-# BioInformatics Teaching & Exam System
+# Bioinformatics Teaching & Learning Platform
 
-A Flask web-based automated programming examination platform. Students participate in coding exams, teachers generate questions via AI and review submissions, and administrators manage the entire system. Supports Python, Perl, Java, and C.
+A Flask-based web platform for bioinformatics education. It connects student practice and examinations with AI-assisted question generation, teacher review, intelligent exam-paper generation, document-based knowledge bases, interactive knowledge graphs, literature search, and personalized study suggestions. The application uses MySQL for persistent data and supports local Ollama models or DeepSeek APIs for AI features.
+
+The platform supports Python, Perl, Java, and C programming exercises, asynchronous background tasks, three-state question review, document/concept provenance, and role-based access for students, teachers, and administrators.
 
 ## Features
 
