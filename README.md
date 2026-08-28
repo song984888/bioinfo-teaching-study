@@ -40,13 +40,13 @@ The platform supports Python, Perl, Java, and C programming exercises, asynchron
 
 ## Dashboard Screens
 
-The repository includes 16:9 dashboard overview graphics for the three role-based workspaces:
+The repository includes real dashboard screenshots for the three role-based workspaces:
 
-- [Admin dashboard](docs/admin-dashboard.svg)
-- [Teacher dashboard](docs/teacher-dashboard.svg)
-- [Student dashboard](docs/student-dashboard.svg)
+- [Admin dashboard](docs/admin.png)
+- [Teacher dashboard](docs/teacher.png)
+- [Student dashboard](docs/student.png)
 
-These diagrams summarize the current navigation and workflow modules without embedding runtime statistics or credentials.
+These screenshots were provided by the project owner and show the actual application dashboard interfaces.
 
 ## Architecture
 
