@@ -1,6 +1,0 @@
-#学号	#姓名	#全拼小写	#角色
-202521200091	黄娟灵	huangjuanling	teacher
-202421200096	程宇琪	chengyuqi	teacher
-202421200103	王思语	wangsiyu	teacher
-202421200097	黄睿	huangrui	teacher
-202421200099	李津莹	lijinying	teacher
