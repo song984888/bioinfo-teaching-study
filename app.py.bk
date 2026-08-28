@@ -1,0 +1,1524 @@
+import logging
+import os
+import json
+import re
+import subprocess
+import tempfile
+import threading
+import time
+import traceback
+import mysql.connector
+import requests
+import random
+from datetime import datetime, timedelta
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
+from flask_session import Session
+
+app = Flask(__name__)
+app.secret_key = os.urandom(24)
+app.config['SESSION_TYPE'] = 'filesystem'
+Session(app)
+
+app.logger.setLevel(logging.DEBUG)
+
+
+try:
+    from topic_config import EXERCISE_TOPIC, EXAM_TOPIC, TOPIC_ICONS
+except ImportError:
+    #如果配置文件不存在，使用默认配置
+    EXERCISE_TOPIC = {
+        "DNA序列分析": "分析DNA序列的相关题目",
+        "protein序列分析": "分析蛋白质序列的相关题目",
+        "猜数字": "经典猜数字游戏的实现",
+        "生物统计小工具": "用于生物统计的小程序",
+        "生物信息学小工具": "用于生物信息学分析的小工具",
+        "fasta文件处理": "读取和处理fasta格式文件的题目"
+    }
+    EXAM_TOPIC = {
+	"DNA序列分析": "分析DNA序列的相关题目",
+	"protein序列分析": "分析蛋白质序列的相关题目",
+	"猜数字": "经典猜数字游戏的实现",
+	"生物统计小工具": "用于生物统计的小程序",
+	"生物信息学小工具": "用于生物信息学分析的小工具",
+	"fasta文件处理": "读取和处理fasta格式文件的题目"
+    }
+    
+    TOPIC_ICONS = {
+        "DNA序列分析": "🧬",
+        "protein序列分析": "🧪",
+        "猜数字": "🔢",
+        "生物统计小工具": "📊",
+        "生物信息学小工具": "🧫",
+        "fasta文件处理": "📝"
+    }
+    
+    print("⚠️ 未找到 topic_config.py,使用默认主题配置")
+
+try:
+   from prompt_templates import CODING_PROMPT, GRADE_PROMPT, SUGGESTION_PROMPT
+except ImportError:
+   print("⚠️ 未找到 prompt_templates.py,使用默认主题配置")
+
+
+# 配置信息
+CONFIG = {
+    "OLLAMA_ENDPOINT": "http://localhost:11434/api/generate",
+    "DEEPSEEK_ENDPOINT": "https://api.deepseek.com/v1/chat/completions",
+    "DEEPSEEK_API_KEY": "sk-d9fa5464121c4d728c23bce1565a5580",
+    "MODEL_NAME": "qwen2.5-coder:32b",
+    "DEEPSEEK_MODEL": "deepseek-chat",
+    "MAX_COUNT": 1000,
+    "SYNC_DB_CONFIG": {
+        'host': 'localhost',
+        'user': 'songht',
+        'password': 'songht123',
+        'database': 'code_exam',
+        'charset': 'utf8mb4',
+        'buffered': True
+    },
+    "LANGUAGE_CONFIG": {
+        'python': {'ext': 'py', 'lexer': 'python', 'runner': 'python3'},
+        'java': {'ext': 'java', 'lexer': 'java', 'runner': 'javac'},
+        'c': {'ext': 'c', 'lexer': 'cpp', 'runner': 'gcc'},
+        'perl': {'ext': 'pl', 'lexer': 'perl', 'runner': 'perl'}
+    },
+    "TOPIC_CONFIG": {
+        'DNA序列分析': '',
+        'protein序列分析': '',
+        '猜数字': '',
+        '生物统计小工具': '',
+        '生物信息学小工具': '',
+        'fasta文件处理': '',
+    },
+    "EXERCISE_TOPIC": EXERCISE_TOPIC,
+    "EXAM_TOPIC": EXAM_TOPIC,
+    "CODING_PROMPT": CODING_PROMPT,
+    "GRADE_PROMPT": CODING_PROMPT,
+    "SUGGESTION_PROMPT": CODING_PROMPT,
+    "TEACHERS_CONFIG": {
+        'songht': '09060',
+        'teacher': '100875',
+    }
+}
+
+# 数据库初始化
+def init_db():
+    conn = mysql.connector.connect(**CONFIG['SYNC_DB_CONFIG'])
+    cursor = conn.cursor()
+    
+    tables = [
+        """CREATE TABLE IF NOT EXISTS questions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            topic VARCHAR(191) NOT NULL,
+            difficulty INT NOT NULL,
+            question_text TEXT NOT NULL,
+            sample_answer TEXT NOT NULL,
+            hints TEXT,
+            language VARCHAR(20) NOT NULL DEFAULT 'perl',
+            aiModel VARCHAR(191) NOT NULL,
+            is_approved BOOLEAN DEFAULT FALSE,  
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
+        """CREATE TABLE IF NOT EXISTS users (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(191) NOT NULL,
+            employee_id VARCHAR(191) NOT NULL UNIQUE,
+            role ENUM('student','teacher','assistant') DEFAULT 'student',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
+        """CREATE TABLE IF NOT EXISTS user_logins (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            username VARCHAR(50) NOT NULL,
+            login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """CREATE TABLE IF NOT EXISTS exams (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            student_id INT NOT NULL,
+            question_id INT NOT NULL,
+            student_answer TEXT NOT NULL,
+            ai_score INT,
+            ai_comment TEXT,
+            teacher_score INT,
+            teacher_comment TEXT,
+            is_reviewed BOOLEAN DEFAULT FALSE,
+            submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (student_id) REFERENCES users(id),
+            FOREIGN KEY (question_id) REFERENCES questions(id)
+        )""",
+        """CREATE TABLE IF NOT EXISTS exercises (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            student_id INT NOT NULL,
+            question_id INT NOT NULL,
+            student_answer TEXT NOT NULL,
+            ai_score INT,
+            ai_comment TEXT,
+            submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (student_id) REFERENCES users(id),
+            FOREIGN KEY (question_id) REFERENCES questions(id)
+        )""",
+        """CREATE TABLE IF NOT EXISTS tasks (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            task_type VARCHAR(50) NOT NULL,
+            parameters TEXT NOT NULL,
+            status ENUM('pending', 'processing', 'completed', 'failed') DEFAULT 'pending',
+            progress INT DEFAULT 0, 
+            total INT DEFAULT 0, 
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            started_at TIMESTAMP NULL,
+            finished_at TIMESTAMP NULL,
+            log TEXT,
+            result TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )""",
+        """CREATE TABLE IF NOT EXISTS user_suggestions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id VARCHAR(191) NOT NULL UNIQUE,
+            username VARCHAR(50) NOT NULL,
+            time_range VARCHAR(20) NOT NULL,
+            suggestion TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )"""
+    ]
+    
+    for table in tables:
+        cursor.execute(table)
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+init_db()
+
+# 辅助函数
+def clean_code(code):
+    return re.sub(r'#.*|\n\s*\n|\`\`\`.*', '\n', code).strip()
+
+def get_db_connection():
+    return mysql.connector.connect(**CONFIG['SYNC_DB_CONFIG'])
+
+def auto_grade(question_id, question_text, sample_answer, student_code, language):
+    LANG_PROMPTS = {
+      "python": "注意Python特有的PEP8规范和pythonic写法",
+      "java": "注意Java的命名规范和面向对象设计",
+      "c": "注意C语言的内存管理和指针使用",
+      "perl": "注意Perl的简洁性和正则表达式使用"
+    }
+    GRADING_MODEL=CONFIG["DEEPSEEK_MODEL"]
+    GRADING_API_KEY=CONFIG["DEEPSEEK_API_KEY"]
+    GRADING_ENDPOINT=CONFIG["DEEPSEEK_ENDPOINT"]
+    GRADING_TIMEOUT=45
+    GRADING_MAX_RETRIES=1 
+    # 构建提示词
+    prompt = GRADE_PROMPT.format(
+        question_text=question_text,
+        sample_answer=sample_answer,
+        student_code=student_code,
+        language=language
+    )
+    
+    # 添加语言特定提示
+    if language in LANG_PROMPTS:
+        prompt += f"\n\n附加说明: {LANG_PROMPTS[language]}"
+    
+    # 准备API请求数据
+    payload = {
+        "model": GRADING_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "stream":False,
+        "temperature": 0.3,
+        "max_tokens": 1024,
+    }
+    
+    headers = {
+        "Authorization": f"Bearer {GRADING_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    # 尝试多次请求
+    for attempt in range(GRADING_MAX_RETRIES):
+        try:
+            response = requests.post(
+                GRADING_ENDPOINT,
+                json=payload,
+                headers=headers,
+            )
+            
+            response.raise_for_status()  # 检查HTTP错误
+            data = response.json()
+            content = data.get("choices")[0]["message"]["content"]
+            result = parse_json_response(content)
+            if response.status_code != 200:
+               logger.error(f"API返回错误状态码: {response.status_code}, 响应: {response.text}")
+               return default_grade(question_text, sample_answer, student_code, language)
+
+            app.logger.error(f"API返回状态码: {response.status_code}, 响应: {result}")
+            return { 
+              'score': result['score'],
+              'comment': result['comment'],
+            }
+                
+        except (requests.exceptions.RequestException, requests.exceptions.Timeout) as e:
+            app.logger.error(f"评分请求失败 (尝试 {attempt+1}/{GRADING_MAX_RETRIES}): {str(e)}")
+            time.sleep(2)  # 等待后重试
+            return default_grade(question_text, sample_answer, student_code, language)
+             
+def parse_json_response(raw_response: str) -> dict:
+        cleaned = re.sub(r'(?s)^\s*```json\s*|\s*```\s*$', '', raw_response)
+        return json.loads(cleaned)
+
+def default_grade(question_text, sample_answer, student_code, language):
+    """简化版自动评分函数（备用）"""
+    # 计算代码相似度作为基础分
+    similarity = calculate_similarity(sample_answer, student_code)
+    base_score = int(similarity * 60)  # 0-60分
+    
+    # 根据代码长度和质量调整分数
+    student_clean = clean_code(student_code)
+    sample_clean = clean_code(sample_answer)
+    
+    # 代码质量加分 (0-20分)
+    quality_bonus = min(20, len(student_clean) / len(sample_clean) * 10)
+    
+    # 错误处理加分 (0-20分)
+    error_handling = 5
+    if "try" in student_clean or "catch" in student_clean or "except" in student_clean:
+        error_handling += 10
+    if "if" in student_clean and "else" in student_clean:
+        error_handling += 5
+    
+    total_score = min(100, base_score + quality_bonus + error_handling)
+    
+    return {
+        'score': total_score,
+        'comment': "代码基本正确，但存在优化空间",
+        'breakdown': {
+            'correctness': base_score,
+            'quality': quality_bonus,
+            'efficiency': 10,
+            'error_handling': error_handling
+        }
+    }
+
+def calculate_similarity(str1, str2):
+    """计算两个字符串的相似度 (0-1)"""
+    # 使用简单的序列匹配算法
+    if not str1 or not str2:
+        return 0.0
+    
+    # 转换为单词序列
+    words1 = re.split(r'\s+', str1)
+    words2 = re.split(r'\s+', str2)
+    
+    # 计算共同单词数
+    common = sum(1 for word in words1 if word in words2)
+    similarity = min(1.0, common / max(len(words1), len(words2)))
+    
+    return similarity
+
+
+
+def generate_question(topic, difficulty, language, ai_model):
+    """简化版题目生成函数"""
+    return {
+        'question': f"编写一个程序实现{topic}功能",
+        'sample_answer': f"print('Hello {topic}')",
+        'hints': ["使用循环结构", "注意边界条件"]
+    }
+
+# 用户认证
+def authenticate_user(name, emp_id, role):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM users WHERE employee_id = %s", (emp_id,))
+    user = cursor.fetchone()
+    
+    if not user:
+        cursor.execute("INSERT INTO users (name, employee_id, role) VALUES (%s, %s, %s)", 
+                      (name, emp_id, role))
+        conn.commit()
+        user_id = cursor.lastrowid
+        cursor.close()
+        conn.close()
+        return user_id
+    else:
+        if user['name'] != name:
+            return None
+        cursor.close()
+        conn.close()
+        return user['id']
+
+def get_teacher_dashboard_stats():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    stats = {
+        'total_questions': 0,
+        'pending_reviews': 0,
+        'unreviewed_exams': 0,
+        'active_tasks': 0
+    }
+    
+    try:
+        # 题库总数
+        cursor.execute("SELECT COUNT(*) AS total FROM questions")
+        stats['total_questions'] = cursor.fetchone()['total']
+        
+        # 待审核题目
+        cursor.execute("SELECT COUNT(*) AS pending FROM questions WHERE is_approved = FALSE")
+        stats['pending_reviews'] = cursor.fetchone()['pending']
+        
+        # 待批改考试
+        cursor.execute("SELECT COUNT(*) AS unreviewed FROM exams WHERE is_reviewed = FALSE")
+        stats['unreviewed_exams'] = cursor.fetchone()['unreviewed']
+        
+        # 后台任务
+        cursor.execute("SELECT COUNT(*) AS tasks FROM tasks WHERE status IN ('pending', 'processing')")
+        stats['active_tasks'] = cursor.fetchone()['tasks']
+        
+    except Exception as e:
+        print(f"获取教师控制台统计信息失败: {str(e)}")
+    finally:
+        cursor.close()
+        conn.close()
+    
+    return stats
+
+
+# 路由
+@app.route('/')
+def index():
+    return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        name = request.form['name']
+        emp_id = request.form['emp_id']
+        role = request.form['role']
+        
+        user_id = authenticate_user(name, emp_id, role)
+        if user_id is None:
+            flash('姓名与已有记录不匹配', 'danger')
+            return redirect(url_for('login'))
+        
+        session['user_id'] = user_id
+        session['name'] = name
+        session['emp_id'] = emp_id
+        session['role'] = role
+        
+        return redirect(url_for('dashboard'))
+    
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+@app.route('/dashboard')
+def dashboard():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    if session['role'] == 'student':
+        return render_template('student_dashboard.html')
+    else:
+        stats = get_teacher_dashboard_stats()
+        return render_template('teacher_dashboard.html',
+                               stats = stats,
+                               current_date = datetime.now().strftime("%Y年%m月%日")
+                               )
+
+
+
+
+# 学生功能
+@app.route('/student/exam')
+def exam_with_samples():
+    if 'user_id' not in session or session['role'] != 'student':
+        return redirect(url_for('login'))
+    # 获取查询参数
+    topic = request.args.get('topic')
+    language = request.args.get('language')
+    difficulty = request.args.get('difficulty', type=int)
+    
+    # 验证参数
+    if not topic or not language or not difficulty:
+        flash('请选择主题、语言和难度', 'warning')
+        return redirect(url_for('exam_selection'))
+     
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+       # 随机获取一道题目
+       cursor.execute("""
+          SELECT * FROM questions 
+          WHERE topic = %s AND language = %s AND difficulty = %s AND is_approved = TRUE 
+          ORDER BY RAND() LIMIT 1
+       """,(topic, language, difficulty))
+       question = cursor.fetchone()
+    
+       if not question:
+          flash('当前没有符合要求的题目,请尝试其他条件', 'warning')
+          return redirect(url_for('exam_selection'))
+       # 解析提示信息
+       hints = json.loads(question['hints']) if question['hints'] else[] 
+       return render_template('exam.html', 
+                              question=question,
+                              hints=hints,
+                              topic_descriptions=question['question_text'])
+    except Exception as e:
+       flash(f'获取题目失败: {str(e)}','danger')
+       return redirect(url_for('dashboard'))
+    finally:
+       cursor.close()
+       conn.close()
+
+
+@app.route('/student/exam')
+def student_exam():
+    if 'user_id' not in session or session['role'] != 'student':
+        return redirect(url_for('login'))
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT * FROM questions 
+        WHERE is_approved = TRUE 
+        ORDER BY RAND() LIMIT 1
+    """)
+    question = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if not question:
+        flash('当前没有可用题目，请稍后再试', 'warning')
+        return redirect(url_for('dashboard'))
+    return render_template('exam_selection.html')
+
+@app.route('/run_code', methods=['POST'])
+def run_code():
+    data = request.json
+    language = data['language']
+    code = data['code']
+    args = data.get('args', [])
+    inputs = data.get('inputs', '')
+    
+    # 清理代码
+    code = clean_code(code)
+    
+    # 创建临时文件
+    ext = CONFIG["LANGUAGE_CONFIG"][language]["ext"]
+    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=f'.{ext}') as f:
+        f.write(code)
+        file_path = f.name
+    
+    # 构建运行命令
+    runner = CONFIG["LANGUAGE_CONFIG"][language]["runner"]
+    cmd = [runner, file_path] + args
+    
+    try:
+        process = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        
+        stdout, stderr = process.communicate(input=inputs, timeout=30)
+        return jsonify({
+            'stdout': stdout,
+            'stderr': stderr,
+            'returncode': process.returncode
+        })
+    except subprocess.TimeoutExpired:
+        return jsonify({'error': '运行超时'}), 408
+    finally:
+        os.remove(file_path)
+
+@app.route('/submit_exam', methods=['POST'])
+def submit_exam():
+    if 'user_id' not in session or session['role'] != 'student':
+        return redirect(url_for('login'))
+    
+    question_id = request.form['question_id']
+    code = request.form['code']
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM questions WHERE id = %s", (question_id,))
+    question = cursor.fetchone()
+    
+    if not question:
+        flash('题目不存在', 'danger')
+        return redirect(url_for('dashboard'))
+    
+    # 自动评分
+    grade_result = auto_grade(
+        question_id, 
+        question['question_text'],
+        question['sample_answer'],
+        code,
+        question['language']
+    )
+    
+    # 保存考试记录
+    cursor.execute(
+        "INSERT INTO exams (student_id, question_id, student_answer, ai_score, ai_comment) "
+        "VALUES (%s, %s, %s, %s, %s)",
+        (session['user_id'], question_id, code, grade_result['score'], grade_result['comment'])
+    )
+    conn.commit()
+   
+    # 获取完整考试记录
+    cursor.execute("""
+        SELECT e.*, q.question_text, q.sample_answer, q.hints, q.topic, q.difficulty
+        FROM exams e
+        JOIN questions q ON e.question_id = q.id
+        WHERE e.id = %s
+    """, (cursor.lastrowid,))
+    exam_record = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    
+    return render_template('exam_result.html',exam=exam_record)
+
+
+
+
+
+@app.route('/student/grades')
+def view_grades():
+    if 'user_id' not in session or session['role'] != 'student':
+        return redirect(url_for('login'))
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT q.topic,q.difficulty, q.question_text, e.id, e.ai_score, e.ai_comment, e.teacher_score, 
+               e.teacher_comment, e.is_reviewed, e.submitted_at
+        FROM exams e
+        JOIN questions q ON e.question_id = q.id
+        WHERE e.student_id = %s
+        ORDER BY e.submitted_at DESC
+    """, (session['user_id'],))
+    records = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    # 计算平均成绩（例如 AI得分）
+    if records:
+        ai_scores = [record['ai_score'] for record in records]
+        average_score = sum(ai_scores) / len(ai_scores)
+    else:
+        average_score = 0
+    # 获取最近一次考试记录
+    if records:
+        latest_exam = max(records, key=lambda x: x['submitted_at'])
+    else:
+        latest_exam = None
+    # 计算考试总次数
+    exam_count = len(records)
+    # 计算本月完成的考试次数
+    current_month = datetime.now().month
+    current_year = datetime.now().year
+    this_month_records = [record for record in records if record['submitted_at'].month == current_month and record['submitted_at'].year == current_year]
+    this_month_exam_count = len(this_month_records)
+   
+
+    # 转换 datetime 对象为字符串
+    serializable_records = []
+    for record in records:
+        # 创建可序列化的记录副本
+        serialized = dict(record)
+        # 转换 datetime 为 ISO 格式字符串
+        if isinstance(serialized['submitted_at'], datetime):
+            serialized['submitted_at'] = serialized['submitted_at'].isoformat()
+        serializable_records.append(serialized)
+ 
+    # 统计每次考试的得分和日期并以list返回 
+    score_list=[]
+    date_list=[]
+    for record in records:
+        score_list.append(record['ai_score'])
+        date_list.append(record['submitted_at'])
+    
+    # 统计三个难度考试的数量
+    difficulty_count = {1: 0, 2: 0, 3: 0}
+    for difficulty in [1,2,3]:
+        difficulty_count[difficulty] = len([record for record in records if record['difficulty'] == difficulty])
+    # 计算优秀率--定义“优秀”的标准（分数大于等于90）
+    excellent_threshold = 90
+    excellent_count = sum(1 for record in records if record['ai_score'] >= excellent_threshold)
+    excellent_rate = (excellent_count / exam_count) * 100 if exam_count > 0 else 0
+    # 直接从记录中提取唯一的主题列表
+    exam_topics = []
+    exam_scores = []
+    exam_dates = []
+    seen_topics = set()
+    for record in records:
+        topic = record['topic']
+        exam_scores.append(record['ai_score'])
+        exam_dates.append(record['submitted_at'])
+        if topic not in seen_topics:
+            exam_topics.append(topic)
+            seen_topics.add(topic)
+    # 这里可以设置每一个topic的对应的图标icon，自己定义一个对应关系，参照如下
+    topic_to_icon = {
+        "DNA序列分析": "fa-dna",
+        "protein序列分析": "fa-flask",
+        "猜数字游戏": "fa-calculator",
+        "生物统计小工具": "fa-chart-bar",
+        "fasta文件处理": "fa-file-alt"
+    }
+    for record in records:
+        record['icon'] = "fa-dna"
+ 
+    return render_template('view_grades.html', 
+                           records=records,
+                           examScores=exam_scores,
+                           examDates=exam_dates,
+                           serializable_records=serializable_records,
+                           latest_exam = latest_exam,
+                           exam_count = exam_count,
+                           exam_topics = exam_topics,
+                           difficulty_count = difficulty_count,
+                           this_month_exam_count=this_month_exam_count, 
+                           average_score=average_score,
+                           excellent_count=excellent_count,
+                           excellent_rate=excellent_rate,
+                           date_list=date_list,
+                           score_list=score_list)
+
+
+
+@app.route('/student/exam_detail/<int:exam_id>')
+def exam_detail(exam_id):
+    if 'user_id' not in session or session['role'] != 'student':
+        return redirect(url_for('login'))
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT e.*, q.topic, q.question_text, q.sample_answer
+        FROM exams e
+        JOIN questions q ON e.question_id = q.id
+        WHERE e.id = %s AND e.student_id = %s
+    """, (exam_id, session['user_id']))
+    exam = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    
+    if not exam:
+        abort(404)
+    
+    return render_template('exam_detail.html', exam=exam)
+
+
+@app.route('/student/exam/select')
+def exam_selection():
+    if 'user_id' not in session or session['role'] != 'student':
+        return redirect(url_for('login'))
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        # 获取所有主题的题目数量
+        cursor.execute("SELECT topic, COUNT(*) as count FROM questions WHERE is_approved = TRUE GROUP BY topic")
+        topic_counts = {row['topic']: row['count'] for row in cursor.fetchall()}
+        
+        # 从配置中获取主题列表
+        topics = list(CONFIG['EXAM_TOPIC'].keys())
+        app.logger.debug(f"加载正式考试选择页面，主题: {topics}")
+        # 语言配置
+        languages = {
+            'python': {'display_name': 'python', 'ext': 'py'},
+            'java': {'display_name': 'Java', 'ext': 'java'},
+            'c': {'display_name': 'C', 'ext': 'c'},
+            'perl': {'display_name': 'perl', 'ext': 'pl'}
+        }
+        
+        return render_template('exam_selection.html',
+                              topics=topics,
+                              languages=languages,
+                              topic_counts=topic_counts,
+                              topic_icons=TOPIC_ICONS,
+                              topic_descriptions=CONFIG['EXAM_TOPIC'])
+    
+    except Exception as e:
+        flash(f'加载题目选择失败: {str(e)}', 'danger')
+        return redirect(url_for('dashboard'))
+    finally:
+        cursor.close()
+        conn.close()
+
+
+
+
+@app.route('/student/study/select')
+def exercise_selection():
+    if 'user_id' not in session or session['role'] != 'student':
+        return redirect(url_for('login'))
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        # 获取所有主题的题目数量
+        cursor.execute("SELECT topic, COUNT(*) as count FROM questions WHERE is_approved = FALSE GROUP BY topic")
+        topic_counts = {row['topic']: row['count'] for row in cursor.fetchall()}
+        
+        # 从配置中获取主题列表
+        topics = list(CONFIG['EXERCISE_TOPIC'].keys())
+        app.logger.debug(f"加载练习选择页面，主题: {topics}")
+        # 语言配置
+        languages = {
+            'python': {'display_name': 'python', 'ext': 'py'},
+            'java': {'display_name': 'Java', 'ext': 'java'},
+            'c': {'display_name': 'C', 'ext': 'c'},
+            'perl': {'display_name': 'perl', 'ext': 'pl'}
+        }
+        
+        return render_template('exercise_selection.html',
+                              topics=topics,
+                              languages=languages,
+                              topic_counts=topic_counts,
+                              topic_icons=TOPIC_ICONS,
+                              topic_descriptions=CONFIG['EXERCISE_TOPIC'])
+    
+    except Exception as e:
+        flash(f'加载题目选择失败: {str(e)}', 'danger')
+        return redirect(url_for('dashboard'))
+    finally:
+        cursor.close()
+        conn.close()
+
+#学生抽题学习
+@app.route('/student/study')
+def study_with_samples():
+    if 'user_id' not in session or session['role'] != 'student':
+        return redirect(url_for('login'))
+    # 获取查询参数
+    topic = request.args.get('topic')
+    language = request.args.get('language')
+    difficulty = request.args.get('difficulty', type=int)
+    
+    # 验证参数
+    if not topic or not language or not difficulty:
+        flash('请选择主题、语言和难度', 'warning')
+        return redirect(url_for('exercise_selection'))
+     
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+       # 随机获取一道题目
+       cursor.execute("""
+          SELECT * FROM questions 
+          WHERE topic = %s AND language = %s AND difficulty = %s AND is_approved = FALSE 
+          ORDER BY RAND() LIMIT 1
+       """,(topic, language, difficulty))
+       question = cursor.fetchone()
+    
+       if not question:
+          flash('当前没有符合要求的题目,请尝试其他条件', 'warning')
+          return redirect(url_for('exercise_selection'))
+       # 解析提示信息
+       hints = json.loads(question['hints']) if question['hints'] else[] 
+       return render_template('exercise.html', 
+                              question=question,
+                              hints=hints,
+                              topic_descriptions=question['question_text'])
+    except Exception as e:
+       flash(f'获取题目失败: {str(e)}','danger')
+       return redirect(url_for('dashboard'))
+    finally:
+       cursor.close()
+       conn.close()
+
+# 提交练习
+@app.route('/submit_exercise', methods=['POST'])
+def submit_exercise():
+    if 'user_id' not in session or session['role'] != 'student':
+        return jsonify({'success': False, 'message': '未登录'}), 401
+    
+    data = request.json
+    question_id = data.get('question_id')
+    code = data.get('code')
+    
+    if not question_id or not code:
+        return jsonify({'success': False, 'message': '缺少参数'}), 400
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        # 获取题目信息
+        cursor.execute("SELECT * FROM questions WHERE id = %s", (question_id,))
+        question = cursor.fetchone()
+        
+        if not question:
+            return jsonify({'success': False, 'message': '题目不存在'}), 404
+        
+        # 自动评分（简化版）
+        score = random.randint(60, 100)
+        comment = "代码逻辑基本正确，但还有优化空间"
+        
+        # 保存练习记录
+        cursor.execute("""
+            INSERT INTO exercises (student_id, question_id, student_answer, ai_score, ai_comment)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (session['user_id'], question_id, code, score, comment))
+        conn.commit()
+        
+        return jsonify({
+            'success': True,
+            'score': score,
+            'comment': comment
+        })
+        
+    except Exception as e:
+        conn.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'提交失败: {str(e)}'
+        }), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/run_sample_code', methods=['POST'])
+def run_sample_code():
+    if 'user_id' not in session:
+        return jsonify({'error': '未登录'}), 401
+    
+    data = request.json
+    code = data['code']
+    language = data['language']
+    args = data.get('args', [])
+    inputs = data.get('inputs', '')
+    
+    # 清理代码
+    code = clean_code(code)
+    
+    # 创建临时文件
+    ext = CONFIG["LANGUAGE_CONFIG"][language]["ext"]
+    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=f'.{ext}') as f:
+        f.write(code)
+        file_path = f.name
+    
+    # 构建运行命令
+    runner = CONFIG["LANGUAGE_CONFIG"][language]["runner"]
+    cmd = [runner, file_path] + args
+    
+    try:
+        process = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        
+        stdout, stderr = process.communicate(input=inputs, timeout=30)
+        return jsonify({
+            'stdout': stdout,
+            'stderr': stderr,
+            'returncode': process.returncode
+        })
+    except subprocess.TimeoutExpired:
+        return jsonify({'error': '运行超时'}), 408
+    finally:
+        os.remove(file_path)
+
+# 教师功能
+@app.route('/teacher/generate_questions', methods=['GET', 'POST'])
+def teacher_generate_questions():
+    if 'user_id' not in session or session['role'] != 'teacher':
+        return redirect(url_for('login'))
+    
+    if request.method == 'POST':
+        topic = request.form['topic']
+        difficulty = int(request.form['difficulty'])
+        language = request.form['language']
+        count = int(request.form['count'])
+        ai_model = request.form['ai_model']
+       
+        # 创建任务记录
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        task_params = json.dumps({
+            'topic': topic,
+            'difficulty': difficulty,
+            'language': language,
+            'count': count,
+            'ai_model': ai_model
+        })
+        
+        cursor.execute(
+            "INSERT INTO tasks (user_id, task_type, parameters, status, total) "
+            "VALUES (%s, %s, %s, 'pending', %s)",
+            (session['user_id'], 'generate_questions', task_params, count)
+        )
+        task_id = cursor.lastrowid
+        conn.commit()
+        cursor.close()
+        conn.close()        
+ 
+        # 后台生成题目
+        def generate_task(task_id, params):
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            try:
+               #更新任务状态为处理中
+               cursor.execute(
+                 "UPDATE tasks SET status = 'processing' WHERE id=%s",
+                 (task_id,)
+               )
+               conn.commit()
+
+               params = json.loads(params)
+               topic = params['topic']
+               difficulty = params['difficulty']
+               language = params['language']
+               count = params['count']
+               ai_model = params['ai_model']
+
+               generated_ids = []
+               for i in range(count):
+                   try:
+                       question = generate_question(topic, difficulty, language, ai_model)
+                
+                       cursor.execute(
+                         "INSERT INTO questions (topic, difficulty, question_text, "
+                         "sample_answer, hints, language, aiModel, is_approved) "
+                         "VALUES (%s, %s, %s, %s, %s, %s, %s, FALSE)",
+                         (topic, difficulty, question['question'],
+                          question['sample_answer'], json.dumps(question['hints']),
+                          language, ai_model)
+                       )
+                       question_id = cursor.lastrowid
+                       generated_ids.append(question_id)
+                     
+                       # 更新任务进度
+                       process = i + 1
+                       cursor.execute(
+                            "UPDATE tasks SET progress = %s, log = %s WHERE id = %s",
+                            (progress, f"已生成题目 {progress}/{count}", task_id)
+                       )
+                       conn.commit()
+                        
+                       # 模拟生成时间
+                       time.sleep(1)
+                   except Exception as e:
+                        error_msg = f"生成题目 {i+1} 失败: {str(e)}"
+                        app.logger.error(error_msg)
+                        cursor.execute(
+                            "UPDATE tasks SET log = CONCAT(IFNULL(log, ''), %s) WHERE id = %s",
+                            (f"\n{error_msg}", task_id)
+                        )
+                        conn.commit()
+
+               # 更新任务状态为已完成
+               result = {
+                    'success': len(generated_ids),
+                    'failed': count - len(generated_ids),
+                    'generated_ids': generated_ids
+               }
+               cursor.execute(
+                    "UPDATE tasks SET status = 'completed', progress = %s, result = %s, "
+                    "log = CONCAT(IFNULL(log, ''), '\n任务完成') WHERE id = %s",
+                    (count, json.dumps(result), task_id)
+               )
+               conn.commit()
+
+            except Exception as e:
+                error_msg = f"任务失败: {str(e)}"
+                app.logger.error(error_msg)
+                cursor.execute(
+                    "UPDATE tasks SET status = 'failed', log = CONCAT(IFNULL(log, ''), %s) WHERE id = %s",
+                    (f"\n{error_msg}", task_id)
+                )
+                conn.commit()
+                traceback.print_exc()
+            finally:
+                cursor.close()
+                conn.close()
+
+            conn.commit()
+            cursor.close()
+            conn.close()
+        
+        # 启动后台线程
+        thread = threading.Thread(target=generate_task,args=(task_id, task_params))
+        thread.start()
+        
+        flash(f'已启动题目生成任务 #{task_id}，将在后台生成{count}道题目', 'success')
+        return redirect(url_for('view_background_tasks'))
+    
+    return render_template('generate_questions.html')
+
+@app.route('/teacher/review_questions')
+def review_questions():
+    if 'user_id' not in session or session['role'] != 'teacher':
+        return redirect(url_for('login'))
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM questions WHERE is_approved = FALSE")
+    questions = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    
+    return render_template('review_questions.html', questions=questions)
+
+@app.route('/teacher/approve_question/<int:question_id>')
+def approve_question(question_id):
+    if 'user_id' not in session or session['role'] != 'teacher':
+        return redirect(url_for('login'))
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE questions SET is_approved = TRUE WHERE id = %s", (question_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    
+    flash('题目已审核通过', 'success')
+    return redirect(url_for('review_questions'))
+
+@app.route('/teacher/exam_records')
+def view_exam_records():
+    if 'user_id' not in session or session['role'] != 'teacher':
+        return redirect(url_for('login'))
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT e.id, u.name, q.question_text, e.ai_score, e.submitted_at, e.is_reviewed
+        FROM exams e
+        JOIN users u ON e.student_id = u.id
+        JOIN questions q ON e.question_id = q.id
+        ORDER BY e.submitted_at DESC
+        LIMIT 20
+    """)
+    records = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    
+    return render_template('view_exam_records.html', records=records)
+
+@app.route('/teacher/review_exam/<int:exam_id>', methods=['GET', 'POST'])
+def review_exam(exam_id):
+    if 'user_id' not in session or session['role'] != 'teacher':
+        return redirect(url_for('login'))
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    if request.method == 'POST':
+        teacher_score = int(request.form['teacher_score'])
+        teacher_comment = request.form['teacher_comment']
+        
+        cursor.execute("""
+            UPDATE exams 
+            SET teacher_score = %s, 
+                teacher_comment = %s,
+                is_reviewed = TRUE 
+            WHERE id = %s
+        """, (teacher_score, teacher_comment, exam_id))
+        conn.commit()
+        
+        flash('审核结果已保存', 'success')
+        return redirect(url_for('view_exam_records'))
+    
+    cursor.execute("""
+        SELECT e.*, u.name, q.question_text
+        FROM exams e
+        JOIN users u ON e.student_id = u.id
+        JOIN questions q ON e.question_id = q.id
+        WHERE e.id = %s
+    """, (exam_id,))
+    exam = cursor.fetchone()
+    
+    cursor.close()
+    conn.close()
+    
+    if not exam:
+        flash('考试记录不存在', 'danger')
+        return redirect(url_for('view_exam_records'))
+    
+    return render_template('review_exam.html', exam=exam)
+
+@app.route('/teacher/tasks')
+def view_background_tasks():
+    if 'user_id' not in session or session['role'] != 'teacher':
+        return redirect(url_for('login'))
+    # 获取查询参数
+    page = request.args.get('page', 1, type=int)
+    status = request.args.get('status', 'all')
+    task_type = request.args.get('task_type', 'all')
+    search = request.args.get('search', '')
+    
+    per_page = 10  # 每页显示的任务数
+ 
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    # 构建查询条件
+    conditions = ["user_id = %s"]
+    params = [session['user_id']]
+    
+    if status != 'all':
+        conditions.append("status = %s")
+        params.append(status)
+    
+    if task_type != 'all':
+        conditions.append("task_type = %s")
+        params.append(task_type)
+    
+    if search:
+        conditions.append("(task_type LIKE %s OR parameters LIKE %s OR log LIKE %s)")
+        search_term = f"%{search}%"
+        params.extend([search_term, search_term, search_term])
+    
+    where_clause = " AND ".join(conditions) if conditions else "1"
+    
+    # 获取任务总数
+    count_query = f"SELECT COUNT(*) AS total FROM tasks WHERE {where_clause}"
+    cursor.execute(count_query, params)
+    total_tasks = cursor.fetchone()['total']
+    
+    # 计算总页数
+    total_pages = (total_tasks + per_page - 1) // per_page
+    
+    # 获取当前页的任务
+    offset = (page - 1) * per_page
+    query = f"""
+        SELECT * FROM tasks 
+        WHERE {where_clause}
+        ORDER BY created_at DESC 
+        LIMIT %s OFFSET %s
+    """
+    params.extend([per_page, offset])
+    cursor.execute(query, params)
+    tasks = cursor.fetchall()
+    
+    cursor.close()
+    conn.close()
+    
+    return render_template('view_background_tasks.html', 
+                          tasks=tasks,
+                          page=page,
+                          total_pages=total_pages or 1,  # 确保至少有1页
+                          status=status,
+                          task_type=task_type,
+                          search=search)
+
+
+# 任务详情
+@app.route('/teacher/task/<int:task_id>')
+def task_detail(task_id):
+    if 'user_id' not in session or session['role'] != 'teacher':
+        return redirect(url_for('login'))
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        # 获取任务信息
+        cursor.execute("""
+            SELECT t.*, u.name, u.employee_id
+            FROM tasks t
+            JOIN users u ON t.user_id = u.id
+            WHERE t.id = %s AND t.user_id = %s
+        """, (task_id, session['user_id']))
+        task = cursor.fetchone()
+        
+        if not task:
+            flash('任务不存在或无权访问', 'danger')
+            return redirect(url_for('view_background_tasks'))
+        
+        # 解析任务参数
+        task_parameters = json.loads(task['parameters']) if task['parameters'] else {}
+        
+        # 解析任务结果
+        task_result = json.loads(task['result']) if task['result'] else {}
+        
+        # 如果是生成题目任务，获取生成的题目
+        generated_questions = []
+        if task['task_type'] == 'generate_questions' and task_result.get('success', 0) > 0:
+            # 获取最近生成的题目
+            cursor.execute("""
+                SELECT id, topic, language, difficulty, is_approved 
+                FROM questions 
+                WHERE aiModel = %s 
+                ORDER BY created_at DESC 
+                LIMIT %s
+            """, (task_parameters.get('aiModel', ''), task_result.get('success', 5)))
+            generated_questions = cursor.fetchall()
+            task_result['generated_questions'] = generated_questions
+        
+        # 获取任务创建者信息
+        task_creator = {
+            'name': task['name'],
+            'employee_id': task['employee_id']
+        }
+        
+        return render_template('task_detail.html',
+                              task=task,
+                              task_parameters=task_parameters,
+                              task_result=task_result,
+                              task_creator=task_creator,
+                              can_restart=task['status'] in ['failed','completed'])
+    
+    except Exception as e:
+        flash(f'获取任务详情失败: {str(e)}', 'danger')
+        return redirect(url_for('view_background_tasks'))
+    
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/teacher/task/<int:task_id>/restart', methods=['POST'])
+def restart_task(task_id):
+    if 'user_id' not in session or session['role'] != 'teacher':
+        return redirect(url_for('login'))
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        # 获取原始任务信息
+        cursor.execute("SELECT * FROM tasks WHERE id = %s", (task_id,))
+        original_task = cursor.fetchone()
+        
+        if not original_task:
+            flash('任务不存在', 'danger')
+            return redirect(url_for('view_background_tasks'))
+        
+        # 创建新任务记录（基于原始任务）
+        cursor.execute(
+            "INSERT INTO tasks (user_id, task_type, parameters, status, total) "
+            "VALUES (%s, %s, %s, 'pending', %s)",
+            (session['user_id'], original_task['task_type'], 
+             original_task['parameters'], json.loads(original_task['parameters']).get('count', 1))
+        )
+        new_task_id = cursor.lastrowid
+        conn.commit()
+        
+        # 启动后台任务
+        def run_task(task_id, params):
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            try:
+                # 更新任务状态为处理中
+                cursor.execute(
+                    "UPDATE tasks SET status = 'processing' WHERE id = %s",
+                    (task_id,)
+                )
+                conn.commit()
+                
+                params = json.loads(params)
+                topic = params['topic']
+                difficulty = params['difficulty']
+                language = params['language']
+                count = params['count']
+                ai_model = params['ai_model']
+                
+                generated_ids = []
+                for i in range(count):
+                    try:
+                        question = generate_question(topic, difficulty, language, ai_model)
+                        
+                        cursor.execute(
+                            "INSERT INTO questions (topic, difficulty, question_text, "
+                            "sample_answer, hints, language, aiModel, is_approved) "
+                            "VALUES (%s, %s, %s, %s, %s, %s, %s, FALSE)",
+                            (topic, difficulty, question['question'],
+                             question['sample_answer'], json.dumps(question['hints']),
+                             language, ai_model)
+                        )
+                        question_id = cursor.lastrowid
+                        generated_ids.append(question_id)
+                        
+                        # 更新任务进度
+                        progress = i + 1
+                        cursor.execute(
+                            "UPDATE tasks SET progress = %s, log = %s WHERE id = %s",
+                            (progress, f"已生成题目 {progress}/{count}", task_id)
+                        )
+                        conn.commit()
+                        
+                        # 模拟生成时间
+                        time.sleep(1)
+                        
+                    except Exception as e:
+                        error_msg = f"生成题目 {i+1} 失败: {str(e)}"
+                        app.logger.error(error_msg)
+                        cursor.execute(
+                            "UPDATE tasks SET log = CONCAT(IFNULL(log, ''), %s) WHERE id = %s",
+                            (f"\n{error_msg}", task_id)
+                        )
+                        conn.commit()
+                
+                # 更新任务状态为已完成
+                result = {
+                    'success': len(generated_ids),
+                    'failed': count - len(generated_ids),
+                    'generated_ids': generated_ids
+                }
+                cursor.execute(
+                    "UPDATE tasks SET status = 'completed', progress = %s, result = %s, "
+                    "log = CONCAT(IFNULL(log, ''), '\n任务完成') WHERE id = %s",
+                    (count, json.dumps(result), task_id)
+                )
+                conn.commit() 
+            except Exception as e:
+                error_msg = f"任务失败: {str(e)}"
+                app.logger.error(error_msg)
+                cursor.execute(
+                    "UPDATE tasks SET status = 'failed', log = CONCAT(IFNULL(log, ''), %s) WHERE id = %s",
+                    (f"\n{error_msg}", task_id)
+                )
+                conn.commit()
+                traceback.print_exc()
+            finally:
+                cursor.close()
+                conn.close()
+        
+        # 这里修复缩进问题
+        thread = threading.Thread(
+            target=run_task, 
+            args=(new_task_id, original_task['parameters'])
+        )
+        thread.start()
+        
+        flash(f'已重启任务 #{task_id} 为新的任务 #{new_task_id}', 'success')
+        return redirect(url_for('task_detail', task_id=new_task_id))
+        
+    except Exception as e:
+        flash(f'重启任务失败: {str(e)}', 'danger')
+        return redirect(url_for('task_detail', task_id=task_id))
+    finally:
+        cursor.close()
+        conn.close()
+
+
+
+# 题目详情
+@app.route('/question/<int:question_id>')
+def question_detail(question_id):
+    if 'user_id' not in session or session['role'] != 'teacher':
+        return redirect(url_for('login'))
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        # 获取题目信息
+        cursor.execute("SELECT * FROM questions WHERE id = %s", (question_id,))
+        question = cursor.fetchone()
+        
+        if not question:
+            flash('题目不存在', 'danger')
+            return redirect(url_for('review_questions'))
+        
+        # 解析提示信息
+        hints = json.loads(question['hints']) if question['hints'] else []
+        
+        # 获取使用统计
+        usage_stats = {
+            'exam_count': 0,
+            'exercise_count': 0,
+            'avg_score': 0
+        }
+        
+        # 考试使用次数
+        cursor.execute("SELECT COUNT(*) AS count FROM exams WHERE question_id = %s", (question_id,))
+        exam_count = cursor.fetchone()['count']
+        usage_stats['exam_count'] = exam_count
+        
+        # 练习使用次数
+        cursor.execute("SELECT COUNT(*) AS count FROM exercises WHERE question_id = %s", (question_id,))
+        exercise_count = cursor.fetchone()['count']
+        usage_stats['exercise_count'] = exercise_count
+        
+        # 平均得分
+        cursor.execute("""
+            SELECT AVG(score) AS avg_score
+            FROM (
+                SELECT ai_score AS score FROM exams WHERE question_id = %s
+                UNION ALL
+                SELECT ai_score AS score FROM exercises WHERE question_id = %s
+            ) AS scores
+        """, (question_id, question_id))
+        
+        avg_score = cursor.fetchone()['avg_score']
+        usage_stats['avg_score'] = avg_score or 0
+        
+        return render_template('question_detail.html',
+                              question=question,
+                              hints=hints,
+                              usage_stats=usage_stats)
+    
+    except Exception as e:
+        flash(f'获取题目详情失败: {str(e)}', 'danger')
+        return redirect(url_for('review_questions'))
+    
+    finally:
+        cursor.close()
+        conn.close()
+
+# 删除题目 API
+@app.route('/api/questions/<int:question_id>', methods=['DELETE'])
+def delete_question(question_id):
+    if 'user_id' not in session or session['role'] != 'teacher':
+        return jsonify({'success': False, 'message': '未授权访问'}), 403
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # 检查题目是否存在
+        cursor.execute("SELECT id FROM questions WHERE id = %s", (question_id,))
+        if not cursor.fetchone():
+            return jsonify({'success': False, 'message': '题目不存在'}), 404
+        
+        # 删除题目
+        cursor.execute("DELETE FROM questions WHERE id = %s", (question_id,))
+        conn.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': '题目已成功删除'
+        })
+    except Exception as e:
+        conn.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'删除题目失败: {str(e)}'
+        }), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+
+# 添加 JSON 格式化过滤器
+@app.template_filter('tojson')
+def tojson_filter(value, indent=2):
+    return json.dumps(value, ensure_ascii=False, indent=indent) if value else ''
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    return render_template('500.html'), 500
+
+@app.errorhandler(404)
+def not_found_error(error):
+    return render_template('404.html'), 404
+
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000,debug=True)

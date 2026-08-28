@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+
+{% block title %}题目详情 - #{{ question.id }}{% endblock %}
+
+{% block content %}
+<div class="question-detail-container">
+    <div class="question-header">
+        <h2>题目详情 <span class="question-id">#{{ question.id }}</span></h2>
+        <div class="header-actions">
+            <a href="{{ url_for('review_questions') }}" class="btn">
+                &larr; 返回题目列表
+            </a>
+            {% if not question.is_approved %}
+            <a href="{{ url_for('approve_question', question_id=question.id) }}" class="btn primary">
+                ✓ 审核通过
+            </a>
+            {% endif %}
+            <a href="{{ url_for('remove_question', question_id=question.id) }}" 
+                class="btn danger"
+                id="deleteBtn"
+                data-question-id = "{{question.id}}">
+                ✗ 删除题目
+            </a>
+
+        </div>
+    </div>
+
+    <!-- 题目基本信息 -->
+    <div class="question-info">
+        <div class="info-row">
+            <div class="info-label">主题:</div>
+            <div class="info-value">{{ question.topic }}</div>
+        </div>
+        
+        <div class="info-row">
+            <div class="info-label">难度:</div>
+            <div class="info-value">
+                {% for i in range(1,4) %}
+                    {% if i <= question.difficulty %}
+                    ★
+                    {% else %}
+                    ☆
+                    {% endif %}
+                {% endfor %}
+                ({{ question.difficulty }}/3)
+            </div>
+        </div>
+        
+        <div class="info-row">
+            <div class="info-label">编程语言:</div>
+            <div class="info-value">
+                <span class="language-badge">
+                    {{ question.language | upper }}
+                </span>
+            </div>
+        </div>
+        
+        <div class="info-row">
+            <div class="info-label">创建时间:</div>
+            <div class="info-value">{{ question.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+        </div>
+        
+        <div class="info-row">
+            <div class="info-label">AI模型:</div>
+            <div class="info-value">{{ question.aiModel }}</div>
+        </div>
+        
+        <div class="info-row">
+            <div class="info-label">审核状态:</div>
+            <div class="info-value">
+                {% if question.is_approved %}
+                <span class="status-badge status-approved">✅ 已审核</span>
+                {% else %}
+                <span class="status-badge status-pending">⏳ 待审核</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 题目内容 -->
+    <div class="question-section">
+        <h3>题目内容</h3>
+        <div class="question-content">
+            <pre>{{ question.question_text }}</pre>
+        </div>
+    </div>
+
+    <!-- 参考答案 -->
+    <div class="question-section">
+        <h3>参考答案</h3>
+        <div class="sample-answer">
+            <pre>{{ question.sample_answer }}</pre>
+        </div>
+        
+        <div class="code-actions">
+            <button class="btn" id="copyBtn">复制代码</button>
+            <button class="btn primary" id="runBtn">运行代码</button>
+        </div>
+    </div>
+
+    <!-- 提示信息 -->
+    <div class="question-section">
+        <h3>提示信息</h3>
+        <div class="hints-list">
+            {% if hints %}
+            <ul>
+                {% for hint in hints %}
+                <li>{{ hint }}</li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <div class="empty-state">无提示信息</div>
+            {% endif %}
+        </div>
+    </div>
+    <!-- 代码运行区域 -->
+    <div class="execution-section">
+        <div class="execution-controls">
+            <h3>代码运行</h3>
+            <div class="controls-row">
+                <div class="control-group">
+                    <label for="commandArgs">命令行参数:</label>
+                    <button class="btn small" id="clearArgsBtn">清空</button>
+                    <input type="text" id="commandArgs" placeholder="输入参数，用空格分隔">
+                </div>
+                <br></br>
+                <div class="control-group">
+                    <label for="inputData">标准输入:</label>
+                    <button class="btn small" id="clearInputBtn">清空</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="input-output-container">
+            <div class="input-panel">
+                <textarea id="inputData" placeholder="输入程序运行所需的数据..."></textarea>
+            </div>
+            
+            <div class="output-panel">
+                <div class="output-header">
+                    <span>运行结果</span>
+                    <button class="btn small" id="clearOutputBtn">清空结果</button>
+                </div>
+                <div id="outputContent"></div>
+            </div>
+        </div>
+    </div>
+  
+    <!-- 使用统计 -->
+    <div class="question-section">
+        <h3>使用统计</h3>
+        <div class="usage-stats">
+            <div class="stats-row">
+                <div class="stat-item">
+                    <div class="stat-value">{{ usage_stats.exam_count }}</div>
+                    <div class="stat-label">考试使用次数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ usage_stats.exercise_count }}</div>
+                    <div class="stat-label">练习使用次数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ usage_stats.avg_score | round(1) }}</div>
+                    <div class="stat-label">平均得分</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 复制代码功能
+    document.getElementById('copyBtn').addEventListener('click', function() {
+        const code = `{{ question.sample_answer | replace('\n', '\\n') | replace('\r', '\\r') | replace("'", "\\'") | safe }}`;
+        navigator.clipboard.writeText(code)
+            .then(() => {
+                alert('代码已复制到剪贴板！');
+            })
+            .catch(err => {
+                alert('复制失败，请手动复制代码');
+                console.error('复制失败:', err);
+            });
+    });
+    
+    // 运行代码功能
+    document.getElementById('runBtn').addEventListener('click', async function() {
+        const code = `{{ question.sample_answer }}`;
+        const language = "{{ question.language }}";
+        
+        // 禁用按钮并显示加载状态
+        this.innerHTML = '<span class="spinner"></span> 运行中...';
+        this.disabled = true;
+        
+        try {
+            const response = await fetch("{{ url_for('run_code') }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    language: language,
+                    code: code
+                })
+            });
+            
+            const result = await response.json();
+            
+            let output = '';
+            if (result.stdout) {
+                output += `<div class="stdout">${result.stdout}</div>`;
+            }
+            if (result.stderr) {
+                output += `<div class="stderr">${result.stderr}</div>`;
+            }
+            if (!result.stdout && !result.stderr) {
+                output = '<div class="info">程序已执行，没有输出</div>';
+            }
+            
+            document.getElementById('outputContent').innerHTML = output;
+        } catch (error) {
+            document.getElementById('outputContent').innerHTML = `<div class="error">运行出错: ${error.message}</div>`;
+        } finally {
+            // 恢复按钮状态
+            this.innerHTML = '运行代码';
+            this.disabled = false;
+        }
+    });
+    
+    // 删除题目功能
+    document.getElementById('deleteBtn').addEventListener('click', function(e) {
+         e.preventDefault();
+         const questionId = this.dataset.questionId;
+         const confirmMessage = `确定要删除题目 #${questionId}? \n\n此操作不可撤销！！`;
+         if (confirm(confirmMessage)) {
+            window.location.href = this.href;
+        }
+    }); 
+
+
+// ===== 清空功能 =====
+   
+    // 清空命令行参数
+    document.getElementById('clearArgsBtn').addEventListener('click', function() {
+        document.getElementById('commandArgs').value = '';
+    }); 
+    // 清空输入区域
+    document.getElementById('clearInputBtn').addEventListener('click', function() {
+        document.getElementById('inputData').value = '';
+    });
+    
+    // 清空输出结果
+    document.getElementById('clearOutputBtn').addEventListener('click', function() {
+        document.getElementById('outputContent').innerHTML = '';
+    });
+</script>
+{% endblock %}
