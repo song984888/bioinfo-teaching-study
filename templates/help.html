@@ -10,6 +10,7 @@
     <p style="margin-top:0.6rem">
       {% if role == 'admin' %}
       <a class="btn btn-secondary" href="{{ url_for('download_system_manual') }}" style="text-decoration:none;display:inline-block">📥 下载《系统完整功能与用户手册》</a>
+      <a class="btn btn-secondary" href="{{ url_for('download_project_presentation') }}" style="text-decoration:none;display:inline-block;margin-left:0.5rem">📊 下载项目汇报 PPT</a>
       {% else %}
       <span class="exp-note">系统完整手册仅限管理员下载</span>
       {% endif %}

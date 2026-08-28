@@ -1,6 +1,8 @@
-# BioInformatics Teaching & Exam System
+# Bioinformatics Teaching & Learning Platform
 
-A Flask web-based automated programming examination platform. Students participate in coding exams, teachers generate questions via AI and review submissions, and administrators manage the entire system. Supports Python, Perl, Java, and C.
+A Flask-based web platform for bioinformatics education. It connects student practice and examinations with AI-assisted question generation, teacher review, intelligent exam-paper generation, document-based knowledge bases, interactive knowledge graphs, literature search, and personalized study suggestions. The application uses MySQL for persistent data and supports local Ollama models or DeepSeek APIs for AI features.
+
+The platform supports Python, Perl, Java, and C programming exercises, asynchronous background tasks, three-state question review, document/concept provenance, and role-based access for students, teachers, and administrators.
 
 ## Features
 
@@ -30,9 +32,11 @@ A Flask web-based automated programming examination platform. Students participa
 
 ### System
 - **Multi-Language Code Execution** -- Python (direct) / Java (javac → java) / C (gcc → binary) / Perl (direct)
-- **Knowledge Graph** -- Visualize concept relationships extracted from documents
+- **Knowledge Graph** -- Visualize concept relationships extracted from documents; filter by document and minimum frequency, with automatic relayout
 - **Background Tasks** -- Question generation runs asynchronously with progress tracking
 - **3-State Review** -- pending → approved/rejected with rejection reasons
+- **Question Quality Gate** -- Rejects trivial fixed-output answers before they enter the question bank
+- **Dynamic Exercise Topics** -- Student topics are loaded from currently approved programming questions
 
 ## Architecture
 
@@ -146,17 +150,17 @@ git clone https://github.com/song984888/bioinfo-teaching-study.git
 cd bioinfo-teaching-study
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python app.py
-# → http://localhost:1234
+gunicorn --workers 5 --bind 0.0.0.0:5000 app:app
+# → http://172.24.64.53:8080 (external mapping)
 ```
 
 ### Test Accounts
 
 | Role | ID | Password |
 |------|-----|----------|
-| Admin | admin | 123456 |
-| Teacher | teacher | 123456 |
-| Student | s001 | 123456 |
+| Admin | admin | configured locally |
+| Teacher | teacher | configured locally |
+| Student | s001 | configured locally |
 
 ## Prerequisites
 
@@ -166,18 +170,16 @@ python app.py
 | MySQL Server | Database (localhost, database: `code_exam`) |
 | DeepSeek API Key | AI question generation, grading, suggestions |
 | [Ollama](https://ollama.com) | Optional: Local LLM (model: `qwen2.5-coder:32b`) |
-| GCC / JDK / Perl | Code execution for C, Java, Perl
-# Access at http://localhost:1234
-```
+| GCC / JDK / Perl | Code execution for C, Java, Perl |
 
 ## Usage
 
 ### Start the Application
 
 ```bash
-python app.py
-# Web interface: http://localhost:1234
-# Default admin: admin / 123456
+gunicorn --workers 5 --bind 0.0.0.0:5000 app:app
+# Web interface: http://172.24.64.53:8080 (external mapping)
+# Default admin ID: admin (use the locally configured password)
 ```
 
 ### Student Flow

@@ -233,8 +233,23 @@ class QuestionGenerator:
                         continue    
                     raise Exception(f"生成题目失败: {str(e)}")
 
+    @staticmethod
+    def _validate_programming_quality(data):
+        """Reject trivial AI output before it enters the question bank."""
+        question = str(data.get('question') or '').strip()
+        answer = str(data.get('sample_answer') or '').strip()
+        lowered = answer.lower()
+        if len(question) < 80:
+            return '题目描述过短，必须包含背景、输入输出、功能要求和示例'
+        if len(answer) < 30:
+            return '参考答案过短，必须是完整可运行程序'
+        if re.search(r"print\s*\(\s*['\"](?:hello|[^'\"]*功能)[^'\"]*['\"]\s*\)", lowered) and not re.search(r'input|read|scanf|split|for |while |def |function|sub ', lowered):
+            return '参考答案仅输出固定字符串，未实现题目功能'
+        if not re.search(r'input|read|scanf|split|for |while |def |function|sub |argv', lowered):
+            return '参考答案缺少输入处理或核心算法逻辑'
+        return None
+
     def _parse_response(self, raw_response: str) -> dict:
-        """解析 AI 响应并验证完整性"""
         import re
         
         # 清理响应内容（移除``json````）
@@ -262,7 +277,13 @@ class QuestionGenerator:
                     "error": "AI 生成的题目内容为空",
                     "raw_response": cleaned[:500]
                 }
-            
+
+            # 拦截“只打印主题/Hello”的伪题目，避免低质量题目进入待审核题库。
+            quality_error = self._validate_programming_quality(parsed_data)
+            if quality_error:
+                app.logger.warning(f"程序设计题质量校验未通过：{quality_error}")
+                return {"error": quality_error, "raw_response": cleaned[:500]}
+
             # 确保 hints 是列表
             if not isinstance(parsed_data.get('hints'), list):
                 parsed_data['hints'] = []
@@ -1624,7 +1645,8 @@ def get_learning_period_metrics(student_id):
     metrics = {
         "start_date": None,
         "end_date": None,
-        "active_dates": set(),
+        "active_dates": [],
+        "active_days": 0,
         "total_days": 0,
         "attendance_rate": 0.0
     }
@@ -1811,6 +1833,28 @@ def download_system_manual():
     return send_file(manual_path, as_attachment=True,
                      download_name='system-manual.md',
                      mimetype='text/markdown')
+
+
+@app.route('/docs/project-presentation')
+def download_project_presentation():
+    """Download the project presentation deck (administrator only)."""
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    if session.get('role') != 'admin':
+        abort(403)
+    presentation_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        'docs',
+        'bioinfo_teaching_system_presentation.pptx',
+    )
+    if not os.path.isfile(presentation_path):
+        abort(404)
+    return send_file(
+        presentation_path,
+        as_attachment=True,
+        download_name='bioinfo_teaching_system_presentation.pptx',
+        mimetype='application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    )
 
 
 @app.route('/bioinfo-articles')
@@ -2537,12 +2581,17 @@ def exercise_selection():
     cursor = conn.cursor(dictionary=True)
     
     try:
-        # 获取所有主题的题目数量
-        cursor.execute("SELECT topic, COUNT(*) as count FROM questions WHERE is_approved = FALSE GROUP BY topic")
-        topic_counts = {row['topic']: row['count'] for row in cursor.fetchall()}
-        
-        # 从配置中获取主题列表
-        topics = list(CONFIG['EXERCISE_TOPIC'].keys())
+        # 只显示当前题库中确实存在的、已审核的编程题主题。
+        # 主题不再依赖固定配置，因此新题目一旦审核通过即可选择。
+        cursor.execute("""
+            SELECT topic, COUNT(*) AS count
+            FROM questions
+            WHERE review_status = 'approved' OR is_approved = 1
+            GROUP BY topic
+            ORDER BY topic
+        """)
+        topic_counts = {row['topic']: row['count'] for row in cursor.fetchall() if row['topic']}
+        topics = list(topic_counts.keys())
         app.logger.debug(f"加载练习选择页面，主题: {topics}")
         # 语言配置
         languages = {
@@ -2670,7 +2719,8 @@ def study_with_samples():
             # 编程题从 questions 表抽取
             cursor.execute("""
                 SELECT * FROM questions 
-                WHERE topic = %s AND language = %s AND difficulty = %s AND is_approved = FALSE 
+                WHERE topic = %s AND language = %s AND difficulty = %s
+                  AND (review_status = 'approved' OR is_approved = 1) 
                 ORDER BY RAND() LIMIT 1
             """, (topic, language, difficulty))
             question = cursor.fetchone()
@@ -3203,11 +3253,16 @@ def teacher_generate_questions():
                           question = await generator.generate_question_deepseek_api(topic, difficulty, language, ai_model)
                        else:
                           question = await generator.generate_question(topic, difficulty, language, ai_model)
+                       if question.get('error'):
+                          raise ValueError(question['error'])
+                       quality_error = generator._validate_programming_quality(question)
+                       if quality_error:
+                          raise ValueError(quality_error)
                        app.logger.info(f"教师出题-topic: {topic}") 
                        cursor.execute(
                          "INSERT INTO questions (topic, difficulty, question_text, "
-                         "sample_answer, hints, language, aiModel, is_approved) "
-                         "VALUES (%s, %s, %s, %s, %s, %s, %s, FALSE)",
+                          "sample_answer, hints, language, aiModel, question_type, is_approved) "
+                          "VALUES (%s, %s, %s, %s, %s, %s, %s, 'programming', FALSE)",
                          (topic, difficulty, question['question'],
                           question['sample_answer'], json.dumps(question['hints']),
                           language, ai_model)
@@ -3321,13 +3376,13 @@ def review_questions():
             (SELECT id, topic, difficulty, question_text, sample_answer, 
                     NULL as grading_criteria, NULL as score,
                     language, aiModel, is_approved, review_status, review_comment, 
-                    reviewed_by, reviewed_at, question_type, created_at
+                    reviewed_by, reviewed_at, question_type, 'programming' AS source_type, created_at
              FROM questions WHERE review_status = %s)
             UNION ALL
             (SELECT id, topic, difficulty, question_text, sample_answer, 
                     grading_criteria, score,
                     'theoretical' as language, aiModel, is_approved, review_status, review_comment,
-                    reviewed_by, reviewed_at, question_type, created_at
+                    reviewed_by, reviewed_at, question_type, 'theory' AS source_type, created_at
              FROM theory_questions WHERE review_status = %s)
         ) AS combined
         WHERE 1=1
@@ -3416,12 +3471,12 @@ def question_bank():
     query = """
         (SELECT id, topic, difficulty, question_text, sample_answer, 
                 NULL as grading_criteria, NULL as score,
-                language, aiModel, is_approved, 'programming' as question_type, created_at
+                language, aiModel, is_approved, 'programming' as question_type, 'programming' AS source_type, created_at
          FROM questions WHERE review_status = 'approved')
         UNION ALL
         (SELECT id, topic, difficulty, question_text, sample_answer, 
                 grading_criteria, score,
-                'theoretical' as language, aiModel, is_approved, question_type, created_at
+                'theoretical' as language, aiModel, is_approved, question_type, 'theory' AS source_type, created_at
          FROM theory_questions WHERE review_status = 'approved')
     """
     params = []
@@ -3555,10 +3610,10 @@ def approve_question(question_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # 同时更新两张表（解决ID冲突）
-    cursor.execute("UPDATE questions SET review_status = 'approved', reviewed_by = %s, reviewed_at = NOW() WHERE id = %s",
+    # 同时更新两张表（解决ID冲突），并同步旧的 is_approved 标记。
+    cursor.execute("UPDATE questions SET review_status = 'approved', is_approved = TRUE, reviewed_by = %s, reviewed_at = NOW() WHERE id = %s",
                    (session.get('name', session.get('user_id', '')), question_id))
-    cursor.execute("UPDATE theory_questions SET review_status = 'approved', reviewed_by = %s, reviewed_at = NOW() WHERE id = %s",
+    cursor.execute("UPDATE theory_questions SET review_status = 'approved', is_approved = TRUE, reviewed_by = %s, reviewed_at = NOW() WHERE id = %s",
                    (session.get('name', session.get('user_id', '')), question_id))
     
     conn.commit()
@@ -4827,11 +4882,14 @@ def restart_task(task_id):
                 for i in range(count):
                     try:
                         question = generate_question(topic, difficulty, language, ai_model)
-                        
+                        quality_error = QuestionGenerator._validate_programming_quality(question)
+                        if quality_error:
+                            raise ValueError(quality_error)
+ 
                         cursor.execute(
                             "INSERT INTO questions (topic, difficulty, question_text, "
-                            "sample_answer, hints, language, aiModel, is_approved) "
-                            "VALUES (%s, %s, %s, %s, %s, %s, %s, FALSE)",
+                            "sample_answer, hints, language, aiModel, question_type, is_approved) "
+                            "VALUES (%s, %s, %s, %s, %s, %s, %s, 'programming', FALSE)",
                             (topic, difficulty, question['question'],
                              question['sample_answer'], json.dumps(question['hints']),
                              language, ai_model)
@@ -4926,11 +4984,11 @@ def get_comments(question_id):
         if not question:
             return jsonify({'error': '题目不存在'}), 404
         
-        # 获取评论列表（假设有一个 question_comments 表）
+        # 获取评论列表
         cursor.execute("""
             SELECT qc.*, u.name as author_name
             FROM question_comments qc
-            LEFT JOIN users u ON qc.user_id = u.id
+            LEFT JOIN users u ON qc.user_id = u.employee_id
             WHERE qc.question_id = %s
             ORDER BY qc.created_at DESC
         """, (question_id,))
@@ -5125,7 +5183,8 @@ def get_document_info(doc_id):
 
 # 题目详情
 @app.route('/question/<int:question_id>')
-def question_detail(question_id):
+@app.route('/question/<source_type>/<int:question_id>')
+def question_detail(question_id, source_type='programming'):
     if 'user_id' not in session or session['role'] not in ('teacher', 'admin'):
         return redirect(url_for('login'))
     
@@ -5133,29 +5192,35 @@ def question_detail(question_id):
     cursor = conn.cursor(dictionary=True)
     
     try:
-        # 先从 theory_questions 表查询（理论题）
-        cursor.execute("SELECT * FROM theory_questions WHERE id = %s", (question_id,))
+        if source_type == 'theory':
+            cursor.execute("SELECT * FROM theory_questions WHERE id = %s", (question_id,))
+        else:
+            cursor.execute("SELECT * FROM questions WHERE id = %s", (question_id,))
         question = cursor.fetchone()
-        
-        if question:
+
+        if source_type == 'theory' and question:
             # 标记为理论题，补充缺失字段
             question['is_theory'] = True
             question['hints'] = None  # theory_questions 表没有 hints 字段
             question['language'] = 'theoretical'  # theory_questions 表没有 language 字段
         else:
-            # 再查询 questions 表（编程题）
-            cursor.execute("SELECT * FROM questions WHERE id = %s", (question_id,))
-            question = cursor.fetchone()
-            
             if not question:
                 flash('题目不存在', 'danger')
                 return redirect(url_for('review_questions'))
-            
-            # 标记为编程题
             question['is_theory'] = False
         
-        # 解析提示信息
-        hints = json.loads(question['hints']) if question.get('hints') else []
+        # 兼容历史题目中的纯文本提示和新版 JSON 列表提示。
+        raw_hints = question.get('hints')
+        if not raw_hints:
+            hints = []
+        elif isinstance(raw_hints, list):
+            hints = raw_hints
+        else:
+            try:
+                parsed_hints = json.loads(raw_hints)
+                hints = parsed_hints if isinstance(parsed_hints, list) else [str(parsed_hints)]
+            except (TypeError, json.JSONDecodeError):
+                hints = [str(raw_hints)]
         
         # 获取使用统计 - 理论题可能没有考试/练习记录
         usage_stats = {
@@ -6437,13 +6502,17 @@ def view_document(kb_id, doc_id):
     cursor.close()
     conn.close()
     
+    # 原始上传文件可能已从服务器清理；保留数据库中提取的文本作为可读回退。
+    pdf_available = bool(document.get('file_path') and os.path.isfile(document['file_path']))
+
     # 使用 PDF 查看器模板
     return render_template('teacher/pdf_viewer.html',
                          document=document,
                          doc_meta=_build_doc_metadata(document),
                          knowledge_base_name=document['knowledge_base_name'],
                          question_count=question_stats['question_count'],
-                         concept_count=concept_stats['concept_count'])
+                         concept_count=concept_stats['concept_count'],
+                         pdf_available=pdf_available)
 
 
 @app.route('/teacher/knowledge_bases/<int:kb_id>/document/<int:doc_id>/view_pdf')
@@ -6724,6 +6793,85 @@ def convert_decimal_for_json(obj):
     else:
         return obj
 
+
+def normalize_concept_name(name):
+    """Return a stable comparison key without changing the stored spelling."""
+    import unicodedata
+    value = unicodedata.normalize('NFKC', str(name or ''))
+    value = ' '.join(value.strip().split())
+    return value.casefold()
+
+
+def aggregate_graph_concepts(raw_concepts):
+    """Merge equivalent concepts while retaining source provenance."""
+    groups = {}
+    id_map = {}
+    for raw in raw_concepts:
+        key = normalize_concept_name(raw.get('concept_name'))
+        if not key:
+            continue
+        if key not in groups:
+            groups[key] = {
+                'id': raw['id'],
+                'concept_name': raw.get('concept_name') or '',
+                'normalized_name': key,
+                'description': raw.get('description'),
+                'concept_type': raw.get('concept_type') or 'entity',
+                'frequency': 0,
+                'size': 25,
+                'document_id': raw.get('document_id'),
+                'document_title': raw.get('document_title'),
+                'raw_concept_ids': [],
+                'source_documents': [],
+                'descriptions': [],
+                'positions': [],
+                '_spellings': {},
+            }
+        node = groups[key]
+        frequency = raw.get('frequency') or 1
+        node['frequency'] += frequency
+        node['raw_concept_ids'].append(raw['id'])
+        spelling = raw.get('concept_name') or ''
+        node['_spellings'][spelling] = node['_spellings'].get(spelling, 0) + frequency
+        source = {'id': raw.get('document_id'), 'title': raw.get('document_title'), 'frequency': frequency}
+        if source not in node['source_documents']:
+            node['source_documents'].append(source)
+        description = raw.get('description')
+        if description and {'text': description, 'document_id': raw.get('document_id'),
+                            'document_title': raw.get('document_title')} not in node['descriptions']:
+            node['descriptions'].append({'text': description, 'document_id': raw.get('document_id'),
+                                         'document_title': raw.get('document_title')})
+        if raw.get('position_start') is not None or raw.get('position_end') is not None:
+            node['positions'].append({'document_id': raw.get('document_id'),
+                                      'start': raw.get('position_start'), 'end': raw.get('position_end')})
+        id_map[raw['id']] = node['id']
+    for node in groups.values():
+        node['concept_name'] = min(node['_spellings'], key=lambda spelling: (-node['_spellings'][spelling], spelling))
+        node['size'] = min(50, 25 + max(0, node['frequency'] - 1))
+        del node['_spellings']
+    return list(groups.values()), id_map
+
+
+def aggregate_graph_relations(raw_relations, concept_id_map):
+    """Map, remove self-loops, and merge duplicate graph relationships."""
+    groups = {}
+    for raw in raw_relations:
+        source = concept_id_map.get(raw.get('from_concept_id'))
+        target = concept_id_map.get(raw.get('to_concept_id'))
+        if source is None or target is None or source == target:
+            continue
+        relation_type = raw.get('relation_type') or '相关'
+        key = (source, target, relation_type)
+        if key not in groups:
+            groups[key] = {'id': raw.get('id'), 'from_concept_id': source, 'to_concept_id': target,
+                           'relation_type': relation_type, 'confidence': float(raw.get('confidence') or 1),
+                           'raw_relation_ids': []}
+        group = groups[key]
+        group['confidence'] = max(group['confidence'], float(raw.get('confidence') or 1))
+        if raw.get('id') is not None:
+            group['raw_relation_ids'].append(raw['id'])
+    return list(groups.values())
+
 @app.route('/teacher/knowledge_bases/<int:kb_id>/graph')
 def knowledge_graph(kb_id):
     """显示知识库的知识图谱"""
@@ -6775,62 +6923,18 @@ def knowledge_graph(kb_id):
     
     raw_concepts = cursor.fetchall()
     
-    # 合并重复概念（按概念名称分组，累加频率）
-    concept_dict = {}
-    for concept in raw_concepts:
-        name = concept['concept_name']
-        if name not in concept_dict:
-            # 第一次见到这个概念，保存它
-            concept_dict[name] = {
-                'id': concept['id'],
-                'document_id': concept['document_id'],
-                'concept_name': name,
-                'description': concept['description'],
-                'concept_type': concept['concept_type'],
-                'frequency': concept['frequency'] or 1,
-                'size': concept['size'] or 25,
-                'position_start': concept['position_start'],
-                'position_end': concept['position_end'],
-                'document_title': concept['document_title']
-            }
-        else:
-            # 已经见过这个概念，累加频率
-            concept_dict[name]['frequency'] += concept['frequency'] or 1
-            # 更新 size（基于累加后的频率重新计算）
-            concept_dict[name]['size'] = min(50, 25 + (concept_dict[name]['frequency'] - 1))
-    
-    # 转换回列表
-    concepts = list(concept_dict.values())
-    
-    # 建立 原始 concept id -> 合并后代表节点 id 的映射
-    # 跨文档同名概念会被合并为一个节点，但关系仍引用原始 concept id，
-    # 必须将关系端点映射到代表节点 id，否则 D3 forceLink 会因找不到节点而抛错，导致整图渲染失败
-    concept_id_map = {}
-    for concept in raw_concepts:
-        name = concept['concept_name']
-        concept_id_map[concept['id']] = concept_dict[name]['id']
-    
-    # 按频率降序排序
+    # 合并规范化概念，并保留所有来源、描述和位置。
+    concepts, concept_id_map = aggregate_graph_concepts(raw_concepts)
     concepts.sort(key=lambda x: x['frequency'], reverse=True)
     
     app.logger.info(f"知识库 {kb_id} 原始概念数量：{len(raw_concepts)}, 合并后数量：{len(concepts)}")
-    
-    # 如果没有概念，添加一些默认概念用于测试
     if not concepts:
-        app.logger.warning(f"知识库 {kb_id} 没有找到任何概念")
-        # 添加一些测试概念
-        test_concepts = [
-            {'id': 1, 'concept_name': '算法', 'description': '基础算法概念', 'concept_type': 'entity', 'frequency': 3, 'size': 30},
-            {'id': 2, 'concept_name': '数据结构', 'description': '基础数据结构', 'concept_type': 'entity', 'frequency': 2, 'size': 25},
-            {'id': 3, 'concept_name': '编程语言', 'description': '编程语言基础', 'concept_type': 'entity', 'frequency': 1, 'size': 20}
-        ]
-        concepts = test_concepts
-        app.logger.info("添加了测试概念用于显示")
+        app.logger.info(f"知识库 {kb_id} 没有概念数据")
     
     # 计算最高频次（从合并后的数据读取）
     max_frequency = max([c['frequency'] for c in concepts]) if concepts else 0
     
-    # 获取概念关系
+    # 获取概念关系；起点和终点都必须属于当前知识库，避免跨库/孤儿边。
     cursor.execute("""
         SELECT 
             cr.id,
@@ -6841,44 +6945,18 @@ def knowledge_graph(kb_id):
         FROM concept_relations cr
         JOIN knowledge_concepts c1 ON cr.from_concept_id = c1.id
         JOIN knowledge_documents kd1 ON c1.knowledge_document_id = kd1.id
+        JOIN knowledge_concepts c2 ON cr.to_concept_id = c2.id
+        JOIN knowledge_documents kd2 ON c2.knowledge_document_id = kd2.id
         WHERE kd1.knowledge_base_id = %s
-    """, (kb_id,))
-    
+          AND kd2.knowledge_base_id = %s
+    """, (kb_id, kb_id))
     relations = cursor.fetchall()
-    
     # 将关系端点的原始 concept id 映射到合并后的代表节点 id，
-    # 并跳过自环（from == to），避免 D3 力导向图因孤儿端点或自环渲染失败（表现为图谱空白）
-    cleaned_relations = []
-    for r in relations:
-        src = concept_id_map.get(r['from_concept_id'], r['from_concept_id'])
-        tgt = concept_id_map.get(r['to_concept_id'], r['to_concept_id'])
-        if src == tgt:
-            continue
-        cleaned_relations.append({
-            'id': r['id'],
-            'from_concept_id': src,
-            'to_concept_id': tgt,
-            'relation_type': r.get('relation_type'),
-            'confidence': r.get('confidence')
-        })
-    relations = cleaned_relations
+    relations = aggregate_graph_relations(relations, concept_id_map)
     
-    # 如果没有关系，添加一些测试关系
-    if not relations and concepts:
-        app.logger.warning(f"知识库 {kb_id} 没有找到任何关系")
-        # 添加测试关系连接前几个概念
-        if len(concepts) >= 2:
-            test_relations = [
-                {'id': 1, 'from_concept_id': concepts[0]['id'], 'to_concept_id': concepts[1]['id'], 
-                 'relation_type': '相关', 'confidence': 0.8}
-            ]
-            if len(concepts) >= 3:
-                test_relations.append({
-                    'id': 2, 'from_concept_id': concepts[1]['id'], 'to_concept_id': concepts[2]['id'], 
-                    'relation_type': '依赖', 'confidence': 0.7
-                })
-            relations = test_relations
-            app.logger.info("添加了测试关系用于显示")
+    # 没有关系时仍展示真实节点；不注入测试边，避免伪造知识库关系。
+    if not relations:
+        app.logger.info(f"知识库 {kb_id} 没有概念关系数据")
     cursor.close()
     conn.close()
     
@@ -7064,43 +7142,27 @@ def student_knowledge_graph(kb_id):
     if not kb:
         flash('知识库不存在或不可访问', 'danger')
         return redirect(url_for('student_knowledge_bases'))
-    # 概念（与教师端一致：按名称合并去重）
+    # 概念（统一使用与教师端相同的规范化聚合逻辑）
     cur.execute("""SELECT c.id, c.concept_name, c.description, c.concept_type, c.frequency, c.size,
-                          kd.id AS document_id, kd.title AS document_title
+                          kd.id AS document_id, kd.title AS document_title,
+                          c.position_start, c.position_end
                    FROM knowledge_concepts c
                    JOIN knowledge_documents kd ON c.knowledge_document_id = kd.id
                    WHERE kd.knowledge_base_id=%s ORDER BY c.concept_name""", (kb_id,))
     raw = cur.fetchall()
-    concept_dict = {}
-    for c in raw:
-        n = c['concept_name']
-        if n not in concept_dict:
-            concept_dict[n] = {'id': c['id'], 'concept_name': n, 'description': c['description'],
-                               'concept_type': c['concept_type'], 'frequency': c['frequency'] or 1,
-                               'size': c['size'] or 25, 'document_id': c['document_id'],
-                               'document_title': c['document_title']}
-        else:
-            concept_dict[n]['frequency'] += c['frequency'] or 1
-            concept_dict[n]['size'] = min(50, 25 + (concept_dict[n]['frequency'] - 1))
-    concepts = list(concept_dict.values())
+    concepts, concept_id_map = aggregate_graph_concepts(raw)
     concepts.sort(key=lambda x: x['frequency'], reverse=True)
     # 关系（端点映射到代表节点，跳出自环）
-    cur.execute("""SELECT cr.from_concept_id, cr.to_concept_id FROM concept_relations cr
+    cur.execute("""SELECT cr.id, cr.from_concept_id, cr.to_concept_id, cr.relation_type, cr.confidence FROM concept_relations cr
                    JOIN knowledge_concepts c1 ON cr.from_concept_id = c1.id
                    JOIN knowledge_documents kd1 ON c1.knowledge_document_id = kd1.id
-                   WHERE kd1.knowledge_base_id=%s""", (kb_id,))
+                   JOIN knowledge_concepts c2 ON cr.to_concept_id = c2.id
+                   JOIN knowledge_documents kd2 ON c2.knowledge_document_id = kd2.id
+                   WHERE kd1.knowledge_base_id=%s AND kd2.knowledge_base_id=%s""", (kb_id, kb_id))
     rels = cur.fetchall()
     cur.close(); conn.close()
-    concept_id_map = {c['id']: concept_dict[c['concept_name']]['id'] for c in raw}
+    relations = aggregate_graph_relations(rels, concept_id_map)
     node_ids = {c['id'] for c in concepts}
-    relations = []
-    for r in rels:
-        s = concept_id_map.get(r['from_concept_id'], r['from_concept_id'])
-        t = concept_id_map.get(r['to_concept_id'], r['to_concept_id'])
-        if s == t:
-            continue
-        if s in node_ids and t in node_ids:
-            relations.append({'from_concept_id': s, 'to_concept_id': t})
     # 记录图谱打开（30 分钟去重）
     _student_log('kb_view_logs', session['user_id'], kb_id, {'kb_id': kb_id}, dedupe=True)
     # 文档列表（用于图例着色）
@@ -8431,13 +8493,14 @@ def add_knowledge_base_concept(kb_id):
         if not doc_id:
             return jsonify({'error': '知识库中没有文档，无法添加概念'}), 400
         
-        # 检查概念是否已存在
+        # 按规范化名称检查同一文档中的重复概念，避免大小写/空格造成重复节点。
         cursor.execute("""
-            SELECT id FROM knowledge_concepts 
-            WHERE knowledge_document_id = %s AND concept_name = %s
-        """, (doc_id, concept_name))
-        
-        if cursor.fetchone():
+            SELECT id, concept_name FROM knowledge_concepts
+            WHERE knowledge_document_id = %s
+        """, (doc_id,))
+        existing_concepts = cursor.fetchall()
+        if any(normalize_concept_name(row[1]) == normalize_concept_name(concept_name)
+               for row in existing_concepts):
             return jsonify({'error': f'概念 "{concept_name}" 已存在'}), 409
         
         # 插入新概念（frequency=1, size=25）
@@ -9279,8 +9342,9 @@ def generate_exam_paper():
             flash('请至少配置一种题目类型', 'warning')
             return redirect(url_for('create_exam_paper'))
         
-        # 调用组卷生成器
-        from exam_paper_generator import generate_paper
+        # 调用项目内组卷生成器。该模块位于 myscripts/exam_tools，
+        # 不能依赖运行目录将其暴露为顶层模块。
+        from myscripts.exam_tools.exam_paper_generator import generate_paper
         
         config = {
             'paper_name': paper_name,
@@ -9611,8 +9675,8 @@ def clone_paper(paper_id):
                 'difficulty_dist': 'mixed'
             })
         
-        # 调用组卷生成器
-        from exam_paper_generator import generate_paper
+        # 试卷克隆复用同一个项目内组卷生成器。
+        from myscripts.exam_tools.exam_paper_generator import generate_paper
         
         config = {
             'paper_name': original_paper['paper_name'] + ' (副本)',
@@ -9663,4 +9727,4 @@ def merge_concepts(ai_concepts, keyword_concepts):
     return list(concept_dict.values())
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=1234,debug=True)
+    app.run(host='0.0.0.0', port=5000,debug=True)

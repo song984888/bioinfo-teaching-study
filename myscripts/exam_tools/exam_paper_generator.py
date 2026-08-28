@@ -35,12 +35,13 @@ class ExamPaperGenerator:
         
         all_questions = []
         
-        # 从 questions 表查询（programming 类型）
+        # 从 questions 表查询（programming 类型）。编程题表不包含
+        # grading_criteria，使用 NULL 占位以统一后续试卷数据格式。
         query1 = """
-            SELECT id, question_text, sample_answer, grading_criteria, 
+            SELECT id, question_text, sample_answer, NULL AS grading_criteria,
                    topic, difficulty, language, question_type
             FROM questions
-            WHERE is_approved = TRUE
+            WHERE review_status = 'approved'
         """
         params1 = []
         
@@ -67,7 +68,7 @@ class ExamPaperGenerator:
                    topic, difficulty, 'theoretical' as language, 
                    'theory' as question_type
             FROM theory_questions
-            WHERE is_approved = TRUE
+            WHERE review_status = 'approved'
         """
         params2 = []
         

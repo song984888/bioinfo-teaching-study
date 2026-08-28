@@ -38,7 +38,7 @@
     <!-- PDF 内容区域 -->
     <div class="pdf-content-wrapper">
         {% set has_meta = doc_meta.journal or doc_meta.authors or doc_meta.pub_year or doc_meta.doi or doc_meta.pmid or doc_meta.pmcid or doc_meta.source_url or doc_meta.keywords %}
-        {% if document.file_type == 'pdf' %}
+        {% if document.file_type == 'pdf' and pdf_available %}
             <!-- PDF 文件使用 iframe 内嵌显示 -->
             <div class="pdf-iframe-container">
                 <iframe src="{{ url_for('view_document_pdf', kb_id=document.knowledge_base_id, doc_id=document.id) }}" 
@@ -47,6 +47,13 @@
                         height="100%"
                         id="pdfViewer">
                 </iframe>
+            </div>
+        {% elif document.file_type == 'pdf' %}
+            <div class="text-file-container">
+                <div class="alert alert-warning" role="alert">
+                    原始 PDF 文件已不在服务器上；以下显示保存于知识库中的提取文本。请重新上传原文件以恢复 PDF 在线预览和下载。
+                </div>
+                <pre class="code-display"><code>{{ document.content }}</code></pre>
             </div>
         {% elif document.file_type in ['txt', 'md', 'py', 'java', 'c', 'cpp', 'js', 'html'] %}
             {# 文献检索入库的文档带有结构化元数据（期刊/作者/年份/关键词等），优先以文献卡片形式展示 #}

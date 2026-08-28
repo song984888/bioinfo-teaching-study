@@ -26,35 +26,6 @@
   #knowledge-graph.kg-fullscreen #loading-indicator { display: none !important; }
 </style>
 <div class="container mt-4">
-    <!-- 添加 JavaScript 数据变量 -->
-    <script>
-        // 将 Flask 模板变量转换为 JavaScript 变量
-        var knowledge_base = {{ knowledge_base|tojson|safe }};
-        var concepts = {{ concepts|tojson|safe }};
-        var relations = {{ relations|tojson|safe }};
-        var max_frequency = {{ max_frequency|tojson|safe }};
-        var documents = {{ documents|tojson|safe }};
-
-        // 构建 文档id -> 颜色 的映射，用于按文档区分概念颜色
-        var docColorMap = {};
-        var docTitleMap = {};
-        if (documents && documents.length) {
-            documents.forEach(function(d) {
-                docColorMap[d.id] = d.color;
-                docTitleMap[d.id] = d.title;
-            });
-        }
-        function getDocColor(docId) {
-            return docColorMap[docId] || '#95a5a6';
-        }
-        
-        console.log('JavaScript 变量已设置:');
-        console.log('knowledge_base:', knowledge_base);
-        console.log('concepts:', concepts);
-        console.log('relations:', relations);
-        console.log('max_frequency:', max_frequency);
-    </script>
-
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
             <li class="breadcrumb-item">
@@ -89,12 +60,12 @@
     </div>
     
     <!-- 添加概念模态框 -->
-    <div class="modal fade" id="addConceptModal" tabindex="-1">
+    <div class="modal" id="addConceptModal" tabindex="-1" aria-hidden="true" style="display:none; background:rgba(0,0,0,.45);">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title"><i class="fas fa-plus-circle"></i> 添加自定义概念</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" id="closeConceptModalBtn" aria-label="关闭"></button>
                 </div>
                 <div class="modal-body">
                     <form id="addConceptFormKG">
@@ -225,6 +196,10 @@
                 </div>
                 <div class="card-body">
                     <div class="mb-3">
+                        <label for="frequencyFilter" class="form-label">最低频率：<span id="frequencyFilterValue">1</span></label>
+                        <input type="range" class="form-range" id="frequencyFilter" min="1" max="{{ max_frequency or 1 }}" value="1">
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label">节点大小</label>
                         <input type="range" class="form-range" id="nodeSize" min="10" max="50" value="20">
                     </div>
@@ -249,7 +224,14 @@
                 </div>
                 <div class="card-body">
                     <div id="document-legend">
-                        <!-- 文档颜色图例将在这里动态生成 -->
+                        <div class="small text-muted mb-2">勾选文档以显示对应概念（默认全部）</div>
+                        {% for doc in documents %}
+                        <label class="kg-document-option" title="{{ doc.title or ('文档 ' ~ doc.id) }}">
+                            <span class="kg-document-swatch" style="background: {{ doc.color }};"></span>
+                            <span class="kg-document-name" style="display:block;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;color:#212529 !important;font-size:13px !important;line-height:1.5 !important;visibility:visible !important;opacity:1 !important;">{{ doc.title or ('文档 ' ~ doc.id) }}</span>
+                            <input type="checkbox" checked value="{{ doc.id }}" aria-label="显示文档 {{ doc.title or doc.id }}">
+                        </label>
+                        {% endfor %}
                     </div>
                 </div>
             </div>
@@ -307,11 +289,57 @@
 {% endblock %}
 
 {% block scripts %}
-<!-- 添加 D3.js v7 完整版 CDN 引用（力导向布局必需） -->
-<script src="https://d3js.org/d3.v7.min.js"></script>
+<!-- Use the bundled D3 build so graph rendering does not depend on external CDN access. -->
+<script src="{{ url_for('static', filename='js/d3.min.js') }}"></script>
 <!-- 添加 Bootstrap JS（模态框必需） -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 <style>
+#document-legend {
+    max-height: 180px;
+    overflow-y: auto;
+    padding: 4px 6px;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    background: #fafafa;
+}
+.kg-document-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    margin-bottom: 8px;
+    padding: 2px 0;
+    white-space: nowrap;
+    color: #212529;
+}
+.kg-document-swatch {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+}
+.kg-document-name {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #212529;
+}
+.kg-document-option input[type="checkbox"] {
+    margin-left: auto;
+    flex: 0 0 auto;
+    width: 16px !important;
+    height: 16px !important;
+    min-width: 16px !important;
+    padding: 0 !important;
+    border: 1px solid #6c757d !important;
+    border-radius: 3px !important;
+    appearance: auto !important;
+    -webkit-appearance: checkbox !important;
+}
+
 .tooltip {
     position: absolute;
     background: rgba(0,0,0,0.8);
@@ -430,11 +458,31 @@
     visibility: visible !important;
     opacity: 1 !important;
 }
+.kg-filtered-out { display: none !important; }
+#graph-svg .nodes .node.kg-filtered-out,
+#graph-svg .labels text.kg-filtered-out,
+#graph-svg .links line.kg-filtered-out {
+    display: none !important;
+    visibility: hidden !important;
+}
 </style>
 
 
 
 <script>
+// Keep the graph data in one script scope; duplicate declarations prevent the
+// graph script from parsing and leave administrators with a blank graph.
+const knowledge_base = {{ knowledge_base|tojson|safe }};
+const concepts = {{ concepts|tojson|safe }};
+const relations = {{ relations|tojson|safe }};
+const max_frequency = {{ max_frequency|tojson|safe }};
+const documents = {{ documents|tojson|safe }};
+const docColorMap = Object.fromEntries(documents.map(d => [d.id, d.color]));
+const docTitleMap = Object.fromEntries(documents.map(d => [d.id, d.title]));
+function getDocColor(docId) {
+    return docColorMap[docId] || '#95a5a6';
+}
+
 // 添加全局错误监听
 window.addEventListener('error', function(e) {
     console.error('🔴 全局错误捕获:', e.message);
@@ -454,83 +502,30 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('concepts 变量类型:', typeof concepts);
     console.log('relations 变量类型:', typeof relations);
     
-    // 初始化 Bootstrap Modal
+    // 自管理模态框：不依赖 Bootstrap CDN，避免取消按钮在脚本加载失败时被卡住。
     var addConceptModalElement = document.getElementById('addConceptModal');
     if (addConceptModalElement) {
-        // 🔴 确保模态框初始状态是隐藏的
-        addConceptModalElement.style.display = 'none';
-        addConceptModalElement.classList.remove('show');
-        addConceptModalElement.removeAttribute('aria-modal');
-        addConceptModalElement.removeAttribute('aria-hidden');
-        
-        // 清理可能存在的 backdrop
-        var existingBackdrops = document.querySelectorAll('.modal-backdrop');
-        existingBackdrops.forEach(function(backdrop) {
-            backdrop.remove();
-        });
-        
-        var addConceptModal = new bootstrap.Modal(addConceptModalElement, {
-            backdrop: true,
-            keyboard: true,
-            focus: true
-        });
-        console.log('✅ 添加概念模态框已初始化（默认隐藏）');
-        
-        // 监听模态框关闭事件，清理表单
-        addConceptModalElement.addEventListener('hidden.bs.modal', function () {
+        function closeConceptModal() {
+            addConceptModalElement.style.display = 'none';
+            addConceptModalElement.setAttribute('aria-hidden', 'true');
+            document.body.classList.remove('modal-open');
+            document.querySelectorAll('.modal-backdrop').forEach(function(backdrop) { backdrop.remove(); });
             document.getElementById('addConceptFormKG').reset();
-            console.log('✅ 模态框已关闭，表单已清空');
-        });
-        
-        // 绑定取消按钮点击事件 - 直接使用 Bootstrap API 关闭
-        var cancelBtn = document.getElementById('cancelConceptBtn');
-        if (cancelBtn) {
-            cancelBtn.addEventListener('click', function() {
-                console.log('🔴 取消按钮被点击');
-                console.log('模态框元素:', addConceptModalElement);
-                
-                var modal = bootstrap.Modal.getInstance(addConceptModalElement);
-                console.log('获取到的 modal 实例:', modal);
-                
-                if (modal) {
-                    // 先触发 Bootstrap 的关闭方法
-                    modal.hide();
-                    console.log('✅ 已调用 modal.hide()');
-                    
-                    // 立即手动移除所有样式和类（不等待）
-                    addConceptModalElement.style.display = 'none';
-                    addConceptModalElement.classList.remove('show');
-                    addConceptModalElement.removeAttribute('aria-modal');
-                    addConceptModalElement.removeAttribute('role');
-                    addConceptModalElement.removeAttribute('aria-hidden');
-                    
-                    // 移除 body 的 modal-open 类
-                    document.body.classList.remove('modal-open');
-                    document.body.style.overflow = '';
-                    document.body.style.paddingRight = '';
-                    
-                    // 移除所有 backdrop
-                    var backdrops = document.querySelectorAll('.modal-backdrop');
-                    backdrops.forEach(function(backdrop) {
-                        backdrop.remove();
-                    });
-                    
-                    console.log('✅ 模态框已强制手动关闭');
-                } else {
-                    console.error('❌ 无法获取 modal 实例，尝试手动关闭');
-                    // 如果实例不存在，手动隐藏
-                    addConceptModalElement.style.display = 'none';
-                    addConceptModalElement.classList.remove('show');
-                    document.body.classList.remove('modal-open');
-                    var backdrop = document.querySelector('.modal-backdrop');
-                    if (backdrop) {
-                        backdrop.remove();
-                    }
-                    console.log('✅ 模态框已手动关闭');
-                }
-            });
-            console.log('✅ 取消按钮事件已绑定');
         }
+        function openConceptModal() {
+            addConceptModalElement.style.display = 'block';
+            addConceptModalElement.setAttribute('aria-hidden', 'false');
+            document.body.classList.add('modal-open');
+        }
+        addConceptModalElement.addEventListener('click', function(event) {
+            if (event.target === addConceptModalElement) closeConceptModal();
+        });
+        document.getElementById('cancelConceptBtn').addEventListener('click', closeConceptModal);
+        document.getElementById('closeConceptModalBtn').addEventListener('click', closeConceptModal);
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape' && addConceptModalElement.style.display === 'block') closeConceptModal();
+        });
+        console.log('✅ 添加概念模态框已初始化');
         
         // 绑定添加按钮点击事件
         var addBtn = document.getElementById('addConceptBtn');
@@ -545,8 +540,7 @@ document.addEventListener('DOMContentLoaded', function() {
         var openModalBtn = document.getElementById('openAddConceptModal');
         if (openModalBtn) {
             openModalBtn.addEventListener('click', function() {
-                var modal = new bootstrap.Modal(document.getElementById('addConceptModal'));
-                modal.show();
+                openConceptModal();
                 console.log('✅ 模态框已打开');
             });
             console.log('✅ 打开模态框按钮事件已绑定');
@@ -635,7 +629,8 @@ document.addEventListener('DOMContentLoaded', function() {
             size: c.size || 30,  // 增大默认尺寸
             type: c.concept_type,
             confidence: c.confidence || 0,
-            document_id: c.document_id,  // 所属文档，用于按文档着色
+            document_id: c.document_id,
+            source_documents: c.source_documents || [],
             docColor: getDocColor(c.document_id)
         })),
         links: relations.map(r => ({
@@ -651,7 +646,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const simulation = d3.forceSimulation(simulationData.nodes)
         .force('link', d3.forceLink(simulationData.links).id(d => d.id).distance(150)) // 连线长度 150px
         .force('charge', d3.forceManyBody().strength(-300)) // 节点间斥力（原 -400 → -300，进一步减小）
-        .force('center', d3.forceCenter(width / 2, height / 2).strength(0.2)) // 中心引力增强（原 0.15 → 0.2）
+        .force('center', d3.forceCenter(width / 2, height / 2))
         .force('collide', d3.forceCollide().radius(d => d.size + 35).iterations(2)) // 碰撞检测（原 +40 → +35）
         .force('x', d3.forceX(width / 2).strength(0.05)) // X 轴约束力，防止左右飞出
         .force('y', d3.forceY(height / 2).strength(0.05)); // Y 轴约束力，防止上下飞出
@@ -828,6 +823,48 @@ document.addEventListener('DOMContentLoaded', function() {
             .attr("x", d => d.x)
             .attr("y", d => d.y - d.size - 15); // 标签在节点上方
     });
+
+    // 文档名称和颜色图例由模板渲染，避免依赖后续脚本才能显示。
+    const selectedDocuments = new Set(documents.map(d => String(d.id)));
+    const documentFilter = document.getElementById('document-legend');
+    if (documentFilter) {
+        documentFilter.querySelectorAll('input[type="checkbox"]').forEach(function (checkbox) {
+            checkbox.addEventListener('change', function () {
+                const docId = String(this.value);
+                this.checked ? selectedDocuments.add(docId) : selectedDocuments.delete(docId);
+                applyGraphFilters();
+            });
+        });
+    }
+    const frequencyFilter = document.getElementById('frequencyFilter');
+    const frequencyFilterValue = document.getElementById('frequencyFilterValue');
+    function applyGraphFilters() {
+        const minimum = Number(frequencyFilter ? frequencyFilter.value : 1);
+        if (frequencyFilterValue) frequencyFilterValue.textContent = minimum;
+        const visibleNodes = simulationData.nodes.filter(n => n.frequency >= minimum &&
+            (n.source_documents || []).some(d => selectedDocuments.has(String(d.id))));
+        const visibleIds = new Set(visibleNodes.map(n => n.id));
+        const visibleLinks = simulationData.links.filter(d =>
+            visibleIds.has(d.source.id || d.source) && visibleIds.has(d.target.id || d.target));
+        // 重新分散可见节点，避免过滤后保留原布局造成拥挤。
+        visibleNodes.forEach((node, index) => {
+            const angle = (2 * Math.PI * index) / Math.max(visibleNodes.length, 1);
+            const radius = Math.min(width, height) * 0.28;
+            node.x = width / 2 + Math.cos(angle) * radius;
+            node.y = height / 2 + Math.sin(angle) * radius;
+        });
+        // 使用 SVG display 属性而不是透明度：不符合条件的节点、标签和连线
+        // 不参与绘制，也不会留下可见的占位对象。
+        nodes.classed('kg-filtered-out', d => !visibleIds.has(d.id));
+        labels.classed('kg-filtered-out', d => !visibleIds.has(d.id));
+        links.classed('kg-filtered-out', d => !visibleIds.has(d.source.id || d.source) || !visibleIds.has(d.target.id || d.target));
+        // 只让筛选后的节点和连线参与力导向计算，并重新布局。
+        simulation.nodes(visibleNodes);
+        simulation.force('link').links(visibleLinks);
+        simulation.alpha(0.9).restart();
+    }
+    if (frequencyFilter) frequencyFilter.addEventListener('input', applyGraphFilters);
+    applyGraphFilters();
     
     console.log('✅ 力导向布局启动成功！');
     
@@ -918,25 +955,24 @@ document.addEventListener('DOMContentLoaded', function() {
         kgResizeTimer = setTimeout(resizeGraph, 200);
     });
 
-    // ==================== 文档颜色图例 ====================
-    const docLegend = document.getElementById('document-legend');
-    if (docLegend && documents && documents.length) {
-        documents.forEach(function (d) {
-            const item = document.createElement('div');
-            item.style.cssText = 'display:flex;align-items:center;margin-bottom:8px;';
-            const swatch = document.createElement('span');
-            swatch.style.cssText = 'display:inline-block;width:14px;height:14px;border-radius:50%;background:' + d.color + ';margin-right:8px;flex:0 0 auto;';
-            const label = document.createElement('span');
-            label.style.cssText = 'font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-            label.textContent = (d.title || ('文档 ' + d.id));
-            item.appendChild(swatch);
-            item.appendChild(label);
-            docLegend.appendChild(item);
+    // 文档颜色图例已在上方与筛选复选框一起渲染。
+
+    // 节点大小改变时同步调整布局密度：小节点使用更紧凑的分布与连线，
+    // 大节点增加间距，确保当前画布能展示尽可能多的概念。
+    function relayoutForNodeSize(size) {
+        const activeNodes = simulation.nodes();
+        const radius = Math.min(width, height) * (0.10 + size / 140);
+        activeNodes.forEach((node, index) => {
+            const angle = (2 * Math.PI * index) / Math.max(activeNodes.length, 1);
+            node.x = width / 2 + Math.cos(angle) * radius;
+            node.y = height / 2 + Math.sin(angle) * radius;
         });
+        simulation.force('collide').radius(d => d.size + 16).iterations(2);
+        simulation.force('link').distance(45 + size * 2);
+        simulation.alpha(0.95).restart();
     }
 
-    // ==================== 显示控制滑块（实时调节） ====================
-    // 节点大小：实时调整 circle 半径、标签偏移与碰撞力
+    // 节点大小：更新半径、标签偏移，并按新尺寸重新布局。
     const nodeSizeSlider = document.getElementById('nodeSize');
     if (nodeSizeSlider) {
         nodeSizeSlider.addEventListener('input', function () {
@@ -944,8 +980,7 @@ document.addEventListener('DOMContentLoaded', function() {
             simulationData.nodes.forEach(n => { n.size = val; });
             nodes.select('circle').attr('r', val);
             labels.attr('y', d => d.y - val - 15);
-            simulation.force('collide').radius(d => d.size + 35);
-            simulation.alpha(0.3).restart();
+            relayoutForNodeSize(val);
         });
     }
 
@@ -978,6 +1013,12 @@ function getConceptColorBright(type) {
     return brightColors[type] || brightColors.default;
 }
 
+function escapeHtml(value) {
+    const node = document.createElement('div');
+    node.textContent = value == null ? '' : String(value);
+    return node.innerHTML;
+}
+
 // 🔴 显示详细信息提示
 function showTooltip(event, d) {
     // 创建提示框
@@ -994,11 +1035,12 @@ function showTooltip(event, d) {
         z-index: 9999;
         max-width: 200px;
     `;
+    const sourceNames = (d.source_documents || []).map(item => item.title || ('文档 ' + item.id));
     tooltip.innerHTML = `
-        <strong>${d.name}</strong><br>
-        类型：${d.type}<br>
-        频率：${d.frequency}<br>
-        来源文档：${docTitleMap[d.document_id] || '未知'}
+        <strong>${escapeHtml(d.name)}</strong><br>
+        类型：${escapeHtml(d.type || 'entity')}<br>
+        总频率：${d.frequency}<br>
+        来源文档（${sourceNames.length}）：${sourceNames.map(escapeHtml).join('、') || '未知'}
     `;
     
     document.body.appendChild(tooltip);
@@ -1151,12 +1193,8 @@ async function addConceptFromKG() {
             // 显示成功提示
             showNotification(`${result.message}`, 'success');
             
-            // 关闭模态框
-            var modalElement = document.getElementById('addConceptModal');
-            var modal = bootstrap.Modal.getInstance(modalElement);
-            if (modal) {
-                modal.hide();
-            }
+            // 关闭模态框（与打开/取消路径使用同一套本地逻辑）
+            document.getElementById('cancelConceptBtn').click();
             
             // 清空表单
             document.getElementById('conceptNameKG').value = '';

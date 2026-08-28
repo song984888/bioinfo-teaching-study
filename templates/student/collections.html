@@ -70,7 +70,7 @@
                 <div class="card-body" id="conceptList">
                     {% if note_groups %}
                     {% for key, group in note_groups.items() %}
-                    <div class="concept-list-item" onclick="selectConcept(this,'{{ key }}')" data-cid="{{ key }}" data-name="{{ group.target_name }}">
+                    <div class="concept-list-item" onclick='selectConcept(this, {{ key|tojson }})' data-cid="{{ key }}" data-name="{{ group.target_name }}">
                         {{ group.target_name }} <span class="count">{{ group.notes|length }}</span>
                     </div>
                     {% endfor %}

@@ -3,7 +3,7 @@
 {% block title %}题库浏览 - 教师控制台{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="container mt-4 question-bank-page">
     <div class="mb-4">
         <h2><i class="fas fa-book"></i> 题库浏览</h2>
         <p class="text-muted">查看和筛选已通过审核的题目</p>
@@ -172,7 +172,7 @@
                             <td>{{ question.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
                             <td>
                                 <div class="btn-group" role="group">
-                                    <a href="{{ url_for('question_detail', question_id=question.id) }}" 
+                                    <a href="{{ url_for('question_detail', question_id=question.id, source_type=question.source_type) }}" 
                                        class="btn btn-sm" 
                                        title="查看详情"
                                        style="background-color: #0d6efd; border-color: #0d6efd; color: white !important; white-space: nowrap; padding: 4px 12px; display: inline-flex; align-items: center; gap: 6px;">
@@ -250,6 +250,59 @@
 
 {% block styles %}
 <style>
+    /* Keep table content readable even when a global/theme rule sets white text. */
+    .question-bank-page .table,
+    .question-bank-page .table tbody,
+    .question-bank-page .table tbody tr,
+    .question-bank-page .table tbody td {
+        color: #1f2937 !important;
+        background-color: #ffffff;
+    }
+
+    .question-bank-page .table thead,
+    .question-bank-page .table thead th,
+    .question-bank-page .table-light th {
+        color: #1f2937 !important;
+        background-color: #f1f5f9 !important;
+    }
+
+    .question-bank-page .table tbody tr:hover td {
+        color: #111827 !important;
+        background-color: #f8fafc !important;
+    }
+
+    .question-bank-page .table td a:not(.btn),
+    .question-bank-page .table td div {
+        color: #1f2937 !important;
+    }
+
+    .question-bank-page .table td .badge {
+        display: inline-block;
+        color: #ffffff !important;
+        font-weight: 600;
+        line-height: 1.2;
+    }
+
+    /* The base template does not load Bootstrap CSS, so bg-* classes alone
+       do not provide a background. Set both sides of the contrast explicitly. */
+    .question-bank-page .table td .badge.bg-info {
+        background-color: #087f9c !important;
+    }
+
+    .question-bank-page .table td .badge.bg-secondary {
+        background-color: #475569 !important;
+    }
+
+    .question-bank-page .table td .badge.bg-primary {
+        background-color: #1559a6 !important;
+    }
+
+    .question-bank-page .table td .btn,
+    .question-bank-page .table td .btn i,
+    .question-bank-page .table td .btn span {
+        color: #ffffff !important;
+    }
+
     .table td {
         vertical-align: middle;
     }

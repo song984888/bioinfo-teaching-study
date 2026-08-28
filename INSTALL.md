@@ -1,5 +1,10 @@
 # 生物信息学课程教&学系统 — 安装与启动指南
 
+
+## @186 install ,please not modify init.db (because its older mysql db version) and using port:5000 ---> mapt to 172.24.64.53:8080 in app.py
+## mysql using local installed readme refer to: MYSQL_local_INSTALL.md (system mysql version too old!!! )
+
+
 ## 系统要求
 
 | 组件 | 版本要求 |
@@ -19,9 +24,9 @@ cd bioinfo-teaching-study
 ## 2. 创建 Python 虚拟环境
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate   # macOS/Linux
-# 或 .venv\Scripts\activate  # Windows
+conda create -n bio-teaching-py39 python=3.9.3
+conda activate bio-teaching-py39
+
 ```
 
 ## 3. 安装 Python 依赖
@@ -41,6 +46,8 @@ pip install -r requirements.txt
 | `PyPDF2` | PDF 文档解析 |
 | `python-docx` | Word 文档解析 |
 | `aiohttp` | 异步 HTTP 请求（题目生成） |
+| `gunicorn` | 生产环境 WSGI 服务 |
+| `reportlab` | 试卷 PDF 生成与下载 |
 
 ## 4. 安装并配置 MySQL
 
@@ -68,8 +75,8 @@ mysql -u root -p
 
 ```sql
 CREATE DATABASE IF NOT EXISTS code_exam DEFAULT CHARSET utf8mb4;
-CREATE USER IF NOT EXISTS 'songht'@'localhost' IDENTIFIED BY 'songht123';
-GRANT ALL PRIVILEGES ON code_exam.* TO 'songht'@'localhost';
+CREATE USER IF NOT EXISTS '<db-user>'@'localhost' IDENTIFIED BY '<db-password>';
+GRANT ALL PRIVILEGES ON code_exam.* TO '<db-user>'@'localhost';
 FLUSH PRIVILEGES;
 EXIT;
 ```
@@ -109,7 +116,7 @@ ollama pull qwen2.5-coder:32b
 
 ```bash
 source .venv/bin/activate
-python app.py
+gunicorn --workers 5 --bind 0.0.0.0:5000 app:app
 ```
 
 首次启动后会自动执行 `init_db()`，创建以下核心表：
@@ -121,15 +128,19 @@ python app.py
 
 ## 7. 导入演示数据（可选）
 
-项目提供了演示数据文件，包含用户账户、知识库、概念和理论题：
+### 程序设计题 Demo
 
-```bash
-mysql -u songht -psonght123 code_exam < docs/demo_data.sql
-```
+`demo_data/programe_question.sql` 是完整的历史 SQL dump。不要直接执行整个文件，因为其中包含 `DROP TABLE` 和旧版 `CREATE TABLE`，可能覆盖当前题库。
 
-详细说明见 **[docs/DEMO_DATA.md](docs/DEMO_DATA.md)**。
+导入程序设计题时，只提取 `questions` 表的 INSERT 数据并映射到当前表结构。导入记录应设置：
 
-导入后可直接使用以下账户登录，无需手动创建。
+- `question_type = 'programming'`
+- `review_status = 'pending'`
+- `is_approved = 0`
+
+导入后，请在教师端审核页面审核题目。审核通过后，题目才会出现在学生端练习主题列表中。
+
+其他演示数据请按照对应 SQL 文件的说明导入，并先确认目标数据库和表结构。
 
 ## 8. 创建初始账户（手动）
 
@@ -138,65 +149,65 @@ mysql -u songht -psonght123 code_exam < docs/demo_data.sql
 ```sql
 USE code_exam;
 
--- 创建管理员账户（密码 123456 的 SHA256 哈希）
+-- 创建管理员账户（请使用本地已配置密码）
 INSERT INTO users (name, employee_id, password_hash, role, can_login)
-VALUES ('Admin', 'admin', SHA2('123456', 256), 'admin', 1);
+VALUES ('Admin', 'admin', SHA2('<admin-password>', 256), 'admin', 1);
 
--- 创建教师账户
+-- 创建教师账户（请使用本地已配置密码）
 INSERT INTO users (name, employee_id, password_hash, role, can_login)
-VALUES ('测试教师', 'teacher', SHA2('123456', 256), 'teacher', 1);
+VALUES ('测试教师', 'teacher', SHA2('<teacher-password>', 256), 'teacher', 1);
 
--- 创建学生账户
+-- 创建学生账户（请使用本地已配置密码）
 INSERT INTO users (name, employee_id, password_hash, role, can_login)
-VALUES ('student001', 's001', SHA2('123456', 256), 'student', 1);
+VALUES ('student001', 's001', SHA2('<student-password>', 256), 'student', 1);
 ```
 
 ## 9. 启动应用
 
 ```bash
 source .venv/bin/activate
-python app.py
+gunicorn --workers 5 --bind 0.0.0.0:5000 app:app
 ```
 
-应用将在 `http://localhost:1234` 启动，监听所有网络接口 (`0.0.0.0`)。
+应用将在所有网络接口的 `:5000` 启动；外部映射地址为 `http://172.24.64.53:8080`。
 
 ### 后台运行（生产环境）
 
 ```bash
-nohup .venv/bin/python app.py > /tmp/flask_app.log 2>&1 &
+nohup .venv/bin/gunicorn --workers 5 --bind 0.0.0.0:5000 app:app > /tmp/gunicorn_app.log 2>&1 &
 ```
 
 ### 停止应用
 
 ```bash
-lsof -ti:1234 | xargs kill
+lsof -ti:5000 | xargs kill
 ```
 
 ## 10. 验证安装
 
-打开浏览器访问 `http://localhost:1234`，使用以下账户登录：
+打开浏览器访问 `http://172.24.64.53:8080`，使用以下账户登录：
 
 | 角色 | 学号 | 密码 |
 |------|------|------|
-| 管理员 | admin | 123456 |
-| 教师 | teacher | 123456 |
-| 学生 | s001 | 123456 |
+| Admin | admin | configured locally |
+| Teacher | teacher | configured locally |
+| Student | s001 | configured locally |
 
 ## 11. 常见问题
 
 ### Q: 数据库连接失败
 检查 MySQL 是否运行：
 ```bash
-mysql -u songht -psonght123 -e "SELECT 1"
+mysql -u <db-user> -p code_exam -e "SELECT 1"
 ```
 
 ### Q: DeepSeek API 调用失败
 确认 `my_config.py` 中的 `DEEPSEEK_API_KEY` 正确，且网络可访问 `api.deepseek.com`。
 
-### Q: 端口 1234 被占用
-修改 `app.py` 末尾的端口号：
-```python
-app.run(host='0.0.0.0', port=1234, debug=True)  # 改为其他端口
+### Q: 端口 5000 被占用
+停止占用端口的进程，或调整 Gunicorn 的 `--bind` 参数：
+```bash
+gunicorn --bind 0.0.0.0:5001 app:app
 ```
 
 ### Q: PDF 上传后无法提取文本

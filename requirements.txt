@@ -1,4 +1,6 @@
 flask
+gunicorn
+reportlab
 flask-session
 mysql-connector-python
 requests

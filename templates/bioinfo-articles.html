@@ -411,6 +411,38 @@ let articles = [];
 let analysisCache = {};
 const canEditJournals = {{ 'true' if can_edit_journals else 'false' }};
 
+function articleMatchesJournal(article, selectedJournals) {
+  const journal = (article.journalInfo?.journal?.title || article.journalTitle || '').toLowerCase();
+  return selectedJournals.some(journalName =>
+    journalName.toLowerCase().split(/\s+/).every(word => journal.includes(word))
+  );
+}
+
+async function searchCrossrefFallback(keywords, selectedJournals, yearFrom, yearTo, pageSize) {
+  const filter = [
+    `from-pub-date:${yearFrom || '2000'}-01-01`,
+    `until-pub-date:${yearTo || '2026'}-12-31`,
+    'type:journal-article'
+  ].join(',');
+  const response = await fetch(
+    `https://api.crossref.org/works?query.bibliographic=${encodeURIComponent(keywords || 'bioinformatics')}` +
+    `&filter=${encodeURIComponent(filter)}&rows=${Math.max(100, Number(pageSize) * 5)}`
+  );
+  if (!response.ok) throw new Error(`Crossref HTTP ${response.status}: ${response.statusText}`);
+  const payload = await response.json();
+  return (payload.message?.items || []).map(item => ({
+    title: (item.title || [])[0] || 'No Title',
+    authorString: (item.author || []).map(author => [author.given, author.family].filter(Boolean).join(' ')).join(', '),
+    journalTitle: (item['container-title'] || [])[0] || '',
+    pubYear: String(item.published?.['date-parts']?.[0]?.[0] || ''),
+    abstractText: (item.abstract || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(),
+    doi: item.DOI || '',
+    id: item.DOI || item.URL || '',
+    citedByCount: item['is-referenced-by-count'] || 0,
+    source: 'Crossref'
+  })).filter(article => articleMatchesJournal(article, selectedJournals));
+}
+
 async function searchArticles() {
   const loading = document.getElementById('loading');
   const error = document.getElementById('error');
@@ -491,25 +523,19 @@ async function searchArticles() {
     if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 
     const data = await response.json();
-    if (!data.resultList || !data.resultList.result || data.resultList.result.length === 0) {
-      empty.classList.add('active');
-      empty.innerHTML = '<div class="empty-icon">🔍</div><p>未找到匹配文献</p><p style="font-size:0.8rem">尝试调整关键词或期刊选择</p>';
-      return;
+    let rawArticles = data.resultList?.result || [];
+    let sourceHitCount = data.hitCount || 0;
+    if (rawArticles.length === 0) {
+      console.warn('Europe PMC returned no results; using Crossref fallback.');
+      rawArticles = await searchCrossrefFallback(keywords, selectedJournals, yearFrom, yearTo, pageSize);
+      sourceHitCount = rawArticles.length;
     }
-
-    let rawArticles = data.resultList.result;
 
     // Client-side journal filtering (safety net): keep an article only if its journal
     // title contains every word of at least one selected journal value.
     // e.g. "Brief Bioinform" matches "Briefings in Bioinformatics" because both
     // "brief" and "bioinform" appear in the full title.
-    rawArticles = rawArticles.filter(a => {
-      const jt = (a.journalInfo?.journal?.title || a.journalTitle || '').toLowerCase();
-      return selectedJournals.some(j => {
-        const words = j.toLowerCase().split(/\s+/);
-        return words.every(w => jt.includes(w));
-      });
-    });
+    rawArticles = rawArticles.filter(a => articleMatchesJournal(a, selectedJournals));
 
     // Client-side date filtering (as backup)
     if (yearFrom || yearTo) {
@@ -523,7 +549,13 @@ async function searchArticles() {
 
     // Trim to requested page size
     articles = rawArticles.slice(0, parseInt(pageSize));
-    const hitCount = data.hitCount || articles.length;
+    const hitCount = sourceHitCount || articles.length;
+
+    if (articles.length === 0) {
+      empty.classList.add('active');
+      empty.innerHTML = '<div class="empty-icon">🔍</div><p>未找到匹配文献</p><p style="font-size:0.8rem">尝试调整关键词或期刊选择</p>';
+      return;
+    }
 
     document.getElementById('statTotal').textContent = hitCount;
     document.getElementById('statShown').textContent = articles.length;

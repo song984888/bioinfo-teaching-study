@@ -125,7 +125,7 @@
                     {% endif %}
                     <td>{{ question.created_at.strftime('%Y-%m-%d') }}</td>
                     <td class="actions">
-                        <a href="{{ url_for('question_detail', question_id=question.id) }}" class="btn small">详情</a>
+                        <a href="{{ url_for('question_detail', question_id=question.id, source_type=question.source_type) }}" class="btn small">详情</a>
                         {% if current_status == 'pending' %}
                         <form method="POST" action="{{ url_for('approve_question', question_id=question.id) }}" style="display:inline;">
                             <button type="submit" class="btn small primary">通过</button>

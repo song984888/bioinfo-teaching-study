@@ -1,101 +1,54 @@
-# ===== 运行时会话数据（含会话信息，勿入库）=====
-flask_session/
-
-# ===== Python 缓存 / 虚拟环境 =====
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
+# Local/runtime state
 .venv/
-venv/
-env/
-
-# ===== 本地数据库 / 日志 / 运行产物 =====
-*.db
-*.sqlite
-*.sqlite3
-*.log
+.venv-hermes/
+.venv-*/
+__pycache__/
+*.py[cod]
+flask_session/
 logs/
-nohup.out
-run.log
-server.log
-gunicorn_run.log
-qodana.sarif.json
-qodana.yaml
+*.log
 
-# ===== 用户上传 / 运行时生成数据 =====
+# Local data and generated runtime files
 uploads/
-student_records/
 users/
-output.txt
-results.txt
-save.txt
-text_output.txt
-word_count.txt
-cookies.txt
-tmp.py
+src/tmp/
+*.db
+*.sqlite*
+.env
+.env.*
 
-# ===== 备份 / 一次性脚本 / 调试产物 =====
-*.backup
-*.bk
-*.bk[0-9]*
-app_fixed.py
-app.py.backup
-check_*.py
-test_*.py
-verify_*.py
-debug_*.py
-diagnose_*.py
-fix_*.py
-migrate_*.py
-init_*.py
-create_*.py
-merge_*.py
-update_*.py
-recalculate_*.py
-show_*.py
-link_*.py
-add_concept_*.py
-batch_*.py
-clean_*.py
-api_command.py
-comprehensive_debug.py
-simple_test.py
-clear_database.py
-code-input-review*.py
-code-system-v3*.py
-codeEditor*.py
-concept_filter.py
-final_verification.py
-quick_*.py
-prompt_templates_test3.py
-*_FIX_SUMMARY.md
-*_SUMMARY.md
-*_REPORT.md
-*_GUIDE.md
-*_OPTIMIZATION.md
-*_INSTRUCTIONS.md
-*_SOLUTION.md
-*修复*.md
-*说明*.md
-*总结*.md
-*指南*.md
-debug_*.html
-final_*.html
-test_*.html
-kg_*.html
-simple_kg_*.html
-urgent_*.html
-
-# ===== 编辑器 / 系统 =====
-.DS_Store
+# IDE and OS files
 .idea/
 .vscode/
-*.swp
+.DS_Store
 
-# ===== 含凭据 / 用户数据导出 / 重复独立应用 =====
-tools/
-my_scripts/
-flask_app/
-src/tmp/
+# Local configuration may contain database credentials/API keys
+my_config.py
+prompt_templates.py
+topic_config.py
+myscripts/config_modules/my_config.py
+my_scripts/config_modules/my_config.py
+*/my_config.py
+*/topic_config.py
+*/prompt_templates.py
+**/user_passwords.txt
+
+# Backups, diagnostics, and local exports
+*.bak
+*.bk*
+*.backup
+nohup.out
+cookies.txt
+qodana.sarif.json
+MYSQL_local_INSTALL.md
+tools/README_密码修复说明.md
+docs/DEMO_DATA.md
+docs/system-manual.md
+flask_app/config.py
+my_scripts/select_ques.py
+my_scripts/student_exer_summary.py
+tools/user_add.pl
+*.csv
+*.xlsx
+student_records/
+test_account.txt

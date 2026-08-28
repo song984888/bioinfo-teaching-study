@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>静态文件测试</title>
+    <script src="/static/js/d3.min.js"></script>
+</head>
+<body>
+    <h1>静态文件测试</h1>
+    <div id="test-result">正在测试...</div>
+    
+    <script>
+        try {
+            if (typeof d3 !== 'undefined') {
+                document.getElementById('test-result').innerHTML = 
+                    '<p style="color: green;">✅ D3.js 加载成功！版本: ' + d3.version + '</p>';
+                
+                // 尝试创建一个简单图形
+                const div = document.createElement('div');
+                div.innerHTML = '<svg width="200" height="100"><circle cx="100" cy="50" r="30" fill="blue"/></svg>';
+                document.body.appendChild(div);
+                
+            } else {
+                document.getElementById('test-result').innerHTML = 
+                    '<p style="color: red;">❌ D3.js 未定义！加载失败</p>';
+            }
+        } catch (e) {
+            document.getElementById('test-result').innerHTML = 
+                '<p style="color: red;">❌ 加载错误: ' + e.message + '</p>';
+        }
+    </script>
+</body>
+</html>
