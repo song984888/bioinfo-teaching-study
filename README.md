@@ -38,6 +38,16 @@ The platform supports Python, Perl, Java, and C programming exercises, asynchron
 - **Question Quality Gate** -- Rejects trivial fixed-output answers before they enter the question bank
 - **Dynamic Exercise Topics** -- Student topics are loaded from currently approved programming questions
 
+## Dashboard Screens
+
+The repository includes 16:9 dashboard overview graphics for the three role-based workspaces:
+
+- [Admin dashboard](docs/admin-dashboard.svg)
+- [Teacher dashboard](docs/teacher-dashboard.svg)
+- [Student dashboard](docs/student-dashboard.svg)
+
+These diagrams summarize the current navigation and workflow modules without embedding runtime statistics or credentials.
+
 ## Architecture
 
 ```
