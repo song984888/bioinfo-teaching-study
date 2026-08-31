@@ -7411,11 +7411,10 @@ def api_student_bookmark():
     finally:
         cur.close(); conn.close()
 
-
 @app.route('/api/student/note', methods=['POST'])
 def api_student_note():
-    """保存或更新学习笔记"""
-    if 'user_id' not in session or session['role'] != 'student':
+    """保存或更新学习笔记（学生和教师均可保存自己的笔记）"""
+    if 'user_id' not in session or session['role'] not in ('student', 'teacher'):
         return jsonify({'success': False, 'message': '未授权'}), 403
     data = request.get_json(silent=True) or {}
     target_type = data.get('target_type')  # 'concept' | 'document' | 'idea'
@@ -7477,7 +7476,7 @@ def api_student_note():
 @app.route('/student/collections')
 def student_collections():
     """学生收藏与笔记总览页"""
-    if 'user_id' not in session or session['role'] != 'student':
+    if 'user_id' not in session or session['role'] not in ('student', 'teacher'):
         return redirect(url_for('login'))
     student_id = session['user_id']
     conn = get_db_connection(); cur = conn.cursor(dictionary=True)
@@ -7950,6 +7949,11 @@ def extract_concepts(kb_id, doc_id):
         '探索性数据分析', '数据预处理', '特征工程', '数据建模'
     ]
     
+    # 英文文献不使用中文术语词典，避免把中文标签混入概念结果。
+    is_english_document = len(re.findall(r'[A-Za-z]', content)) > len(re.findall(r'[\u4e00-\u9fff]', content)) * 2
+    if is_english_document:
+        high_quality_concepts = [term for term in high_quality_concepts if re.search(r'[A-Za-z]', term)]
+
     concept_freq_count = {}  # 统计每个概念的频率
     concept_positions = {}  # 保存每个概念的位置
     
@@ -8138,10 +8142,14 @@ def extract_concepts(kb_id, doc_id):
                 continue
             if any(ch.isdigit() for ch in _name):
                 continue
-            _matches = list(re.finditer(re.escape(_name), content))
-            _freq = len(_matches) if _matches else 1
-            _ps = _matches[0].start() if _matches else 0
-            _pe = _matches[0].end() if _matches else 0
+            _matches = list(re.finditer(re.escape(_name), content, re.IGNORECASE))
+            # 名称必须来自原文；禁止 AI 返回文档中不存在的翻译词。
+            if not _matches:
+                continue
+            _name = _matches[0].group(0)
+            _freq = len(_matches)
+            _ps = _matches[0].start()
+            _pe = _matches[0].end()
             concepts_extracted.append({
                 'name': _name,
                 'description': (_c.get('description') or f'AI 提取概念：{_name}'),
@@ -8461,11 +8469,11 @@ def add_knowledge_base_concept(kb_id):
     cursor = conn.cursor()
     
     try:
-        # 验证权限：只有所有者才能添加
+        # 验证权限：知识库所有者或管理员可以添加
         cursor.execute("""
-            SELECT id FROM knowledge_bases 
-            WHERE id = %s AND owner_id = %s
-        """, (kb_id, session['user_id']))
+            SELECT id FROM knowledge_bases
+            WHERE id = %s AND (owner_id = %s OR %s = 'admin')
+        """, (kb_id, session['user_id'], session['role']))
         
         if not cursor.fetchone():
             return jsonify({'error': '知识库不存在或无权添加'}), 403
@@ -9198,7 +9206,10 @@ def extract_concepts_with_ai(content, max_concepts=30):
         if len(content) > max_length:
             content = content[:max_length]
 
-        prompt = AI_CONCEPT_EXTRACTION_PROMPT.format(content=content, max_concepts=max_concepts)
+        language_hint = 'English' if len(re.findall(r'[A-Za-z]', content)) > len(re.findall(r'[\u4e00-\u9fff]', content)) * 2 else 'Chinese/mixed'
+        prompt = AI_CONCEPT_EXTRACTION_PROMPT.format(
+            content=content, max_concepts=max_concepts, language_hint=language_hint
+        )
 
         # 调用 DeepSeek API
         headers = {
@@ -9577,18 +9588,22 @@ def paper_management():
     cursor = conn.cursor(dictionary=True)
     
     try:
-        # 查询该教师创建的所有试卷
         cursor.execute("""
-            SELECT id, paper_name, course_name, exam_duration, total_score, 
-                   created_at, 
-                   JSON_LENGTH(JSON_EXTRACT(paper_a_json, '$')) as a_count,
-                   JSON_LENGTH(JSON_EXTRACT(paper_b_json, '$')) as b_count
-            FROM exam_papers 
-            WHERE created_by = %s 
+            SELECT id, paper_name, course_name, exam_duration, total_score,
+                   created_at, paper_a_json, paper_b_json
+            FROM exam_papers
+            WHERE created_by = %s
             ORDER BY created_at DESC
         """, (session['user_id'],))
-        
         papers = cursor.fetchall()
+        for paper in papers:
+            for field, count_field in (('paper_a_json', 'a_count'), ('paper_b_json', 'b_count')):
+                try:
+                    value = json.loads(paper.get(field) or '[]')
+                    paper[count_field] = len(value) if isinstance(value, (list, dict)) else 0
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    paper[count_field] = 0
+                paper.pop(field, None)
         return render_template('teacher/paper_management.html', papers=papers)
     finally:
         cursor.close()

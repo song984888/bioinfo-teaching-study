@@ -1187,7 +1187,12 @@ async function addConceptFromKG() {
             })
         });
         
-        const result = await response.json();
+        let result;
+        try {
+            result = await response.json();
+        } catch (_) {
+            throw new Error(`服务器返回 HTTP ${response.status}，不是有效 JSON`);
+        }
         
         if (result.success) {
             // 显示成功提示
