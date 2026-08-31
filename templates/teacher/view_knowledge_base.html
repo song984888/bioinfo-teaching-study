@@ -38,9 +38,11 @@
                 <a href="{{ url_for('knowledge_graph', kb_id=knowledge_base.id) }}" class="btn btn-info me-2">
                     <i class="fas fa-project-diagram"></i> 知识图谱
                 </a>
+                {% if can_edit %}
                 <a href="{{ url_for('upload_document', kb_id=knowledge_base.id) }}" class="btn btn-success">
                     <i class="fas fa-upload"></i> 上传文档
                 </a>
+                {% endif %}
                 <a href="{{ url_for('knowledge_bases') }}" class="btn btn-secondary">
                     <i class="fas fa-arrow-left"></i> 返回
                 </a>
@@ -83,6 +85,7 @@
                                         {% endif %}
                                     </div>
                                 </div>
+                                {% if can_edit %}
                                 <div class="doc-actions d-flex gap-2">
                                     <a href="{{ url_for('extract_concepts', kb_id=knowledge_base.id, doc_id=doc.id) }}" 
                                        class="btn btn-sm btn-action btn-action-primary extract-concept-btn" 
@@ -105,6 +108,7 @@
                                         <span class="btn-text">删除文档</span>
                                     </button>
                                 </div>
+                                {% endif %}
                             </div>
                         </a>
                         {% endfor %}
@@ -113,9 +117,11 @@
                     <div class="text-center py-4">
                         <i class="fas fa-file fa-2x text-muted mb-2"></i>
                         <p class="text-muted">该知识库中还没有文档</p>
+                        {% if can_edit %}
                         <a href="{{ url_for('upload_document', kb_id=knowledge_base.id) }}" class="btn btn-outline-primary">
                             <i class="fas fa-upload"></i> 上传第一个文档
                         </a>
+                        {% endif %}
                     </div>
                     {% endif %}
                 </div>

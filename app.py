@@ -1878,7 +1878,7 @@ def api_uploadable_knowledge_bases():
             cur.execute("SELECT id, name FROM knowledge_bases ORDER BY id DESC")
         else:
             cur.execute(
-                "SELECT id, name FROM knowledge_bases WHERE owner_id=%s OR is_public=TRUE ORDER BY id DESC",
+                "SELECT id, name FROM knowledge_bases WHERE owner_id=%s ORDER BY id DESC",
                 (session['user_id'],)
             )
         rows = cur.fetchall()
@@ -1910,12 +1910,12 @@ def teacher_upload_article_to_kb():
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True)
     try:
-        # 权限校验：教师只能上传到自己创建或公开的知识库；管理员可上传到任意库
+        # 权限校验：教师只能上传到自己创建的知识库；管理员可上传到任意库
         if session['role'] == 'admin':
             cur.execute("SELECT id, name FROM knowledge_bases WHERE id=%s", (kb_id,))
         else:
             cur.execute(
-                "SELECT id, name FROM knowledge_bases WHERE id=%s AND (owner_id=%s OR is_public=TRUE)",
+                "SELECT id, name FROM knowledge_bases WHERE id=%s AND owner_id=%s",
                 (kb_id, session['user_id'])
             )
         kb = cur.fetchone()
@@ -6249,6 +6249,7 @@ def view_knowledge_base(kb_id):
     if not knowledge_base:
         flash('知识库不存在或无权访问', 'danger')
         return redirect(url_for('knowledge_bases'))
+    can_edit = session['role'] == 'admin' or knowledge_base['owner_id'] == session['user_id']
     
     # 获取文档列表及其统计信息（题目数去重）
     cursor.execute("""
@@ -6270,7 +6271,8 @@ def view_knowledge_base(kb_id):
     
     return render_template('teacher/view_knowledge_base.html',
                          knowledge_base=knowledge_base,
-                         documents=documents)
+                         documents=documents,
+                         can_edit=can_edit)
 
 @app.route('/teacher/knowledge_bases/<int:kb_id>/delete', methods=['POST'])
 def delete_knowledge_base(kb_id):
@@ -6623,7 +6625,7 @@ def upload_document(kb_id):
     else:
         cursor.execute("""
             SELECT * FROM knowledge_bases 
-            WHERE id = %s AND (owner_id = %s OR is_public = TRUE)
+            WHERE id = %s AND owner_id = %s
         """, (kb_id, session['user_id']))
     
     knowledge_base = cursor.fetchone()
@@ -6741,7 +6743,7 @@ def upload_document(kb_id):
     
     cursor.close()
     conn.close()
-    return render_template('teacher/upload_document.html', knowledge_base=knowledge_base)
+    return render_template('teacher/upload_document.html', knowledge_base=knowledge_base, can_edit=True)
 
 
 @app.route('/teacher/document_links_test')
@@ -7893,7 +7895,7 @@ def extract_concepts(kb_id, doc_id):
             SELECT kd.*, kb.name as knowledge_base_name
             FROM knowledge_documents kd
             JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
-            WHERE kd.id = %s AND kb.id = %s AND (kb.owner_id = %s OR kb.is_public = TRUE)
+            WHERE kd.id = %s AND kb.id = %s AND kb.owner_id = %s
         """, (doc_id, kb_id, session['user_id']))
     
     document = cursor.fetchone()
@@ -8353,7 +8355,7 @@ def get_knowledge_base_concepts(kb_id):
         # 验证权限
         cursor.execute("""
             SELECT id FROM knowledge_bases 
-            WHERE id = %s AND (owner_id = %s OR is_public = TRUE)
+            WHERE id = %s AND owner_id = %s
         """, (kb_id, session['user_id']))
         
         if not cursor.fetchone():
