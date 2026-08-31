@@ -1054,8 +1054,7 @@ def get_teacher_dashboard_stats():
             SELECT COUNT(*) AS count
             FROM questions q
             JOIN tasks t ON t.user_id = %s AND t.task_type = 'generate_theory_questions'
-            WHERE q.question_type = 'theory' 
-            AND JSON_EXTRACT(t.parameters, '$.source_type') = '"knowledge_base"'
+            WHERE q.question_type = 'theory'
         """, (session['user_id'],))
         theory_questions_part = cursor.fetchone()['count']
         app.logger.info(f"Debug - Theory questions count: {theory_questions_part}")
