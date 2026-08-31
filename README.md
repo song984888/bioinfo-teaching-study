@@ -20,7 +20,8 @@ The platform supports Python, Perl, Java, and C programming exercises, asynchron
 - **Question Review** -- Approve/reject with status tabs (pending/approved/rejected)
   - Rejection reason tracking and reviewer metadata
   - Code debug/run -- test sample answers directly in browser
-- **Knowledge Base** -- Upload documents, extract concepts, build knowledge graphs
+- **Knowledge Base** -- Upload documents, extract concepts, build knowledge graphs; only the owner or admin can edit, while other teachers can browse public bases
+- **Learning Notes** -- Record literature insights, teaching ideas, and concept-linked notes from the literature search page; notes are private to the current teacher
 - **Exam Paper Management** -- Generate A/B exam papers with intelligent question selection
 - **Student Management** -- Monitor student progress and override grades
 
@@ -91,7 +92,7 @@ These screenshots were provided by the project owner and show the actual applica
 └─────────────────────┘
 ```
 
-## Database Schema (MySQL: `code_exam`)
+## Database Schema (MySQL: `code_exam_v231`)
 
 ### Core Tables
 
@@ -105,7 +106,8 @@ These screenshots were provided by the project owner and show the actual applica
 | `knowledge_bases` | id, name, description, owner_id, is_public |
 | `knowledge_documents` | id, knowledge_base_id, title, content, file_path, file_type |
 | `knowledge_concepts` | id, knowledge_document_id, concept_name, concept_type, frequency |
-| `exam_papers` | id, name, type, questions (JSON), answers (JSON) |
+| `student_notes` | id, student_id, target_type, target_id, content, parent_note_id, tags | 学生/教师个人学习笔记，按当前用户隔离 |
+| `exam_papers` | id, paper_name, course_name, exam_duration, total_score, paper_a_json, paper_b_json, answer_a_json, answer_b_json, created_by | 试卷 |
 | `tasks` | id, user_id, task_type, parameters (JSON), status, progress, result |
 
 ### Review Status (v2.0)
@@ -177,7 +179,7 @@ gunicorn --workers 5 --bind 0.0.0.0:5000 app:app
 | Dependency | Purpose |
 |-----------|---------|
 | Python 3.7+ | Runtime |
-| MySQL Server | Database (localhost, database: `code_exam`) |
+| MySQL Server | Database (localhost, database: `code_exam_v231`) |
 | DeepSeek API Key | AI question generation, grading, suggestions |
 | [Ollama](https://ollama.com) | Optional: Local LLM (model: `qwen2.5-coder:32b`) |
 | GCC / JDK / Perl | Code execution for C, Java, Perl |
@@ -204,7 +206,9 @@ gunicorn --workers 5 --bind 0.0.0.0:5000 app:app
 2. Design questions: generate theory/programming questions via AI
 3. Review pending questions: approve or reject with reason
 4. Manage knowledge bases: upload documents, extract concepts
-5. Create exam papers, view student records
+5. Manage knowledge bases: upload documents, extract concepts, and view graphs
+6. Open the central **Learning Notes** card to review personal notes from literature research
+7. Create exam papers and view student records
 
 ### Admin Flow
 1. Login → Admin Dashboard
