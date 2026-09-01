@@ -29,6 +29,8 @@ footer{margin-top:30px;color:var(--dim);font-size:.7rem;text-align:center;line-h
 #gameBar .title{color:var(--accent);font-size:.85rem;letter-spacing:2px}
 #btnBack{background:var(--panel2);color:var(--text);border:1px solid #475569;border-radius:8px;padding:6px 14px;font-family:inherit;font-size:.78rem;cursor:pointer}
 #btnBack:hover{border-color:var(--accent);color:var(--accent)}
+#btnLearn{background:#14532d;color:#dcfce7;border:1px solid #22c55e;border-radius:8px;padding:6px 14px;font-family:inherit;font-size:.78rem;text-decoration:none}
+#btnLearn:hover{background:#166534;color:#fff}
 #gameFrame{flex:1;width:100%;border:none;background:var(--bg)}
 </style>
 </head>
@@ -80,6 +82,7 @@ footer{margin-top:30px;color:var(--dim);font-size:.7rem;text-align:center;line-h
 <div id="gameView">
 <div id="gameBar">
 <button id="btnBack">&#8592; back to arcade</button>
+<a id="btnLearn" href="/dashboard">🏠 返回继续学习</a>
 <span class="title" id="gameTitle"></span>
 </div>
 <iframe id="gameFrame" title="game"></iframe>
