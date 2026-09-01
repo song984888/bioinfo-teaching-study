@@ -22,7 +22,7 @@ from datetime import datetime, timedelta, date
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'myscripts/config_modules'))
 
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash, abort, send_file
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash, abort, send_file, send_from_directory
 from flask_session import Session
 from collections import defaultdict
 import jieba  # 添加中文分词支持
@@ -1811,11 +1811,24 @@ def dashboard():
 
 
 @app.route('/games/coffee-break')
-def coffee_break_game():
-    """所有已登录用户可玩的咖啡休息小游戏。"""
+def games_arcade():
+    """所有已登录用户可访问的六款生物信息学小游戏大厅。"""
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    return render_template('games/coffee_break.html')
+    return render_template('games/index.html')
+
+
+@app.route('/games/<path:filename>')
+def game_asset(filename):
+    """登录后提供游戏 HTML/JavaScript 资源。"""
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    allowed = {'html', 'js'}
+    extension = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+    if extension not in allowed or filename.startswith(('/', '\\')) or '..' in filename.split('/'):
+        abort(404)
+    return send_from_directory(os.path.join(app.template_folder, 'games'), filename)
+
 
 
 @app.route('/help')
