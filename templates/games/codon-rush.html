@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Codon Rush — Bio Arcade</title>
+<style>
+:root{--bg:#0f172a;--panel:#1e293b;--panel2:#273449;--text:#e2e8f0;--dim:#94a3b8;--accent:#38bdf8;--good:#4ade80;--bad:#f87171;--gold:#facc15}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:"SF Mono","Cascadia Code",Consolas,monospace;display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:16px;user-select:none}
+a{color:var(--dim);text-decoration:none;font-size:.75rem}
+a:hover{color:var(--accent)}
+h1{font-size:1.5rem;letter-spacing:2px;color:var(--accent);margin:8px 0 2px}
+h1 span{color:var(--gold)}
+.subtitle{color:var(--dim);font-size:.8rem;margin-bottom:14px}
+.hud{display:flex;gap:22px;margin-bottom:14px;background:var(--panel);border-radius:10px;padding:10px 22px;font-size:.9rem}
+.hud b{color:var(--gold)}
+.hud .label{color:var(--dim);font-size:.7rem;display:block}
+#stage{background:var(--panel);border-radius:12px;padding:26px;width:min(96vw,640px);text-align:center;position:relative}
+#codon{font-size:3.2rem;letter-spacing:10px;font-weight:bold;margin:10px 0 4px}
+#codon small{display:block;font-size:.75rem;letter-spacing:2px;color:var(--dim);margin-top:6px}
+#timerbar{height:8px;background:var(--panel2);border-radius:4px;overflow:hidden;margin:18px 0}
+#timerfill{height:100%;width:100%;background:var(--accent);border-radius:4px}
+#answers{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+#answers button{background:var(--panel2);color:var(--text);border:1px solid #475569;border-radius:10px;padding:14px 8px;font-family:inherit;font-size:.95rem;cursor:pointer;transition:transform .05s}
+#answers button:hover{border-color:var(--accent);color:var(--accent)}
+#answers button.right{background:var(--good);color:#052e16;border-color:var(--good);font-weight:bold}
+#answers button.wrong{background:var(--bad);color:#450a0a;border-color:var(--bad)}
+#message{min-height:24px;margin-top:12px;font-size:.85rem;color:var(--dim)}
+.big{font-size:2.4rem;color:var(--gold);margin:20px 0}
+button.big-btn{background:var(--accent);color:#082f49;border:none;border-radius:10px;padding:12px 30px;font-family:inherit;font-size:1rem;font-weight:bold;cursor:pointer;margin-top:12px}
+button.big-btn:hover{filter:brightness(1.15)}
+.combo{position:absolute;top:10px;right:14px;color:var(--gold);font-size:.85rem;font-weight:bold}
+.help{color:var(--dim);font-size:.72rem;margin-top:14px;max-width:600px;line-height:1.6;text-align:center}
+kbd{background:var(--panel2);border:1px solid #475569;border-radius:4px;padding:1px 5px}
+</style>
+</head>
+<body>
+<a href="index.html" onclick="if(window.parent!==window&&window.parent.closeGame){window.parent.closeGame();return false}">&#8592; back to arcade</a>
+<h1>CODON <span>RUSH</span></h1>
+<div class="subtitle">name that amino acid before the timer runs out</div>
+<div class="hud">
+<div><span class="label">SCORE</span><b id="hudScore">0</b></div>
+<div><span class="label">ROUND</span><b id="hudRound">0/20</b></div>
+<div><span class="label">COMBO</span><b id="hudCombo">x1</b></div>
+<div><span class="label">BEST</span><b id="hudBest">0</b></div>
+</div>
+<div id="stage">
+<div class="combo" id="comboTag"></div>
+<div id="codon">---<small>press start</small></div>
+<div id="timerbar"><div id="timerfill"></div></div>
+<div id="answers"></div>
+<div id="message"></div>
+<button class="big-btn" id="btnStart">&#9654; start</button>
+</div>
+<div class="help">A codon (mRNA, 5&#8594;3) appears — click the amino acid it encodes.<br>Faster answers = more points. Streaks multiply your score. Stop codons end the round: answer "STOP".</div>
+<script>
+(function(){
+"use strict";
+var CODON_TABLE=(function(){
+var bases=["U","C","A","G"];
+var aas="FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG";
+var t={};var i=0;
+for(var a=0;a<4;a++)for(var b=0;b<4;b++)for(var c=0;c<4;c++){
+t[bases[a]+bases[b]+bases[c]]=aas[i++];}
+return t;})();
+var AA_NAMES={A:"Alanine (Ala)",R:"Arginine (Arg)",N:"Asparagine (Asn)",D:"Aspartate (Asp)",
+C:"Cysteine (Cys)",Q:"Glutamine (Gln)",E:"Glutamate (Glu)",G:"Glycine (Gly)",
+H:"Histidine (His)",I:"Isoleucine (Ile)",L:"Leucine (Leu)",K:"Lysine (Lys)",
+M:"Methionine (Met)",F:"Phenylalanine (Phe)",P:"Proline (Pro)",S:"Serine (Ser)",
+T:"Threonine (Thr)",W:"Tryptophan (Trp)",Y:"Tyrosine (Tyr)",V:"Valine (Val)","*":"STOP"};
+var BASE_COLOR={U:"#f87171",C:"#60a5fa",A:"#4ade80",G:"#facc15"};
+var ROUNDS=20,TIME_PER_ROUND=6000;
+var score=0,round=0,combo=0,best=0,playing=false,current=null,choices=[],timer=null,deadline=0;
+try{best=parseInt(localStorage.getItem("codonrush_best")||"0",10)||0;}catch(e){}
+var $=function(id){return document.getElementById(id);};
+var elCodon=$("codon"),elAnswers=$("answers"),elMsg=$("message"),elFill=$("timerfill"),
+elBtnStart=$("btnStart"),elCombo=$("comboTag");
+function rnd(n){return Math.floor(Math.random()*n);}
+function randCodon(){var b=["U","C","A","G"];return b[rnd(4)]+b[rnd(4)]+b[rnd(4)];}
+function updateHud(){$("hudScore").textContent=score;$("hudRound").textContent=round+"/"+ROUNDS;
+$("hudCombo").textContent="x"+Math.max(1,combo);$("hudBest").textContent=best;}
+function renderCodon(){
+elCodon.innerHTML="";
+for(var i=0;i<3;i++){var s=document.createElement("span");s.textContent=current[i];s.style.color=BASE_COLOR[current[i]];elCodon.appendChild(s);}
+var sub=document.createElement("small");sub.textContent="mRNA codon \u00b7 which amino acid?";elCodon.appendChild(sub);}
+function buildChoices(){
+var correct=CODON_TABLE[current];
+choices=[correct];
+var pool=Object.keys(AA_NAMES).filter(function(a){return a!==correct;});
+while(choices.length<4){var p=pool.splice(rnd(pool.length),1)[0];if(choices.indexOf(p)<0)choices.push(p);}
+choices.sort(function(){return Math.random()-0.5;});
+elAnswers.innerHTML="";
+choices.forEach(function(aa,idx){
+var b=document.createElement("button");
+b.textContent=AA_NAMES[aa];
+b.setAttribute("data-idx",idx);
+b.onclick=function(){answer(aa,b);};
+elAnswers.appendChild(b);});}
+function startRound(){
+if(round>=ROUNDS){endGame();return;}
+round++;updateHud();
+current=randCodon();
+renderCodon();buildChoices();
+elMsg.textContent="";
+deadline=Date.now()+TIME_PER_ROUND;
+clearInterval(timer);
+timer=setInterval(tick,50);
+}
+function tick(){
+var left=deadline-Date.now();
+if(left<=0){timeUp();return;}
+elFill.style.width=(left/TIME_PER_ROUND*100)+"%";
+elFill.style.background=left<TIME_PER_ROUND*0.3?"var(--bad)":"var(--accent)";}
+function timeUp(){
+clearInterval(timer);
+combo=0;
+var correct=CODON_TABLE[current];
+elMsg.innerHTML="&#9203; too slow! it was <b style='color:var(--gold)'>"+AA_NAMES[correct]+"</b>";
+highlightCorrect();
+setTimeout(nextRound,1200);}
+function answer(aa,btn){
+if(!playing)return;
+clearInterval(timer);
+var correct=CODON_TABLE[current];
+if(aa===correct){
+combo++;
+var speedBonus=Math.max(0,Math.round((deadline-Date.now())/TIME_PER_ROUND*50));
+var gained=(10+speedBonus)*Math.max(1,combo);
+score+=gained;
+btn.classList.add("right");
+elMsg.innerHTML="&#10003; <b style='color:var(--good)'>+"+gained+"</b> pts";
+elCombo.textContent=combo>=3?"\ud83d\udd25 combo x"+combo:"";
+try{if(score>best){best=score;localStorage.setItem("codonrush_best",String(best));}}catch(e){}
+}else{
+combo=0;btn.classList.add("wrong");
+elMsg.innerHTML="&#10007; it was <b style='color:var(--gold)'>"+AA_NAMES[correct]+"</b>";
+elCombo.textContent="";
+highlightCorrect();}
+updateHud();
+setTimeout(nextRound,aa===correct?700:1400);}
+function highlightCorrect(){
+var correct=CODON_TABLE[current];
+var btns=elAnswers.querySelectorAll("button");
+btns.forEach(function(b){if(choices[parseInt(b.getAttribute("data-idx"),10)]===correct)b.classList.add("right");});}
+function nextRound(){startRound();}
+function endGame(){
+playing=false;
+elCodon.innerHTML="&#127942;<small>game over</small>";
+elAnswers.innerHTML="";
+elFill.style.width="0%";
+elMsg.innerHTML="<div class='big'>"+score+" pts</div>"+(score>=best?"&#11088; new best!":"best: "+best);
+elBtnStart.style.display="inline-block";
+elBtnStart.innerHTML="&#8635; play again";}
+$("btnStart").onclick=function(){
+score=0;round=0;combo=0;playing=true;
+elBtnStart.style.display="none";elCombo.textContent="";
+updateHud();startRound();};
+updateHud();
+})();
+</script>
+</body>
+</html>

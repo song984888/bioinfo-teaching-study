@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini Assembler — Bio Arcade</title>
+<style>
+:root{--bg:#0f172a;--panel:#1e293b;--panel2:#273449;--text:#e2e8f0;--dim:#94a3b8;--accent:#38bdf8;--good:#4ade80;--bad:#f87171;--gold:#facc15}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:"SF Mono","Cascadia Code",Consolas,monospace;display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:16px;user-select:none}
+a{color:var(--dim);text-decoration:none;font-size:.75rem}
+a:hover{color:var(--accent)}
+h1{font-size:1.5rem;letter-spacing:2px;color:var(--accent);margin:8px 0 2px}
+h1 span{color:var(--gold)}
+.subtitle{color:var(--dim);font-size:.8rem;margin-bottom:14px}
+.hud{display:flex;gap:22px;margin-bottom:14px;background:var(--panel);border-radius:10px;padding:10px 22px;font-size:.9rem}
+.hud b{color:var(--gold)}
+.hud .label{color:var(--dim);font-size:.7rem;display:block}
+#stage{background:var(--panel);border-radius:12px;padding:24px;width:min(96vw,780px);text-align:center}
+.track-label{color:var(--dim);font-size:.7rem;margin:14px 0 6px;text-align:left}
+#contig{display:flex;flex-wrap:wrap;justify-content:center;gap:2px;min-height:30px;background:var(--panel2);border-radius:8px;padding:8px}
+#pool{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:6px}
+.cell{width:18px;height:24px;line-height:24px;text-align:center;font-weight:bold;font-size:.72rem;border-radius:3px;flex:none}
+.cell.A{color:var(--good)}.cell.C{color:var(--accent)}.cell.G{color:var(--gold)}.cell.T{color:var(--bad)}
+.cell.new{background:#14532d}
+.readchip{display:flex;gap:2px;background:var(--panel2);border:1px solid #475569;border-radius:8px;padding:5px 7px;cursor:pointer}
+.readchip:hover{border-color:var(--accent)}
+.readchip.badpick{animation:shake .3s;border-color:var(--bad)}
+.readchip.used{opacity:.25;pointer-events:none}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+#overlapHint{color:var(--dim);font-size:.78rem;margin-top:10px}
+#overlapHint b{color:var(--accent);letter-spacing:2px}
+button.big-btn{background:var(--accent);color:#082f49;border:none;border-radius:10px;padding:12px 30px;font-family:inherit;font-size:1rem;font-weight:bold;cursor:pointer;margin-top:12px}
+button.big-btn:hover{filter:brightness(1.15)}
+#result{min-height:30px;margin-top:10px;font-size:.9rem;color:var(--dim)}
+#result b{color:var(--gold)}
+.help{color:var(--dim);font-size:.72rem;margin-top:14px;max-width:660px;line-height:1.6;text-align:center}
+</style>
+</head>
+<body>
+<a href="index.html" onclick="if(window.parent!==window&&window.parent.closeGame){window.parent.closeGame();return false}">&#8592; back to arcade</a>
+<h1>MINI <span>ASSEMBLER</span></h1>
+<div class="subtitle">overlap-layout-consensus, but make it cozy</div>
+<div class="hud">
+<div><span class="label">ROUND</span><b id="hudRound">1/8</b></div>
+<div><span class="label">SCORE</span><b id="hudScore">0</b></div>
+<div><span class="label">BEST</span><b id="hudBest">0</b></div>
+</div>
+<div id="stage">
+<div class="track-label">CONTIG (seed loaded)</div>
+<div id="contig"></div>
+<div id="overlapHint"></div>
+<div class="track-label">READ POOL — click the read that overlaps the contig's right end</div>
+<div id="pool"></div>
+<div id="result"></div>
+<button class="big-btn" id="btnNext" style="display:none">next assembly &#9654;</button>
+</div>
+<div class="help">The reads were sequenced from one fragment with a fixed 6-bp overlap between consecutive reads. Build the contig: pick the read whose first 6 bases match the contig's last 6 bases.<br>+25 per correct merge, &#8722;5 per wrong pick, +50 contig completion bonus. 8 rounds, longer fragments each time.</div>
+<script>
+(function(){
+"use strict";
+var ROUNDS=8,OV=6;
+var state={round:0,score:0,best:0,contig:"",reads:[],locked:false};
+try{state.best=parseInt(localStorage.getItem("miniassembler_best")||"0",10)||0;}catch(e){}
+var $=function(id){return document.getElementById(id);};
+var elContig=$("contig"),elPool=$("pool"),elHint=$("overlapHint"),elResult=$("result"),elBtnNext=$("btnNext");
+function rnd(n){return Math.floor(Math.random()*n);}
+function updateHud(){$("hudRound").textContent=Math.min(state.round,ROUNDS)+"/"+ROUNDS;$("hudScore").textContent=state.score;$("hudBest").textContent=state.best;}
+function basesRow(s,newFrom){
+var frag=document.createDocumentFragment();
+for(var i=0;i<s.length;i++){
+var d=document.createElement("div");
+d.className="cell "+s[i];
+if(newFrom!==undefined&&i>=newFrom)d.className+=" new";
+d.textContent=s[i];
+frag.appendChild(d);}
+return frag;}
+function makeReads(readLen,nReads){
+// random target long enough for nReads tiling reads with OV overlap
+var step=readLen-OV;
+var len=readLen+(nReads-1)*step;
+var target="";
+for(var i=0;i<len;i++)target+="ACGT"[rnd(4)];
+var reads=[];
+for(var k=0;k<nReads;k++)reads.push(target.substr(k*step,readLen));
+return{target:target,reads:reads};}
+function prefixesUnique(reads){
+var seen={};
+for(var i=0;i<reads.length;i++){
+var p=reads[i].slice(0,OV);
+if(seen[p])return false;
+seen[p]=1;}
+return true;}
+function genRound(){
+var readLen=Math.min(14,10+Math.floor(state.round/2));
+var nReads=Math.min(3+state.round,9);
+var g;
+var tries=0;
+do{g=makeReads(readLen,nReads);tries++;}while(!prefixesUnique(g.reads)&&tries<80);
+// shuffle pool; first read becomes the seed
+var pool=g.reads.slice(1).sort(function(){return Math.random()-0.5;});
+state.contig=g.reads[0];
+state.reads=pool.map(function(s){return{seq:s,used:false};});
+state.locked=false;
+elResult.innerHTML="";
+elBtnNext.style.display="none";
+renderAll();}
+function suffix(){return state.contig.slice(-OV);}
+function renderContig(newFrom){
+elContig.innerHTML="";
+elContig.appendChild(basesRow(state.contig,newFrom));
+elHint.innerHTML="contig ends with <b>"+suffix()+"</b> — find the read starting with it";
+}
+function renderAll(){
+renderContig();
+elPool.innerHTML="";
+state.reads.forEach(function(r){
+var chip=document.createElement("div");
+chip.className="readchip"+(r.used?" used":"");
+chip.appendChild(basesRow(r.seq));
+chip.onclick=function(){tryPick(r,chip);};
+elPool.appendChild(chip);});}
+function tryPick(r,chip){
+if(state.locked||r.used)return;
+if(r.seq.slice(0,OV)===suffix()){
+var newFrom=state.contig.length-OV;
+state.contig+=r.seq.slice(OV);
+r.used=true;
+state.score+=25;
+if(state.score>state.best){state.best=state.score;try{localStorage.setItem("miniassembler_best",String(state.best));}catch(e){}}
+renderContig(newFrom);
+chip.className="readchip used";
+updateHud();
+checkDone();
+}else{
+state.score=Math.max(0,state.score-5);
+chip.classList.remove("badpick");
+void chip.offsetWidth;
+chip.classList.add("badpick");
+updateHud();}}
+function checkDone(){
+var remaining=state.reads.some(function(r){return !r.used;});
+if(remaining)return;
+state.locked=true;
+state.score+=50;
+if(state.score>state.best){state.best=state.score;try{localStorage.setItem("miniassembler_best",String(state.best));}catch(e){}}
+elResult.innerHTML="&#127919; <b>contig complete!</b> "+state.contig.length+" bp assembled &nbsp;<b>+50 bonus</b>";
+elHint.innerHTML="";
+elBtnNext.style.display="inline-block";
+elBtnNext.innerHTML=(state.round>=ROUNDS)?"see results &#127937;":"next assembly &#9654;";
+updateHud();}
+elBtnNext.onclick=function(){
+if(state.round>=ROUNDS){endGame();return;}
+state.round++;genRound();updateHud();};
+function endGame(){
+elContig.innerHTML="";elPool.innerHTML="";elHint.innerHTML="";
+elBtnNext.style.display="inline-block";
+elBtnNext.innerHTML="&#8635; play again";
+elBtnNext.onclick=function(){location.reload();};
+elResult.innerHTML="<div style='font-size:1.6rem;color:var(--gold)'>final score: "+state.score+" pts"+(state.score>=state.best?" &#11088;":"")+"</div>best ever: "+state.best+" pts";
+updateHud();}
+state.round=1;genRound();updateHud();
+})();
+</script>
+</body>
+</html>

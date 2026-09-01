@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GC Guesser — Bio Arcade</title>
+<style>
+:root{--bg:#0f172a;--panel:#1e293b;--panel2:#273449;--text:#e2e8f0;--dim:#94a3b8;--accent:#38bdf8;--good:#4ade80;--bad:#f87171;--gold:#facc15}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:"SF Mono","Cascadia Code",Consolas,monospace;display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:16px;user-select:none}
+a{color:var(--dim);text-decoration:none;font-size:.75rem}
+a:hover{color:var(--accent)}
+h1{font-size:1.5rem;letter-spacing:2px;color:var(--accent);margin:8px 0 2px}
+h1 span{color:var(--gold)}
+.subtitle{color:var(--dim);font-size:.8rem;margin-bottom:14px}
+.hud{display:flex;gap:22px;margin-bottom:14px;background:var(--panel);border-radius:10px;padding:10px 22px;font-size:.9rem}
+.hud b{color:var(--gold)}
+.hud .label{color:var(--dim);font-size:.7rem;display:block}
+#stage{background:var(--panel);border-radius:12px;padding:24px;width:min(96vw,680px);text-align:center}
+#organism{color:var(--gold);font-size:.9rem;margin-bottom:10px}
+#seqBox{background:var(--panel2);border-radius:8px;padding:12px;font-size:.78rem;line-height:1.5;word-break:break-all;max-height:150px;overflow:auto;color:var(--dim);letter-spacing:1px;text-align:left}
+#seqBox b.g{color:var(--gold)}
+#seqBox b.c{color:var(--accent)}
+#seqBox b.a{color:var(--good)}
+#seqBox b.t{color:var(--bad)}
+.slider-row{margin:22px 0 8px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+#guessLabel{font-size:1.6rem;color:var(--text);margin-bottom:12px}
+button.big-btn{background:var(--accent);color:#082f49;border:none;border-radius:10px;padding:12px 30px;font-family:inherit;font-size:1rem;font-weight:bold;cursor:pointer;margin-top:8px}
+button.big-btn:hover{filter:brightness(1.15)}
+button.ghost{background:var(--panel2);color:var(--text);border:1px solid #475569;border-radius:8px;padding:8px 16px;font-family:inherit;cursor:pointer;margin-top:8px}
+#result{min-height:60px;margin-top:10px;font-size:.9rem}
+#result .truth{font-size:1.4rem;color:var(--gold)}
+.bar-wrap{background:var(--panel2);border-radius:6px;height:14px;margin-top:10px;position:relative;overflow:hidden}
+.bar-mark{position:absolute;top:0;height:100%;width:3px;border-radius:2px}
+.help{color:var(--dim);font-size:.72rem;margin-top:14px;max-width:620px;line-height:1.6;text-align:center}
+</style>
+</head>
+<body>
+<a href="index.html" onclick="if(window.parent!==window&&window.parent.closeGame){window.parent.closeGame();return false}">&#8592; back to arcade</a>
+<h1>GC <span>GUESSER</span></h1>
+<div class="subtitle">feel the GC content like a true genomicist</div>
+<div class="hud">
+<div><span class="label">ROUND</span><b id="hudRound">1/10</b></div>
+<div><span class="label">SCORE</span><b id="hudScore">0</b></div>
+<div><span class="label">STREAK (&#177;5%)</span><b id="hudStreak">0</b></div>
+<div><span class="label">BEST</span><b id="hudBest">0</b></div>
+</div>
+<div id="stage">
+<div id="organism">mystery organism</div>
+<div id="seqBox"></div>
+<div class="slider-row">
+<input type="range" id="slider" min="0" max="100" value="50" step="1">
+</div>
+<div id="guessLabel">50%</div>
+<button class="big-btn" id="btnGuess">lock in guess</button>
+<button class="ghost" id="btnNext" style="display:none">next sequence &#9654;</button>
+<div id="result"></div>
+</div>
+<div class="help">Look at the sequence and estimate its GC%. Move the slider to your guess and lock it in.<br>Scoring: perfect (&#8804;1% off) = 100 pts, scales linearly to 0 at 20% off. Streak bonus for consecutive guesses within &#177;5%. 10 rounds per game.</div>
+<script>
+(function(){
+"use strict";
+var ROUNDS=10;
+var ORGANISMS=[
+["Streptomyces coelicolor",0.72],["Plasmodium falciparum",0.19],
+["Escherichia coli",0.51],["Homo sapiens (chr snippet)",0.41],
+["Saccharomyces cerevisiae",0.38],["Arabidopsis thaliana",0.36],
+["Drosophila melanogaster",0.42],["Mycobacterium tuberculosis",0.65],
+["Clostridium botulinum",0.28],["Thermus thermophilus",0.65],
+["Zea mays",0.47],["Danio rerio",0.37],["Caenorhabditis elegans",0.36],
+["Staphylococcus aureus",0.33],["Pseudomonas aeruginosa",0.67],
+["Anabaena sp.",0.45],["Giardia intestinalis",0.46],["Bacillus subtilis",0.435]
+];
+var state={round:0,score:0,streak:0,best:0,locked:false,truth:0,guess:50,over:false};
+try{state.best=parseInt(localStorage.getItem("gcguesser_best")||"0",10)||0;}catch(e){}
+var $=function(id){return document.getElementById(id);};
+var elSeq=$("seqBox"),elSlider=$("slider"),elLabel=$("guessLabel"),elResult=$("result"),
+elOrg=$("organism"),elBtnGuess=$("btnGuess"),elBtnNext=$("btnNext");
+function rnd(n){return Math.floor(Math.random()*n);}
+function updateHud(){
+$("hudRound").textContent=Math.min(state.round,ROUNDS)+"/"+ROUNDS;
+$("hudScore").textContent=state.score;
+$("hudStreak").textContent=state.streak;
+$("hudBest").textContent=state.best;}
+function genSequence(){
+var org=ORGANISMS[rnd(ORGANISMS.length)];
+state.truth=Math.max(0.05,Math.min(0.95,org[1]+(Math.random()*0.06-0.03)));
+var len=200+state.round*40;
+var seq="";
+for(var i=0;i<len;i++){
+seq+=(Math.random()<state.truth)?(Math.random()<0.5?"G":"C"):(Math.random()<0.5?"A":"T");}
+elOrg.textContent="sample from: "+org[0]+" \u00b7 "+len+" bp";
+elSeq.innerHTML="";
+var frag=document.createDocumentFragment();
+for(var j=0;j<seq.length;j++){
+var s=document.createElement("b");s.textContent=seq[j];s.className=seq[j].toLowerCase();frag.appendChild(s);}
+elSeq.appendChild(frag);
+elSlider.value=50;state.guess=50;elLabel.textContent="50%";
+state.locked=false;
+elResult.innerHTML="";
+elBtnGuess.style.display="inline-block";
+elBtnNext.style.display="none";}
+elSlider.oninput=function(){state.guess=parseInt(elSlider.value,10);elLabel.textContent=state.guess+"%";};
+elBtnGuess.onclick=function(){
+if(state.locked)return;
+state.locked=true;
+var truthPct=Math.round(state.truth*100);
+var diff=Math.abs(state.guess-truthPct);
+var pts=Math.max(0,Math.round(100*(1-diff/20)));
+if(state.streak>0)pts+=10; // streak bonus
+if(diff<=5)state.streak++;else state.streak=0;
+state.score+=pts;
+if(state.score>state.best){state.best=state.score;try{localStorage.setItem("gcguesser_best",String(state.best));}catch(e){}}
+var msg=diff<=1?"&#127919; bullseye!":diff<=5?"&#128293; sharp eye!":diff<=10?"&#128077; not bad":"&#128064; keep practicing";
+elResult.innerHTML="<div class='truth'>actual GC: "+truthPct+"%</div>"+
+"<div>"+msg+" &nbsp; your guess: "+state.guess+"% \u00b7 off by "+diff+"% \u00b7 <b style='color:var(--gold)'>+"+pts+" pts</b></div>"+
+"<div class='bar-wrap'><div class='bar-mark' style='left:"+state.guess+"%;background:var(--accent)'></div><div class='bar-mark' style='left:"+truthPct+"%;background:var(--gold)'></div></div>";
+elBtnGuess.style.display="none";
+elBtnNext.style.display="inline-block";
+elBtnNext.innerHTML=(state.round>=ROUNDS)?"see results &#127937;":"next sequence &#9654;";
+updateHud();};
+elBtnNext.onclick=function(){
+if(state.round>=ROUNDS){endGame();return;}
+state.round++;
+genSequence();
+updateHud();};
+function endGame(){
+state.over=true;
+elOrg.textContent="game over";
+elSeq.innerHTML="<div style='font-size:1.5rem;color:var(--gold);padding:24px;text-align:center'>final score: "+state.score+" pts"+(state.score>=state.best?" &#11088;":"")+"</div>";
+elResult.innerHTML="<div>best ever: "+state.best+" pts</div>";
+elBtnNext.innerHTML="&#8635; play again";
+elBtnNext.onclick=function(){location.reload();};
+updateHud();}
+state.round=1;
+genSequence();
+updateHud();
+})();
+</script>
+</body>
+</html>

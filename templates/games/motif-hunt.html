@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Motif Hunt — Bio Arcade</title>
+<style>
+:root{--bg:#0f172a;--panel:#1e293b;--panel2:#273449;--text:#e2e8f0;--dim:#94a3b8;--accent:#38bdf8;--good:#4ade80;--bad:#f87171;--gold:#facc15}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:"SF Mono","Cascadia Code",Consolas,monospace;display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:16px;user-select:none}
+a{color:var(--dim);text-decoration:none;font-size:.75rem}
+a:hover{color:var(--accent)}
+h1{font-size:1.5rem;letter-spacing:2px;color:var(--accent);margin:8px 0 2px}
+h1 span{color:var(--gold)}
+.subtitle{color:var(--dim);font-size:.8rem;margin-bottom:14px}
+.hud{display:flex;gap:22px;margin-bottom:14px;background:var(--panel);border-radius:10px;padding:10px 22px;font-size:.9rem}
+.hud b{color:var(--gold)}
+.hud .label{color:var(--dim);font-size:.7rem;display:block}
+#stage{background:var(--panel);border-radius:12px;padding:24px;width:min(96vw,760px);text-align:center}
+#enzymeTag{font-size:1rem;color:var(--text);margin-bottom:6px}
+#enzymeTag b{color:var(--gold);letter-spacing:2px}
+#seqRow{display:flex;flex-wrap:wrap;justify-content:center;gap:2px;margin:12px 0}
+.base{width:20px;height:26px;line-height:26px;text-align:center;font-weight:bold;font-size:.78rem;border-radius:4px;background:var(--panel2);cursor:pointer;border:1px solid transparent}
+.base:hover{border-color:var(--accent)}
+.base.A{color:var(--good)}
+.base.C{color:var(--accent)}
+.base.G{color:var(--gold)}
+.base.T{color:var(--bad)}
+.base.sel{background:#334155;outline:2px solid var(--accent);outline-offset:-1px}
+.base.right{background:#14532d;outline:2px solid var(--good)}
+.base.wrong{background:#7f1d1d;outline:2px solid var(--bad)}
+.base.missed{background:#713f12;outline:2px dashed var(--gold)}
+button.big-btn{background:var(--accent);color:#082f49;border:none;border-radius:10px;padding:12px 30px;font-family:inherit;font-size:1rem;font-weight:bold;cursor:pointer;margin-top:8px}
+button.big-btn:hover{filter:brightness(1.15)}
+button.ghost{background:var(--panel2);color:var(--text);border:1px solid #475569;border-radius:8px;padding:8px 16px;font-family:inherit;cursor:pointer;margin-top:8px;margin-left:8px}
+#result{min-height:50px;margin-top:12px;font-size:.9rem;color:var(--dim);line-height:1.7}
+#result b{color:var(--gold)}
+.help{color:var(--dim);font-size:.72rem;margin-top:14px;max-width:640px;line-height:1.6;text-align:center}
+</style>
+</head>
+<body>
+<a href="index.html" onclick="if(window.parent!==window&&window.parent.closeGame){window.parent.closeGame();return false}">&#8592; back to arcade</a>
+<h1>MOTIF <span>HUNT</span></h1>
+<div class="subtitle">scan like a restriction enzyme — click every cut site</div>
+<div class="hud">
+<div><span class="label">ROUND</span><b id="hudRound">1/8</b></div>
+<div><span class="label">SCORE</span><b id="hudScore">0</b></div>
+<div><span class="label">BEST</span><b id="hudBest">0</b></div>
+</div>
+<div id="stage">
+<div id="enzymeTag"></div>
+<div style="color:var(--dim);font-size:.78rem">click the <b style="color:var(--accent)">first base</b> of each motif occurrence, then digest</div>
+<div id="seqRow"></div>
+<button class="big-btn" id="btnDigest">&#9986; digest</button>
+<button class="ghost" id="btnClear">clear picks</button>
+<button class="ghost" id="btnNext" style="display:none">next sequence &#9654;</button>
+<div id="result"></div>
+</div>
+<div class="help">Find every occurrence of the enzyme's recognition motif and click its first base.<br>+30 per correct site, &#8722;15 per false pick, &#8722;10 per missed site. 8 rounds, a new enzyme each time.</div>
+<script>
+(function(){
+"use strict";
+var ROUNDS=8;
+var ENZYMES=[
+["EcoRI","GAATTC"],["BamHI","GGATCC"],["HindIII","AAGCTT"],
+["NotI","GCGGCCGC"],["XbaI","TCTAGA"],["SalI","GTCGAC"],
+["PstI","CTGCAG"],["SmaI","CCCGGG"],["KpnI","GGTACC"],["SacI","GAGCTC"]
+];
+var state={round:0,score:0,best:0,seq:"",motif:"",name:"",picks:[],locked:false,truth:[]};
+try{state.best=parseInt(localStorage.getItem("motifhunt_best")||"0",10)||0;}catch(e){}
+var $=function(id){return document.getElementById(id);};
+var elSeq=$("seqRow"),elResult=$("result"),elTag=$("enzymeTag"),
+elBtnDigest=$("btnDigest"),elBtnClear=$("btnClear"),elBtnNext=$("btnNext");
+function rnd(n){return Math.floor(Math.random()*n);}
+function updateHud(){$("hudRound").textContent=Math.min(state.round,ROUNDS)+"/"+ROUNDS;$("hudScore").textContent=state.score;$("hudBest").textContent=state.best;}
+function findMotif(s,m){
+var out=[];var i=0;
+while(true){i=s.indexOf(m,i);if(i<0)break;out.push(i);i++;}
+return out;}
+function genSequence(){
+var e=ENZYMES[rnd(ENZYMES.length)];
+state.name=e[0];state.motif=e[1];
+var nSites=2+rnd(3);
+var segs=[];
+for(var k=0;k<=nSites;k++){
+var L=8+rnd(14);var seg="";
+for(var i=0;i<L;i++)seg+="ACGT"[rnd(4)];
+segs.push(seg);}
+var seq=segs.join(state.motif);
+// guarantee at least nSites real sites (join may create extras by chance — truth computed later)
+state.seq=seq;
+state.truth=findMotif(seq,state.motif);
+state.picks=[];state.locked=false;
+elTag.innerHTML="enzyme: <b>"+state.name+"</b> recognizes <b>"+state.motif+"</b> ("+state.truth.length+" sites hidden)";
+elResult.innerHTML="picks: 0";
+renderSeq();
+elBtnDigest.style.display="inline-block";
+elBtnClear.style.display="inline-block";
+elBtnNext.style.display="none";}
+function renderSeq(){
+elSeq.innerHTML="";
+for(var i=0;i<state.seq.length;i++){
+var d=document.createElement("div");
+d.className="base "+state.seq[i];
+if(state.locked){
+if(state.truth.indexOf(i)>=0&&state.picks.indexOf(i)>=0)d.className+=" right";
+else if(state.truth.indexOf(i)>=0)d.className+=" missed";
+else if(state.picks.indexOf(i)>=0)d.className+=" wrong";
+}else if(state.picks.indexOf(i)>=0)d.className+=" sel";
+d.textContent=state.seq[i];
+(function(idx){d.onclick=function(){
+if(state.locked)return;
+var p=state.picks.indexOf(idx);
+if(p>=0)state.picks.splice(p,1);else state.picks.push(idx);
+renderSeq();
+elResult.innerHTML="picks: "+state.picks.length;};})(i);
+elSeq.appendChild(d);}}
+elBtnClear.onclick=function(){if(state.locked)return;state.picks=[];renderSeq();elResult.innerHTML="picks: 0";};
+elBtnDigest.onclick=function(){
+if(state.locked)return;
+state.locked=true;
+var hits=0,misses=0;
+state.picks.forEach(function(p){if(state.truth.indexOf(p)>=0)hits++;else misses++;});
+var missedSites=state.truth.length-hits;
+var pts=hits*30-misses*15-missedSites*10;
+state.score+=pts;
+if(state.score>state.best){state.best=state.score;try{localStorage.setItem("motifhunt_best",String(state.best));}catch(e){}}
+var grade=missedSites===0&&misses===0?"&#127919; clean digest!":hits===0?"&#128064; nothing cut":"&#128293; "+hits+"/"+state.truth.length+" sites cut";
+elResult.innerHTML=grade+" &nbsp; <b>"+(pts>=0?"+":"")+pts+" pts</b> &nbsp; ("+hits+" hits, "+misses+" false, "+missedSites+" missed)";
+renderSeq();
+elBtnDigest.style.display="none";
+elBtnClear.style.display="none";
+elBtnNext.style.display="inline-block";
+elBtnNext.innerHTML=(state.round>=ROUNDS)?"see results &#127937;":"next sequence &#9654;";
+updateHud();};
+elBtnNext.onclick=function(){
+if(state.round>=ROUNDS){endGame();return;}
+state.round++;genSequence();updateHud();};
+function endGame(){
+elSeq.innerHTML="";elTag.innerHTML="game over";
+elBtnDigest.style.display="none";elBtnClear.style.display="none";
+elBtnNext.innerHTML="&#8635; play again";
+elBtnNext.onclick=function(){location.reload();};
+elResult.innerHTML="<div style='font-size:1.6rem;color:var(--gold)'>final score: "+state.score+" pts"+(state.score>=state.best?" &#11088;":"")+"</div>best ever: "+state.best+" pts";
+updateHud();}
+state.round=1;genSequence();updateHud();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ORF Hunter — Bio Arcade</title>
+<style>
+:root{--bg:#0f172a;--panel:#1e293b;--panel2:#273449;--text:#e2e8f0;--dim:#94a3b8;--accent:#38bdf8;--good:#4ade80;--bad:#f87171;--gold:#facc15}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:"SF Mono","Cascadia Code",Consolas,monospace;display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:16px;user-select:none}
+a{color:var(--dim);text-decoration:none;font-size:.75rem}
+a:hover{color:var(--accent)}
+h1{font-size:1.5rem;letter-spacing:2px;color:var(--accent);margin:8px 0 2px}
+h1 span{color:var(--gold)}
+.subtitle{color:var(--dim);font-size:.8rem;margin-bottom:14px}
+.hud{display:flex;gap:22px;margin-bottom:14px;background:var(--panel);border-radius:10px;padding:10px 22px;font-size:.9rem}
+.hud b{color:var(--gold)}
+.hud .label{color:var(--dim);font-size:.7rem;display:block}
+#stage{background:var(--panel);border-radius:12px;padding:24px;width:min(96vw,760px);text-align:center}
+#seqRow{display:flex;flex-wrap:wrap;justify-content:center;gap:3px;margin:10px 0}
+.base{width:22px;height:26px;line-height:26px;text-align:center;font-weight:bold;font-size:.8rem;border-radius:4px;background:var(--panel2);cursor:pointer;border:1px solid transparent}
+.base:hover{border-color:var(--accent)}
+.base.A{color:var(--good)}
+.base.C{color:var(--accent)}
+.base.G{color:var(--gold)}
+.base.T{color:var(--bad)}
+.base.sel{outline:2px solid var(--text);outline-offset:1px}
+.base.orf{background:#14532d}
+.base.start{background:#166534;outline:2px solid var(--good)}
+.base.stop{background:#7f1d1d}
+.base.frame-sep{margin-left:8px}
+button.big-btn{background:var(--accent);color:#082f49;border:none;border-radius:10px;padding:12px 30px;font-family:inherit;font-size:1rem;font-weight:bold;cursor:pointer;margin-top:8px}
+button.big-btn:hover{filter:brightness(1.15)}
+button.ghost{background:var(--panel2);color:var(--text);border:1px solid #475569;border-radius:8px;padding:8px 16px;font-family:inherit;cursor:pointer;margin-top:8px}
+#result{min-height:70px;margin-top:12px;font-size:.9rem;color:var(--dim);line-height:1.7}
+#result b{color:var(--gold)}
+#result .protein{color:var(--good);letter-spacing:2px;font-weight:bold}
+.legend{font-size:.68rem;color:var(--dim);margin-top:8px}
+.legend .sw{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle;margin:0 3px}
+.help{color:var(--dim);font-size:.72rem;margin-top:14px;max-width:640px;line-height:1.6;text-align:center}
+</style>
+</head>
+<body>
+<a href="index.html" onclick="if(window.parent!==window&&window.parent.closeGame){window.parent.closeGame();return false}">&#8592; back to arcade</a>
+<h1>ORF <span>HUNTER</span></h1>
+<div class="subtitle">find the longest open reading frame on the plus strand</div>
+<div class="hud">
+<div><span class="label">ROUND</span><b id="hudRound">1/8</b></div>
+<div><span class="label">SCORE</span><b id="hudScore">0</b></div>
+<div><span class="label">BEST</span><b id="hudBest">0</b></div>
+</div>
+<div id="stage">
+<div>click the base you think is the <b style="color:var(--good)">start codon (ATG)</b> of the longest ORF</div>
+<div id="seqRow"></div>
+<button class="big-btn" id="btnLock">lock in start codon</button>
+<button class="ghost" id="btnNext" style="display:none">next sequence &#9654;</button>
+<div id="result"></div>
+<div class="legend">
+<span class="sw" style="background:#166534"></span>start codon
+<span class="sw" style="background:#14532d"></span>coding region
+<span class="sw" style="background:#7f1d1d"></span>stop codon
+</div>
+</div>
+<div class="help">Scan the sequence for ATG codons and trace their reading frame to the nearest in-frame stop (TAA/TAG/TGA).<br>Click the first base of your predicted start codon. Exact hit = 100 pts, inside the true ORF = 50 pts. 8 rounds per game.</div>
+<script>
+(function(){
+"use strict";
+var ROUNDS=8;
+var CODON={TTT:"F",TTC:"F",TTA:"L",TTG:"L",CTT:"L",CTC:"L",CTA:"L",CTG:"L",ATT:"I",ATC:"I",ATA:"I",ATG:"M",GTT:"V",GTC:"V",GTA:"V",GTG:"V",TCT:"S",TCC:"S",TCA:"S",TCG:"S",CCT:"P",CCC:"P",CCA:"P",CCG:"P",ACT:"T",ACC:"T",ACA:"T",ACG:"T",GCT:"A",GCC:"A",GCA:"A",GCG:"A",TAT:"Y",TAC:"Y",TAA:"*",TAG:"*",CAT:"H",CAC:"H",CAA:"Q",CAG:"Q",AAT:"N",AAC:"N",AAA:"K",AAG:"K",GAT:"D",GAC:"D",GAA:"E",GAG:"E",TGT:"C",TGC:"C",TGA:"*",TGG:"W",CGT:"R",CGC:"R",CGA:"R",CGG:"R",AGT:"S",AGC:"S",AGA:"R",AGG:"R",GGT:"G",GGC:"G",GGA:"G",GGG:"G"};
+var STOPS={TAA:1,TAG:1,TGA:1};
+var state={round:0,score:0,best:0,seq:"",sel:-1,locked:false,orf:null};
+try{state.best=parseInt(localStorage.getItem("orfhunter_best")||"0",10)||0;}catch(e){}
+var $=function(id){return document.getElementById(id);};
+var elSeq=$("seqRow"),elResult=$("result"),elBtnLock=$("btnLock"),elBtnNext=$("btnNext");
+function rnd(n){return Math.floor(Math.random()*n);}
+function randBase(){return "ACGT"[rnd(4)];}
+function updateHud(){$("hudRound").textContent=Math.min(state.round,ROUNDS)+"/"+ROUNDS;$("hudScore").textContent=state.score;$("hudBest").textContent=state.best;}
+function genSequence(){
+var len=57+rnd(4)*3; // multiple of 3 for tidy frames
+var seq=[];
+for(var i=0;i<len;i++)seq.push(randBase());
+// inject a decent ORF at a random frame so there's always something worth finding
+var frame=rnd(3);
+var start=frame+3*rnd(Math.floor((len-frame-6)/3)-8+1);
+if(start<frame)start=frame;
+var nCodons=8+rnd(8);
+seq[start]="A";seq[start+1]="T";seq[start+2]="G";
+for(var c=1;c<nCodons;c++){
+var p=start+3*c;
+if(p+3>len)break;
+var codon;
+do{codon=randBase()+randBase()+randBase();}while(STOPS[codon]);
+seq[p]=codon[0];seq[p+1]=codon[1];seq[p+2]=codon[2];}
+var sp=start+3*nCodons;
+if(sp+3<=len){var stopKeys=["TAA","TAG","TGA"];var st=stopKeys[rnd(3)];seq[sp]=st[0];seq[sp+1]=st[1];seq[sp+2]=st[2];}
+state.seq=seq.join("");
+state.sel=-1;state.locked=false;
+state.orf=findLongestOrf(state.seq);
+renderSeq();
+elResult.innerHTML="selected: <b>none</b>";
+elBtnLock.style.display="inline-block";
+elBtnNext.style.display="none";}
+function findLongestOrf(s){
+var best=null;
+for(var frame=0;frame<3;frame++){
+for(var i=frame;i+3<=s.length;i+=3){
+if(s.substr(i,3)==="ATG"){
+for(var j=i+3;j+3<=s.length;j+=3){
+var codon=s.substr(j,3);
+if(STOPS[codon]){
+var lenCodons=(j-i)/3;
+if(!best||lenCodons>best.len){best={start:i,end:j+2,len:lenCodons,frame:frame};}
+break;}}}}}
+return best;}
+function translate(s,from,to){
+var out="";
+for(var i=from;i+3<=to+1;i+=3){var c=CODON[s.substr(i,3)];if(c)out+=c;}
+return out;}
+function renderSeq(){
+elSeq.innerHTML="";
+for(var i=0;i<state.seq.length;i++){
+var d=document.createElement("div");
+d.className="base "+state.seq[i];
+if(i%3===0&&i>0)d.className+=" frame-sep";
+d.textContent=state.seq[i];
+if(i===state.sel)d.className+=" sel";
+if(state.locked&&state.orf){
+if(i>=state.orf.start&&i<=state.orf.end)d.className+=" orf";
+if(i>=state.orf.start&&i<=state.orf.start+2)d.className+=" start";
+if(i>=state.orf.end-2&&i<=state.orf.end)d.className+=" stop";}
+(function(idx){d.onclick=function(){if(state.locked)return;state.sel=idx;renderSeq();elResult.innerHTML="selected: <b>position "+(idx+1)+"</b> (frame "+(idx%3+1)+")";};})(i);
+elSeq.appendChild(d);}}
+elBtnLock.onclick=function(){
+if(state.locked||state.sel<0)return;
+state.locked=true;
+var o=state.orf;
+var sel=state.sel;
+var pts=0,msg;
+if(sel===o.start){pts=100;msg="&#127919; perfect! you nailed the start codon.";}
+else if(sel>=o.start&&sel<=o.end){pts=50;msg="&#128077; inside the ORF, but the true start is at position "+(o.start+1)+".";}
+else{pts=0;msg="&#128064; missed! the longest ORF starts at position "+(o.start+1)+" (frame "+(o.frame+1)+").";}
+state.score+=pts;
+if(state.score>state.best){state.best=state.score;try{localStorage.setItem("orfhunter_best",String(state.best));}catch(e){}}
+var protein=translate(state.seq,o.start,o.end-2);
+elResult.innerHTML=msg+" &nbsp;<b>+"+pts+" pts</b><br>"+
+"longest ORF: <b>"+o.len+" codons</b> (pos "+(o.start+1)+"\u2013"+(o.end+1)+", frame "+(o.frame+1)+")<br>"+
+"protein: <span class='protein'>"+protein+"</span>";
+renderSeq();
+elBtnLock.style.display="none";
+elBtnNext.style.display="inline-block";
+elBtnNext.innerHTML=(state.round>=ROUNDS)?"see results &#127937;":"next sequence &#9654;";
+updateHud();};
+elBtnNext.onclick=function(){
+if(state.round>=ROUNDS){endGame();return;}
+state.round++;
+genSequence();
+updateHud();};
+function endGame(){
+elSeq.innerHTML="";
+elBtnLock.style.display="none";
+elBtnNext.style.display="inline-block";
+elBtnNext.innerHTML="&#8635; play again";
+elBtnNext.onclick=function(){location.reload();};
+elResult.innerHTML="<div style='font-size:1.6rem;color:var(--gold)'>final score: "+state.score+" pts"+(state.score>=state.best?" &#11088;":"")+"</div>best ever: "+state.best+" pts";
+updateHud();}
+state.round=1;
+genSequence();
+updateHud();
+})();
+</script>
+</body>
+</html>

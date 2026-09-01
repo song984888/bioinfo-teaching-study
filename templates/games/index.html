@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bio Arcade — tiny bioinformatics games</title>
+<style>
+:root{--bg:#0f172a;--panel:#1e293b;--panel2:#273449;--text:#e2e8f0;--dim:#94a3b8;--accent:#38bdf8;--good:#4ade80;--bad:#f87171;--gold:#facc15}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font-family:"SF Mono","Cascadia Code",Consolas,monospace;overflow:hidden}
+#lobby{height:100vh;overflow-y:auto;display:flex;flex-direction:column;align-items:center;padding:24px 16px}
+h1{font-size:1.8rem;letter-spacing:3px;color:var(--accent)}
+h1 span{color:var(--gold)}
+.subtitle{color:var(--dim);font-size:.85rem;margin:6px 0 26px;text-align:center}
+.dna{color:var(--dim);font-size:.8rem;letter-spacing:1px;margin-bottom:18px;opacity:.7}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;width:min(96vw,860px)}
+.card{display:block;background:var(--panel);border:1px solid #334155;border-radius:14px;padding:20px;cursor:pointer;color:var(--text);transition:transform .12s,border-color .12s}
+.card:hover{transform:translateY(-4px);border-color:var(--accent)}
+.card .icon{font-size:1.7rem}
+.card h2{font-size:1rem;margin:10px 0 6px;color:var(--accent);letter-spacing:1px}
+.card p{font-size:.75rem;color:var(--dim);line-height:1.55}
+.card .tag{display:inline-block;margin-top:10px;font-size:.65rem;color:var(--gold);border:1px solid var(--gold);border-radius:6px;padding:2px 8px}
+footer{margin-top:30px;color:var(--dim);font-size:.7rem;text-align:center;line-height:1.7}
+#gameView{display:none;height:100vh;flex-direction:column}
+#gameView.active{display:flex}
+#lobby.hidden{display:none}
+#gameBar{display:flex;align-items:center;gap:14px;padding:8px 14px;background:var(--panel);border-bottom:1px solid #334155;flex:none}
+#gameBar .title{color:var(--accent);font-size:.85rem;letter-spacing:2px}
+#btnBack{background:var(--panel2);color:var(--text);border:1px solid #475569;border-radius:8px;padding:6px 14px;font-family:inherit;font-size:.78rem;cursor:pointer}
+#btnBack:hover{border-color:var(--accent);color:var(--accent)}
+#gameFrame{flex:1;width:100%;border:none;background:var(--bg)}
+</style>
+</head>
+<body>
+<div id="lobby">
+<div class="dna">A T G C C G T A A G C T T G C A A T T C G G A T C C</div>
+<h1>BIO <span>ARCADE</span></h1>
+<div class="subtitle">six tiny bioinformatics games to relax between pipelines</div>
+<div class="grid">
+<div class="card" data-game="align-o-matic.html" role="button" tabindex="0">
+<div class="icon">&#129516;</div>
+<h2>ALIGN-O-MATIC</h2>
+<p>Slide reads onto the reference and find the best alignment. Flip into reverse complement when reads arrive backwards.</p>
+<span class="tag">alignment</span>
+</div>
+<div class="card" data-game="codon-rush.html" role="button" tabindex="0">
+<div class="icon">&#9889;</div>
+<h2>CODON RUSH</h2>
+<p>A codon appears — name the amino acid before the timer dies. Speed and streaks multiply your score.</p>
+<span class="tag">translation</span>
+</div>
+<div class="card" data-game="gc-guesser.html" role="button" tabindex="0">
+<div class="icon">&#128200;</div>
+<h2>GC GUESSER</h2>
+<p>Eyeball a sequence and estimate its GC content. Samples from real organisms with wild GC biases.</p>
+<span class="tag">genomics</span>
+</div>
+<div class="card" data-game="orf-hunter.html" role="button" tabindex="0">
+<div class="icon">&#127919;</div>
+<h2>ORF HUNTER</h2>
+<p>Trace reading frames, find the start codon of the longest ORF, and watch it translate into protein.</p>
+<span class="tag">gene finding</span>
+</div>
+<div class="card" data-game="motif-hunt.html" role="button" tabindex="0">
+<div class="icon">&#9986;</div>
+<h2>MOTIF HUNT</h2>
+<p>You are the restriction enzyme. Scan the sequence and click every recognition site, then digest.</p>
+<span class="tag">motifs</span>
+</div>
+<div class="card" data-game="mini-assembler.html" role="button" tabindex="0">
+<div class="icon">&#129513;</div>
+<h2>MINI ASSEMBLER</h2>
+<p>Overlap-layout-consensus, cozy edition. Merge reads by matching k-mer overlaps to grow the contig.</p>
+<span class="tag">assembly</span>
+</div>
+</div>
+<footer>all games run locally in your browser · best scores saved per game · no data leaves your machine</footer>
+</div>
+<div id="gameView">
+<div id="gameBar">
+<button id="btnBack">&#8592; back to arcade</button>
+<span class="title" id="gameTitle"></span>
+</div>
+<iframe id="gameFrame" title="game"></iframe>
+</div>
+<script>
+(function(){
+var lobby=document.getElementById('lobby');
+var gameView=document.getElementById('gameView');
+var frame=document.getElementById('gameFrame');
+var title=document.getElementById('gameTitle');
+var backBtn=document.getElementById('btnBack');
+var openGame=function(card){
+var src=card.getAttribute('data-game');
+if(!src)return;
+frame.src=src;
+title.textContent=card.querySelector('h2').textContent;
+lobby.classList.add('hidden');
+gameView.classList.add('active');
+};
+var closeGame=function(){
+frame.src='about:blank';
+gameView.classList.remove('active');
+lobby.classList.remove('hidden');
+};
+Array.prototype.forEach.call(document.querySelectorAll('.card'),function(card){
+card.addEventListener('click',function(){openGame(card);});
+card.addEventListener('keydown',function(e){
+if(e.key==='Enter'||e.key===' '){e.preventDefault();openGame(card);}
+});
+});
+backBtn.addEventListener('click',closeGame);
+window.closeGame=closeGame;
+window.addEventListener('keydown',function(e){
+if(e.key==='Escape'&&gameView.classList.contains('active'))closeGame();
+});
+})();
+</script>
+</body>
+</html>
