@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Take a break · 咖啡小游戏{% endblock %}
+
+{% block content %}
+<style>
+  .break-game { max-width: 760px; margin: 2rem auto; }
+  .game-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:1rem; }
+  .game-head h1 { margin:0; color:#5b3a29; }
+  .game-stats { display:flex; gap:.65rem; flex-wrap:wrap; }
+  .game-stat { background:#fff7ed; border:1px solid #f1d4b3; border-radius:999px; padding:.45rem .8rem; color:#6b4226; font-weight:600; }
+  #coffee-board { position:relative; height:410px; overflow:hidden; border-radius:18px; background:linear-gradient(#fffaf4,#f7e4cf); border:2px solid #e8c39e; box-shadow:0 12px 30px rgba(91,58,41,.12); }
+  #coffee-board::before { content:'☁  ☁     ☁'; position:absolute; top:20px; left:0; right:0; text-align:center; color:rgba(255,255,255,.85); font-size:2rem; letter-spacing:1.2rem; pointer-events:none; }
+  #coffee-cup { position:absolute; display:none; width:72px; height:72px; border:0; border-radius:50%; background:#fff; box-shadow:0 5px 12px rgba(91,58,41,.22); font-size:2.5rem; cursor:pointer; transform:translate(-50%,-50%); transition:left .12s ease,top .12s ease,transform .12s ease; }
+  #coffee-cup:hover { transform:translate(-50%,-50%) scale(1.12); }
+  .game-actions { display:flex; justify-content:center; gap:.7rem; margin-top:1rem; }
+  .game-message { min-height:1.6em; text-align:center; color:#6b4226; margin-top:.8rem; }
+</style>
+
+<div class="break-game">
+  <div class="game-head">
+    <h1>☕ Take a break</h1>
+    <div class="game-stats" aria-live="polite">
+      <span class="game-stat">得分：<b id="score">0</b></span>
+      <span class="game-stat">时间：<b id="time">20</b>s</span>
+    </div>
+  </div>
+  <div id="coffee-board" aria-label="咖啡小游戏区域">
+    <button id="coffee-cup" type="button" aria-label="点击咖啡得分">☕</button>
+  </div>
+  <div class="game-actions">
+    <button id="start-game" class="btn btn-primary" type="button">开始游戏</button>
+    <a class="btn btn-secondary" href="{{ url_for('dashboard') }}">返回功能模块</a>
+  </div>
+  <p id="game-message" class="game-message">20 秒内点击尽可能多的咖啡，放松一下吧！</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const board = document.getElementById('coffee-board');
+  const cup = document.getElementById('coffee-cup');
+  const start = document.getElementById('start-game');
+  const scoreEl = document.getElementById('score');
+  const timeEl = document.getElementById('time');
+  const message = document.getElementById('game-message');
+  let score = 0, time = 20, timer = null, playing = false;
+
+  function moveCup() {
+    const x = 55 + Math.random() * (board.clientWidth - 110);
+    const y = 80 + Math.random() * (board.clientHeight - 135);
+    cup.style.left = `${x}px`;
+    cup.style.top = `${y}px`;
+  }
+  function finish() {
+    playing = false;
+    clearInterval(timer); timer = null;
+    cup.style.display = 'none';
+    start.disabled = false;
+    start.textContent = '再玩一次';
+    message.textContent = `时间到！你收集了 ${score} 杯咖啡，休息得不错。`;
+  }
+  function begin() {
+    score = 0; time = 20; playing = true;
+    scoreEl.textContent = score; timeEl.textContent = time;
+    start.disabled = true; start.textContent = '游戏进行中…';
+    cup.style.display = 'block'; moveCup();
+    message.textContent = '咖啡出现了，点击它！';
+    clearInterval(timer);
+    timer = setInterval(() => {
+      time -= 1; timeEl.textContent = time;
+      if (time <= 0) finish();
+    }, 1000);
+  }
+  cup.addEventListener('click', () => {
+    if (!playing) return;
+    score += 1; scoreEl.textContent = score; moveCup();
+  });
+  start.addEventListener('click', begin);
+})();
+</script>
+{% endblock %}

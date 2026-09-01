@@ -1810,6 +1810,14 @@ def dashboard():
                                )
 
 
+@app.route('/games/coffee-break')
+def coffee_break_game():
+    """所有已登录用户可玩的咖啡休息小游戏。"""
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    return render_template('games/coffee_break.html')
+
+
 @app.route('/help')
 def help_page():
     if 'user_id' not in session:
