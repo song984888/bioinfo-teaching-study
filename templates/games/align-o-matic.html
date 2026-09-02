@@ -1,9 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Align-o-Matic — Sequence Aligner Puzzle</title>
+{% extends "base.html" %}
+{% block title %}Align-O-Matic · 游戏{% endblock %}
+{% block styles %}
 <style>
 :root{--bg:#0f172a;--panel:#1e293b;--panel2:#273449;--text:#e2e8f0;--dim:#94a3b8;--accent:#38bdf8;--good:#4ade80;--bad:#f87171;--gold:#facc15;--cell:24px}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -52,8 +49,9 @@ button.primary:hover{filter:brightness(1.15);color:#082f49}
 body > a.backlink{color:var(--dim);text-decoration:none;font-size:.75rem}
 body > a.backlink:hover{color:var(--accent)}
 </style>
-</head>
-<body>
+{% endblock %}
+{% block content %}
+<div class="game-shell">
 <a class="backlink" href="/dashboard">🏠 返回继续学习</a>
 <a class="backlink" href="index.html" onclick="if(window.parent!==window&&window.parent.closeGame){window.parent.closeGame();return false}">&#8592; 返回游戏大厅</a>
 <h1>ALIGN-O-<span>MATIC</span></h1>
@@ -85,5 +83,5 @@ Drag the read or press <kbd>&#8592;</kbd><kbd>&#8594;</kbd> to slide it. <kbd>F<
 <div id="toast"></div>
 <div id="modal"><div class="modal-box" id="modalBox"></div></div>
 <script src="align-o-matic.js"></script>
-</body>
-</html>
+</div>
+{% endblock %}

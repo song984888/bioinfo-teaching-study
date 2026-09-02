@@ -1,9 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Codon Rush — Bio Arcade</title>
+{% extends "base.html" %}
+{% block title %}Codon Rush · 游戏{% endblock %}
+{% block styles %}
 <style>
 :root{--bg:#0f172a;--panel:#1e293b;--panel2:#273449;--text:#e2e8f0;--dim:#94a3b8;--accent:#38bdf8;--good:#4ade80;--bad:#f87171;--gold:#facc15}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -34,8 +31,9 @@ button.big-btn:hover{filter:brightness(1.15)}
 .help{color:var(--dim);font-size:.72rem;margin-top:14px;max-width:600px;line-height:1.6;text-align:center}
 kbd{background:var(--panel2);border:1px solid #475569;border-radius:4px;padding:1px 5px}
 </style>
-</head>
-<body>
+{% endblock %}
+{% block content %}
+<div class="game-shell">
 <a href="/dashboard">🏠 返回继续学习</a>
 <a href="index.html" onclick="if(window.parent!==window&&window.parent.closeGame){window.parent.closeGame();return false}">&#8592; 返回游戏大厅</a>
 <h1>CODON <span>RUSH</span></h1>
@@ -160,5 +158,5 @@ updateHud();startRound();};
 updateHud();
 })();
 </script>
-</body>
-</html>
+</div>
+{% endblock %}

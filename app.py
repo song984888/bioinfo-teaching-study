@@ -1823,11 +1823,21 @@ def game_asset(filename):
     """登录后提供游戏 HTML/JavaScript 资源。"""
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    allowed = {'html', 'js'}
     extension = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
-    if extension not in allowed or filename.startswith(('/', '\\')) or '..' in filename.split('/'):
+    if filename.startswith(('/', '\\')) or '..' in filename.split('/'):
         abort(404)
-    return send_from_directory(os.path.join(app.template_folder, 'games'), filename)
+    if extension == 'html':
+        allowed_pages = {
+            'index.html', 'align-o-matic.html', 'codon-rush.html',
+            'gc-guesser.html', 'orf-hunter.html', 'motif-hunt.html',
+            'mini-assembler.html'
+        }
+        if filename not in allowed_pages:
+            abort(404)
+        return render_template('games/' + filename)
+    if extension == 'js' and filename == 'align-o-matic.js':
+        return send_from_directory(os.path.join(app.template_folder, 'games'), filename)
+    abort(404)
 
 
 
