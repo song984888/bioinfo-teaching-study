@@ -8,9 +8,11 @@
 <style>
 :root{--bg:#0f172a;--panel:#1e293b;--panel2:#273449;--text:#e2e8f0;--dim:#94a3b8;--accent:#38bdf8;--good:#4ade80;--bad:#f87171;--gold:#facc15}
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%}
-body{background:var(--bg);color:var(--text);font-family:"SF Mono","Cascadia Code",Consolas,monospace;overflow:hidden}
-#lobby{height:100vh;overflow-y:auto;display:flex;flex-direction:column;align-items:center;padding:24px 16px}
+html,body{min-height:100%}
+body{background:var(--bg);color:var(--text);font-family:"SF Mono","Cascadia Code",Consolas,monospace;overflow-x:hidden}
+.games-main{max-width:none;width:100%;padding:0}
+.games-main + .site-footer{background:#0f172a;color:#94a3b8;border-top:1px solid #334155;padding:16px 0}
+#lobby{min-height:calc(100vh - 150px);overflow-y:auto;display:flex;flex-direction:column;align-items:center;padding:24px 16px}
 h1{font-size:1.8rem;letter-spacing:3px;color:var(--accent)}
 h1 span{color:var(--gold)}
 .subtitle{color:var(--dim);font-size:.85rem;margin:6px 0 26px;text-align:center}
@@ -23,7 +25,7 @@ h1 span{color:var(--gold)}
 .card p{font-size:.75rem;color:var(--dim);line-height:1.55}
 .card .tag{display:inline-block;margin-top:10px;font-size:.65rem;color:var(--gold);border:1px solid var(--gold);border-radius:6px;padding:2px 8px}
 footer{margin-top:30px;color:var(--dim);font-size:.7rem;text-align:center;line-height:1.7}
-#gameView{display:none;height:100vh;flex-direction:column}
+#gameView{display:none;min-height:calc(100vh - 150px);flex-direction:column}
 #gameView.active{display:flex}
 #lobby.hidden{display:none}
 #gameBar{display:flex;align-items:center;gap:14px;padding:8px 14px;background:var(--panel);border-bottom:1px solid #334155;flex:none}
