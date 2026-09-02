@@ -24,6 +24,9 @@ h1 span{color:var(--gold)}
 .card h2{font-size:1rem;margin:10px 0 6px;color:var(--accent);letter-spacing:1px}
 .card p{font-size:.75rem;color:var(--dim);line-height:1.55}
 .card .tag{display:inline-block;margin-top:10px;font-size:.65rem;color:var(--gold);border:1px solid var(--gold);border-radius:6px;padding:2px 8px}
+.lobby-actions{width:min(96vw,860px);display:flex;justify-content:flex-end;margin:-12px 0 14px}
+.lobby-home{background:#14532d;color:#dcfce7;border:1px solid #22c55e;border-radius:8px;padding:7px 14px;text-decoration:none;font-size:.78rem}
+.lobby-home:hover{background:#166534;color:#fff}
 footer{margin-top:30px;color:var(--dim);font-size:.7rem;text-align:center;line-height:1.7}
 #gameView{display:none;min-height:calc(100vh - 150px);flex-direction:column}
 #gameView.active{display:flex}
@@ -44,6 +47,9 @@ footer{margin-top:30px;color:var(--dim);font-size:.7rem;text-align:center;line-h
 <div class="dna">A T G C C G T A A G C T T G C A A T T C G G A T C C</div>
 <h1>BIO <span>ARCADE</span></h1>
 <div class="subtitle">six tiny bioinformatics games to relax between pipelines</div>
+<div class="lobby-actions">
+<a class="lobby-home" href="/dashboard">🏠 返回继续学习</a>
+</div>
 <div class="grid">
 <div class="card" data-game="align-o-matic.html" role="button" tabindex="0">
 <div class="icon">&#129516;</div>
@@ -82,7 +88,6 @@ footer{margin-top:30px;color:var(--dim);font-size:.7rem;text-align:center;line-h
 <span class="tag">assembly</span>
 </div>
 </div>
-<footer>all games run locally in your browser · best scores saved per game · no data leaves your machine</footer>
 </div>
 <div id="gameView">
 <div id="gameBar">
