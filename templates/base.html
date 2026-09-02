@@ -15,6 +15,7 @@
     {% block styles %}{% endblock %}
 </head>
 <body>
+    {% block header %}
     <header>
         <div class="container">
             <h1>《生物信息学课程》教&学系统</h1>
@@ -33,8 +34,9 @@
             </nav>
         </div>
     </header>
+    {% endblock %}
 
-    <main class="container">
+    <main class="{% block main_class %}container{% endblock %}">
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 <div class="flashes" style="margin-top: 20px;">
