@@ -386,6 +386,10 @@
     </div>
     <div class="modal-body">
       <div class="exp-section">
+        <label>保存到思维链（可选）</label>
+        <select id="noteChainSelect" style="width:100%;padding:0.6rem 0.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text)">
+          <option value="">保存为传统学习笔记</option>
+        </select>
         <h3>选择关联概念</h3>
         <select id="noteConceptSelect" style="width:100%;padding:0.6rem 0.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text)">
           <option value="">— 加载中 —</option>
@@ -756,6 +760,13 @@ function openNoteModal(idx) {
   document.getElementById('noteModalSub').textContent = '文献: ' + (article.title || 'Untitled').substring(0, 50);
   document.getElementById('noteContent').value = '';
   document.getElementById('noteModal').style.display = 'flex';
+  fetch('/api/thought-chains').then(function(resp) { return resp.json(); }).then(function(data) {
+    var chainSel = document.getElementById('noteChainSelect');
+    chainSel.innerHTML = '<option value="">保存为传统学习笔记</option>';
+    (data.chains || []).filter(function(c) { return c.status === 'active'; }).forEach(function(c) {
+      chainSel.innerHTML += '<option value="' + c.id + '">' + escapeHtml(c.title) + '</option>';
+    });
+  }).catch(function() {});
   loadNoteConcepts().then(function() {
     // 自动匹配检索关键词到概念下拉
     var kw = (document.getElementById('keywordInput')?.value || '').trim();
@@ -802,6 +813,22 @@ async function submitNote() {
   var tags = '文献检索,' + conceptName + ',' + (article.title || '').substring(0, 30);
 
   try {
+    var chainId = parseInt(document.getElementById('noteChainSelect').value, 10) || 0;
+    if (chainId) {
+      var ideaResp = await fetch('/api/thought-chains/' + chainId + '/ideas', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          content: content, thought_type: 'reflection', confidence: 3,
+          trigger_concept_id: conceptId,
+          literature: {title: article.title || '', abstract: article.abstractText || '', url: sourceUrl || ''}
+        })
+      });
+      var ideaData = await ideaResp.json();
+      if (!ideaData.success) { alert('保存失败: ' + (ideaData.message || '未知错误')); return; }
+      closeNoteModal();
+      alert('✓ 想法已添加到思维链，并已保存文献标题、摘要和全文链接！');
+      return;
+    }
     var resp = await fetch('/api/student/note', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({

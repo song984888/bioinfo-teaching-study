@@ -41,6 +41,58 @@ logger = logging.getLogger(__name__)
 
 init_db()
 
+
+def ensure_thought_chain_stage1_schema():
+    """补齐阶段 1 思维链字段，兼容已经创建的旧表。"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        table_definitions = {
+            'thought_chains': """CREATE TABLE IF NOT EXISTS thought_chains (
+                id INT AUTO_INCREMENT PRIMARY KEY, owner_id VARCHAR(191) NOT NULL,
+                title VARCHAR(255) NOT NULL, question TEXT, visibility ENUM('private') NOT NULL DEFAULT 'private',
+                status ENUM('active','archived') NOT NULL DEFAULT 'active', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NULL, archived_at DATETIME NULL, knowledge_base_id INT NULL,
+                trigger_concept_id INT NULL, INDEX idx_tc_owner (owner_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+            'ideas': """CREATE TABLE IF NOT EXISTS ideas (
+                id INT AUTO_INCREMENT PRIMARY KEY, chain_id INT NOT NULL, owner_id VARCHAR(191) NOT NULL,
+                content TEXT NOT NULL, thought_type ENUM('question','hypothesis','inference','analogy','counterexample','reflection','conclusion') NOT NULL DEFAULT 'question',
+                status ENUM('exploratory','evidence_supported','challenged','revised','abandoned') NOT NULL DEFAULT 'exploratory',
+                trigger_concept_id INT NULL, confidence TINYINT NOT NULL DEFAULT 3, source_note_id INT NULL,
+                literature_title VARCHAR(500) NULL, literature_abstract TEXT NULL, literature_url VARCHAR(1000) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NULL,
+                INDEX idx_ideas_chain (chain_id), INDEX idx_ideas_owner (owner_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+            'idea_links': """CREATE TABLE IF NOT EXISTS idea_links (
+                id INT AUTO_INCREMENT PRIMARY KEY, chain_id INT NOT NULL, from_idea_id INT NOT NULL,
+                to_idea_id INT NOT NULL, relation_type ENUM('develop','refute','elaborate','merge') NOT NULL DEFAULT 'develop',
+                created_by VARCHAR(191) NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uk_idea_link (from_idea_id,to_idea_id,relation_type), INDEX idx_links_chain (chain_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+            'idea_events': """CREATE TABLE IF NOT EXISTS idea_events (
+                id INT AUTO_INCREMENT PRIMARY KEY, chain_id INT NOT NULL, idea_id INT NULL,
+                actor_id VARCHAR(191) NOT NULL, event_type VARCHAR(50) NOT NULL,
+                before_json LONGTEXT NULL, after_json LONGTEXT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_events_chain (chain_id), INDEX idx_events_idea (idea_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+        }
+        for table, definition in table_definitions.items():
+            cur.execute(definition)
+        migrations = {
+            'thought_chains': [('knowledge_base_id', 'INT NULL'), ('trigger_concept_id', 'INT NULL')],
+            'ideas': [('literature_title', 'VARCHAR(500) NULL'), ('literature_abstract', 'TEXT NULL'), ('literature_url', 'VARCHAR(1000) NULL')],
+        }
+        for table, columns in migrations.items():
+            cur.execute("SHOW COLUMNS FROM " + table)
+            existing = {row[0] for row in cur.fetchall()}
+            for name, definition in columns:
+                if name not in existing:
+                    cur.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
 # ===== Prompt 管理辅助函数 =====
 def get_prompt_content(prompt_key, default_content):
     """获取 prompt 内容（优先数据库覆盖，否则使用默认值）"""
@@ -313,6 +365,8 @@ class QuestionGenerator:
 
 def get_db_connection():
     return mysql.connector.connect(**CONFIG['SYNC_DB_CONFIG'])
+
+ensure_thought_chain_stage1_schema()
 
 def convert_decimal_for_json(data):
     """
@@ -7425,6 +7479,27 @@ def _owned_chain(cur, chain_id, owner_id):
     cur.execute("SELECT * FROM thought_chains WHERE id=%s AND owner_id=%s", (chain_id, owner_id))
     return cur.fetchone()
 
+@app.route('/api/thought-chain-concepts')
+def thought_chain_concepts_api():
+    if not _thought_owner_required(): return jsonify({'success': False, 'message': '未授权'}), 403
+    conn=get_db_connection(); cur=conn.cursor(dictionary=True)
+    try:
+        cur.execute("""
+            SELECT kb.id AS knowledge_base_id, kb.name AS knowledge_base_name,
+                   c.id AS concept_id, c.concept_name
+            FROM knowledge_bases kb
+            JOIN knowledge_documents d ON d.knowledge_base_id=kb.id
+            JOIN knowledge_concepts c ON c.knowledge_document_id=d.id
+            WHERE kb.is_public=1
+            GROUP BY kb.id, kb.name, c.id, c.concept_name
+            ORDER BY kb.name, c.concept_name
+        """)
+        return jsonify({'success':True,'concepts':cur.fetchall()})
+    except Exception as e:
+        app.logger.error('思维链概念列表失败: %s',e,exc_info=True)
+        return jsonify({'success':False,'message':'加载知识库概念失败'}),500
+    finally: cur.close(); conn.close()
+
 @app.route('/api/thought-chains', methods=['GET', 'POST'])
 def thought_chains_api():
     if not _thought_owner_required():
@@ -7438,9 +7513,25 @@ def thought_chains_api():
         data = request.get_json(silent=True) or {}
         title = (data.get('title') or '').strip()[:255]
         question = (data.get('question') or '').strip()
+        try:
+            kb_id = int(data.get('knowledge_base_id')) if data.get('knowledge_base_id') else None
+            concept_id = int(data.get('trigger_concept_id')) if data.get('trigger_concept_id') else None
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': '知识库或概念选择无效'}), 400
         if not title:
             return jsonify({'success': False, 'message': '思维链标题不能为空'}), 400
-        cur.execute("INSERT INTO thought_chains (owner_id,title,question,visibility,status,updated_at) VALUES (%s,%s,%s,'private','active',NOW())", (owner_id, title, question or None))
+        if not kb_id or not concept_id:
+            return jsonify({'success': False, 'message': '请选择知识库和核心概念'}), 400
+        cur.execute("""
+            SELECT c.id FROM knowledge_concepts c
+            JOIN knowledge_documents d ON c.knowledge_document_id=d.id
+            JOIN knowledge_bases kb ON d.knowledge_base_id=kb.id
+            WHERE c.id=%s AND kb.id=%s AND kb.is_public=1
+            LIMIT 1
+        """, (concept_id, kb_id))
+        if not cur.fetchone():
+            return jsonify({'success': False, 'message': '知识库与核心概念不匹配或不可用'}), 400
+        cur.execute("INSERT INTO thought_chains (owner_id,title,question,visibility,status,knowledge_base_id,trigger_concept_id,updated_at) VALUES (%s,%s,%s,'private','active',%s,%s,NOW())", (owner_id, title, question or None, kb_id, concept_id))
         chain_id = cur.lastrowid
         cur.execute("INSERT INTO idea_events (chain_id,actor_id,event_type,after_json) VALUES (%s,%s,'chain_created',%s)", (chain_id, owner_id, _json_value({'title': title, 'question': question})))
         conn.commit()
@@ -7457,7 +7548,8 @@ def thought_chain_detail_api(chain_id):
         return jsonify({'success': False, 'message': '未授权'}), 403
     owner_id = session['user_id']; conn = get_db_connection(); cur = conn.cursor(dictionary=True)
     try:
-        chain = _owned_chain(cur, chain_id, owner_id)
+        cur.execute("SELECT tc.*, kb.name AS knowledge_base_name, c.concept_name AS trigger_concept_name FROM thought_chains tc LEFT JOIN knowledge_bases kb ON tc.knowledge_base_id=kb.id LEFT JOIN knowledge_concepts c ON tc.trigger_concept_id=c.id WHERE tc.id=%s AND tc.owner_id=%s", (chain_id, owner_id))
+        chain = cur.fetchone()
         if not chain: return jsonify({'success': False, 'message': '思维链不存在'}), 404
         if request.method == 'GET':
             cur.execute("SELECT i.*, c.concept_name FROM ideas i LEFT JOIN knowledge_concepts c ON i.trigger_concept_id=c.id WHERE i.chain_id=%s AND i.owner_id=%s ORDER BY i.created_at, i.id", (chain_id, owner_id))
@@ -7498,7 +7590,11 @@ def thought_idea_create_api(chain_id):
     try:
         if not _owned_chain(cur,chain_id,owner_id): return jsonify({'success': False,'message':'思维链不存在'}),404
         concept_id=data.get('trigger_concept_id') or None
-        cur.execute("INSERT INTO ideas (chain_id,owner_id,content,thought_type,status,trigger_concept_id,confidence,source_note_id,updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,NOW())",(chain_id,owner_id,content,thought_type,status,concept_id,confidence,data.get('source_note_id') or None))
+        literature = data.get('literature') or {}
+        literature_title = str(literature.get('title') or '').strip()[:500] or None
+        literature_abstract = str(literature.get('abstract') or '').strip() or None
+        literature_url = str(literature.get('url') or '').strip()[:1000] or None
+        cur.execute("INSERT INTO ideas (chain_id,owner_id,content,thought_type,status,trigger_concept_id,confidence,source_note_id,literature_title,literature_abstract,literature_url,updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())",(chain_id,owner_id,content,thought_type,status,concept_id,confidence,data.get('source_note_id') or None,literature_title,literature_abstract,literature_url))
         idea_id=cur.lastrowid
         cur.execute("INSERT INTO idea_events (chain_id,idea_id,actor_id,event_type,after_json) VALUES (%s,%s,%s,'idea_created',%s)",(chain_id,idea_id,owner_id,_json_value({'content':content,'thought_type':thought_type,'status':status,'confidence':confidence})))
         prev_id=data.get('previous_idea_id')
@@ -7802,7 +7898,7 @@ def student_collections():
                     r['updated_at'] = r['updated_at'].isoformat()
 
         thought_chains = []
-        cur.execute("SELECT * FROM thought_chains WHERE owner_id=%s ORDER BY updated_at DESC, created_at DESC", (student_id,))
+        cur.execute("SELECT tc.*, kb.name AS knowledge_base_name, c.concept_name AS trigger_concept_name FROM thought_chains tc LEFT JOIN knowledge_bases kb ON tc.knowledge_base_id=kb.id LEFT JOIN knowledge_concepts c ON tc.trigger_concept_id=c.id WHERE tc.owner_id=%s ORDER BY tc.updated_at DESC, tc.created_at DESC", (student_id,))
         chain_rows = cur.fetchall()
         type_labels = {'question':'疑问','hypothesis':'假设','inference':'推论','analogy':'类比','counterexample':'反例','reflection':'反思','conclusion':'结论'}
         status_labels = {'exploratory':'试探','evidence_supported':'有证据支持','challenged':'被挑战','revised':'已修正','abandoned':'已放弃'}
