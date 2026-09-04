@@ -116,6 +116,13 @@
 
 - `GET /bioinfo-articles`（`bioinfo_articles`）：文献智能检索主页。详见[第 6 章](#6-文献检索bioinformatics-模块)与 [`bioinfo-articles.md`](./bioinfo-articles.md)。
 - `GET /help`（`help_page`）：角色化帮助中心，详见[第 7 章](#7-帮助中心)。
+- `GET /student/collections`（`student_collections`）：学生/教师学习笔记与思维链页面。
+- `GET, POST /api/thought-chains`：读取当前用户自己的思维链，或创建绑定公开知识库和核心概念的新链。
+- `GET /api/thought-chain-concepts`：返回可选的公开知识库—核心概念组合。
+- `POST /api/thought-chains/<chain_id>/ideas`：向自己的思维链添加结构化想法，可提交 `previous_idea_id` 和 `literature={title,abstract,url}`。
+- `GET /api/thought-chains/<chain_id>`：读取思维链、想法、关系和事件。
+- `PATCH /api/ideas/<idea_id>`：修改自己的想法类型、状态、置信度或内容。
+- `POST /api/thought-chains/<chain_id>/links`：建立想法关系。
 
 ---
 
@@ -197,7 +204,17 @@
 
 ### 4.6 教师学习笔记
 
-教师控制台中间的功能模块列表提供「学习笔记」入口，跳转到 `/student/collections`。教师可在 `/bioinfo-articles` 的文献卡片中点击「记录想法」，选择公开知识库概念并保存文献启发、教学思路或知识点笔记。接口允许 `teacher` 和 `student` 角色，但每个用户只能读取自己的笔记，数据库以当前登录工号隔离数据。
+教师控制台中间的功能模块列表提供「学习笔记」入口，跳转到 `/student/collections`。教师可在该页面使用“我的思维链”和“传统学习笔记”两个视图：
+
+- 新建思维链时必须依次选择公开知识库和该库中的核心概念，再填写标题和核心问题；系统会校验知识库与概念归属。
+- 添加想法时可选择疑问、假设、推论、类比、反例、反思或结论，并设置 1–5 的自评置信度。
+- 点击“作为上一条延续”会建立 `develop` 关系，后续想法在页面中以缩进和“↳ 延续”显示，不再与前一条并列。
+- 右侧统计面板显示当前用户的思维链数、涉及知识库数、核心概念数、想法总数、各想法类型数量和近 30 天活跃思考数。
+- 当前选中的思维链底部以横向时间轴显示发展路径，节点只显示日期和想法类型。
+- 在 `/bioinfo-articles` 点击“记录想法”时，可以选择思维链、知识库、核心概念和笔记类型；保存到思维链后同时记录文献标题、摘要及全文/来源链接。
+- 未选择思维链时，仍按原逻辑保存为传统 `student_notes`，不影响旧功能。
+
+当前思维链默认私有，学生和教师只能查看自己的思维链。班级公开、教师查看学生链和任务看板尚未启用。
 
 ### 4.7 学生账户管理入口
 
@@ -297,7 +314,11 @@
 | `questions` | `id, topic, difficulty, question_text, sample_answer, hints, language, aiModel, is_approved, question_type, review_status, review_comment, reviewed_by, reviewed_at, created_by` | 编程题 |
 | `questions_mock` | 同上（模拟题表） | 模拟题 |
 | `theory_questions` | `id, topic, question_type, question_text, sample_answer, grading_criteria, difficulty, score, aiModel, is_approved, review_status, review_comment, reviewed_by, reviewed_at, created_by` | 理论题 |
-| `student_notes` | `id, student_id, target_type, target_id, content, parent_note_id, tags, created_at, updated_at` | 学生/教师个人学习笔记 |
+| `student_notes` | `id, student_id, target_type, target_id, content, parent_note_id, tags, created_at, updated_at` | 传统学生/教师个人学习笔记 |
+| `thought_chains` | `id, owner_id, title, question, knowledge_base_id, trigger_concept_id, visibility, status` | 绑定知识库和核心概念的私有思维链 |
+| `ideas` | `id, chain_id, owner_id, content, thought_type, status, confidence, literature_title, literature_abstract, literature_url` | 结构化想法及文献来源 |
+| `idea_links` | `id, chain_id, from_idea_id, to_idea_id, relation_type, created_by` | 想法之间的延续/发展关系 |
+| `idea_events` | `id, chain_id, idea_id, actor_id, event_type, before_json, after_json` | 想法创建和关系操作事件 |
 | `exams` | `id, student_id, question_id, student_answer, ai_score, ai_comment, teacher_score, teacher_comment, is_reviewed, submitted_at` | 正式考试 |
 | `exams_mock` | 同上（FK→`questions_mock`） | 模拟考试 |
 | `exercises` | `id, student_id, question_id, student_answer, ai_score, ai_comment, submitted_at` | 练习 |
@@ -411,7 +432,9 @@
 3. 知识库 → 上传文档、抽取概念与关系、查看知识图谱
 4. 智能组卷 → 配置并生成 A/B 卷，预览、下载 PDF、克隆
 5. 考试记录 → 教师评分（`teacher_score`/`teacher_comment`）
-6. 文献检索期刊管理 → 「⚙ 管理」增删改目标期刊
+6. 学习笔记 → 新建思维链时选择公开知识库和核心概念；添加想法时可选择类型、置信度，并可作为上一条延续
+7. 文献检索 → 记录想法时选择思维链、知识库、核心概念和笔记类型，可保存文献标题、摘要及全文链接
+8. 文献检索期刊管理 → 「⚙ 管理」增删改目标期刊
 
 **管理员**
 1. 账户管理 → 增删改查用户、启停登录

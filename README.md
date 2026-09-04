@@ -21,7 +21,10 @@ The platform supports Python, Perl, Java, and C programming exercises, asynchron
   - Rejection reason tracking and reviewer metadata
   - Code debug/run -- test sample answers directly in browser
 - **Knowledge Base** -- Upload documents, extract concepts, build knowledge graphs; only the owner or admin can edit, while other teachers can browse public bases
-- **Learning Notes** -- Record literature insights, teaching ideas, and concept-linked notes from the literature search page; notes are private to the current teacher
+- **Learning Notes / Thought Chains** -- Create private chains anchored to a public knowledge base and core concept; add typed ideas, continue from the previous idea, and review the chain timeline
+  - Right-side statistics include chain, knowledge-base, concept, total-idea, per-type, and last-30-day activity counts
+  - The selected chain's development path is shown as a horizontal date/type timeline
+  - Literature-origin ideas can store the article title, abstract, and full-text/source URL
 - **Exam Paper Management** -- Generate A/B exam papers with intelligent question selection
 - **Student Management** -- Monitor student progress and override grades
 
@@ -107,6 +110,10 @@ These screenshots were provided by the project owner and show the actual applica
 | `knowledge_documents` | id, knowledge_base_id, title, content, file_path, file_type |
 | `knowledge_concepts` | id, knowledge_document_id, concept_name, concept_type, frequency |
 | `student_notes` | id, student_id, target_type, target_id, content, parent_note_id, tags | 学生/教师个人学习笔记，按当前用户隔离 |
+| `thought_chains` | id, owner_id, title, question, knowledge_base_id, trigger_concept_id, visibility, status | 私有思维链，绑定公开知识库和核心概念 |
+| `ideas` | id, chain_id, owner_id, content, thought_type, status, confidence, literature_title, literature_abstract, literature_url | 结构化想法及文献来源 |
+| `idea_links` | id, chain_id, from_idea_id, to_idea_id, relation_type, created_by | 想法发展/反驳等关系 |
+| `idea_events` | id, chain_id, idea_id, actor_id, event_type, before_json, after_json | 想法操作事件记录 |
 | `exam_papers` | id, paper_name, course_name, exam_duration, total_score, paper_a_json, paper_b_json, answer_a_json, answer_b_json, created_by | 试卷 |
 | `tasks` | id, user_id, task_type, parameters (JSON), status, progress, result |
 
