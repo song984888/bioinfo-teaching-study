@@ -7917,6 +7917,14 @@ def student_collections():
         for chain in chain_rows:
             cur.execute("SELECT i.*, c.concept_name FROM ideas i LEFT JOIN knowledge_concepts c ON i.trigger_concept_id=c.id WHERE i.chain_id=%s AND i.owner_id=%s ORDER BY i.created_at, i.id", (chain['id'], student_id))
             ideas = cur.fetchall()
+            cur.execute("SELECT from_idea_id, to_idea_id, relation_type FROM idea_links WHERE chain_id=%s", (chain['id'],))
+            links = cur.fetchall()
+            parent_by_idea = {row['to_idea_id']: row for row in links if row['relation_type'] == 'develop'}
+            idea_number = {idea['id']: index for index, idea in enumerate(ideas, 1)}
+            for idea in ideas:
+                parent = parent_by_idea.get(idea['id'])
+                idea['parent_idea_id'] = parent['from_idea_id'] if parent else None
+                idea['parent_idea_number'] = idea_number.get(idea['parent_idea_id']) if parent else None
             for idea in ideas:
                 idea['thought_type_label'] = type_labels.get(idea['thought_type'], idea['thought_type'])
                 idea['status_label'] = status_labels.get(idea['status'], idea['status'])
