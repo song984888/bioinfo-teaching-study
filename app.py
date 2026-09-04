@@ -7410,6 +7410,148 @@ def student_concept_detail(concept_id):
         return redirect(url_for('student_concepts'))
 
 
+# ===================== 第一阶段思维链 API =====================
+THOUGHT_TYPES = {'question', 'hypothesis', 'inference', 'analogy', 'counterexample', 'reflection', 'conclusion'}
+IDEA_STATUSES = {'exploratory', 'evidence_supported', 'challenged', 'revised', 'abandoned'}
+LINK_TYPES = {'develop', 'refute', 'elaborate', 'merge'}
+
+def _thought_owner_required():
+    return 'user_id' in session and session.get('role') in ('student', 'teacher')
+
+def _json_value(value):
+    return json.dumps(value, ensure_ascii=False, default=str) if value is not None else None
+
+def _owned_chain(cur, chain_id, owner_id):
+    cur.execute("SELECT * FROM thought_chains WHERE id=%s AND owner_id=%s", (chain_id, owner_id))
+    return cur.fetchone()
+
+@app.route('/api/thought-chains', methods=['GET', 'POST'])
+def thought_chains_api():
+    if not _thought_owner_required():
+        return jsonify({'success': False, 'message': '未授权'}), 403
+    owner_id = session['user_id']
+    conn = get_db_connection(); cur = conn.cursor(dictionary=True)
+    try:
+        if request.method == 'GET':
+            cur.execute("SELECT id, title, question, visibility, status, created_at, updated_at FROM thought_chains WHERE owner_id=%s ORDER BY updated_at DESC, created_at DESC", (owner_id,))
+            return jsonify({'success': True, 'chains': cur.fetchall()})
+        data = request.get_json(silent=True) or {}
+        title = (data.get('title') or '').strip()[:255]
+        question = (data.get('question') or '').strip()
+        if not title:
+            return jsonify({'success': False, 'message': '思维链标题不能为空'}), 400
+        cur.execute("INSERT INTO thought_chains (owner_id,title,question,visibility,status,updated_at) VALUES (%s,%s,%s,'private','active',NOW())", (owner_id, title, question or None))
+        chain_id = cur.lastrowid
+        cur.execute("INSERT INTO idea_events (chain_id,actor_id,event_type,after_json) VALUES (%s,%s,'chain_created',%s)", (chain_id, owner_id, _json_value({'title': title, 'question': question})))
+        conn.commit()
+        return jsonify({'success': True, 'chain_id': chain_id})
+    except Exception as e:
+        conn.rollback(); app.logger.error('思维链 API 失败: %s', e, exc_info=True)
+        return jsonify({'success': False, 'message': '保存思维链失败'}), 500
+    finally:
+        cur.close(); conn.close()
+
+@app.route('/api/thought-chains/<int:chain_id>', methods=['GET', 'PATCH', 'DELETE'])
+def thought_chain_detail_api(chain_id):
+    if not _thought_owner_required():
+        return jsonify({'success': False, 'message': '未授权'}), 403
+    owner_id = session['user_id']; conn = get_db_connection(); cur = conn.cursor(dictionary=True)
+    try:
+        chain = _owned_chain(cur, chain_id, owner_id)
+        if not chain: return jsonify({'success': False, 'message': '思维链不存在'}), 404
+        if request.method == 'GET':
+            cur.execute("SELECT i.*, c.concept_name FROM ideas i LEFT JOIN knowledge_concepts c ON i.trigger_concept_id=c.id WHERE i.chain_id=%s AND i.owner_id=%s ORDER BY i.created_at, i.id", (chain_id, owner_id))
+            ideas = cur.fetchall()
+            cur.execute("SELECT * FROM idea_links WHERE chain_id=%s ORDER BY created_at, id", (chain_id,))
+            links = cur.fetchall()
+            cur.execute("SELECT * FROM idea_events WHERE chain_id=%s ORDER BY created_at, id", (chain_id,))
+            events = cur.fetchall()
+            return jsonify({'success': True, 'chain': chain, 'ideas': ideas, 'links': links, 'events': events})
+        if request.method == 'DELETE':
+            cur.execute("UPDATE thought_chains SET status='archived', archived_at=NOW(), updated_at=NOW() WHERE id=%s AND owner_id=%s", (chain_id, owner_id))
+            cur.execute("INSERT INTO idea_events (chain_id,actor_id,event_type) VALUES (%s,%s,'chain_archived')", (chain_id, owner_id))
+            conn.commit(); return jsonify({'success': True})
+        data = request.get_json(silent=True) or {}; updates=[]; values=[]
+        if 'title' in data and str(data['title']).strip(): updates.append('title=%s'); values.append(str(data['title']).strip()[:255])
+        if 'question' in data: updates.append('question=%s'); values.append(str(data['question']).strip())
+        if 'status' in data and data['status'] in ('active','archived'): updates.extend(['status=%s','archived_at=%s']); values.extend([data['status'], datetime.now() if data['status']=='archived' else None])
+        if not updates: return jsonify({'success': False, 'message': '没有可更新字段'}), 400
+        updates.append('updated_at=NOW()'); values.extend([chain_id, owner_id])
+        cur.execute("UPDATE thought_chains SET " + ','.join(updates) + " WHERE id=%s AND owner_id=%s", values)
+        conn.commit(); return jsonify({'success': True})
+    except Exception as e:
+        conn.rollback(); app.logger.error('思维链详情失败: %s', e, exc_info=True); return jsonify({'success': False, 'message': '操作失败'}), 500
+    finally: cur.close(); conn.close()
+
+@app.route('/api/thought-chains/<int:chain_id>/ideas', methods=['POST'])
+def thought_idea_create_api(chain_id):
+    if not _thought_owner_required(): return jsonify({'success': False, 'message': '未授权'}), 403
+    owner_id=session['user_id']; data=request.get_json(silent=True) or {}; content=(data.get('content') or '').strip()
+    if not content: return jsonify({'success': False, 'message': '想法内容不能为空'}), 400
+    thought_type=data.get('thought_type','question'); status=data.get('status','exploratory'); confidence=data.get('confidence',3)
+    if thought_type not in THOUGHT_TYPES or status not in IDEA_STATUSES:
+        return jsonify({'success': False, 'message': '思维类型或状态无效'}), 400
+    try: confidence=int(confidence)
+    except (TypeError,ValueError): confidence=0
+    if confidence < 1 or confidence > 5: return jsonify({'success': False, 'message': '置信度必须为 1-5'}), 400
+    conn=get_db_connection(); cur=conn.cursor(dictionary=True)
+    try:
+        if not _owned_chain(cur,chain_id,owner_id): return jsonify({'success': False,'message':'思维链不存在'}),404
+        concept_id=data.get('trigger_concept_id') or None
+        cur.execute("INSERT INTO ideas (chain_id,owner_id,content,thought_type,status,trigger_concept_id,confidence,source_note_id,updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,NOW())",(chain_id,owner_id,content,thought_type,status,concept_id,confidence,data.get('source_note_id') or None))
+        idea_id=cur.lastrowid
+        cur.execute("INSERT INTO idea_events (chain_id,idea_id,actor_id,event_type,after_json) VALUES (%s,%s,%s,'idea_created',%s)",(chain_id,idea_id,owner_id,_json_value({'content':content,'thought_type':thought_type,'status':status,'confidence':confidence})))
+        prev_id=data.get('previous_idea_id')
+        if prev_id:
+            cur.execute("SELECT id FROM ideas WHERE id=%s AND chain_id=%s AND owner_id=%s",(prev_id,chain_id,owner_id))
+            if cur.fetchone(): cur.execute("INSERT INTO idea_links (chain_id,from_idea_id,to_idea_id,relation_type,created_by) VALUES (%s,%s,%s,'develop',%s)",(chain_id,prev_id,idea_id,owner_id))
+        cur.execute("UPDATE thought_chains SET updated_at=NOW() WHERE id=%s",(chain_id,)); conn.commit()
+        return jsonify({'success':True,'idea_id':idea_id})
+    except Exception as e:
+        conn.rollback(); app.logger.error('想法创建失败: %s',e,exc_info=True); return jsonify({'success':False,'message':'保存想法失败'}),500
+    finally: cur.close(); conn.close()
+
+@app.route('/api/ideas/<int:idea_id>', methods=['PATCH'])
+def thought_idea_update_api(idea_id):
+    if not _thought_owner_required(): return jsonify({'success':False,'message':'未授权'}),403
+    owner_id=session['user_id']; data=request.get_json(silent=True) or {}; conn=get_db_connection(); cur=conn.cursor(dictionary=True)
+    try:
+        cur.execute("SELECT * FROM ideas WHERE id=%s AND owner_id=%s",(idea_id,owner_id)); old=cur.fetchone()
+        if not old:return jsonify({'success':False,'message':'想法不存在'}),404
+        fields=[]; vals=[]
+        for key, allowed in [('content',None),('thought_type',THOUGHT_TYPES),('status',IDEA_STATUSES)]:
+            if key in data and (allowed is None or data[key] in allowed): fields.append(key+'=%s'); vals.append(str(data[key]).strip() if key=='content' else data[key])
+        if 'confidence' in data:
+            try: conf=int(data['confidence'])
+            except: conf=0
+            if not 1<=conf<=5:return jsonify({'success':False,'message':'置信度必须为 1-5'}),400
+            fields.append('confidence=%s'); vals.append(conf)
+        if 'trigger_concept_id' in data: fields.append('trigger_concept_id=%s'); vals.append(data['trigger_concept_id'] or None)
+        if not fields:return jsonify({'success':False,'message':'没有可更新字段'}),400
+        fields.append('updated_at=NOW()'); vals.extend([idea_id,owner_id]); cur.execute('UPDATE ideas SET '+','.join(fields)+' WHERE id=%s AND owner_id=%s',vals)
+        cur.execute("INSERT INTO idea_events (chain_id,idea_id,actor_id,event_type,before_json,after_json) VALUES (%s,%s,%s,'idea_updated',%s,%s)",(old['chain_id'],idea_id,owner_id,_json_value(old),_json_value(data)))
+        conn.commit(); return jsonify({'success':True})
+    except Exception as e:
+        conn.rollback(); app.logger.error('想法更新失败: %s',e,exc_info=True); return jsonify({'success':False,'message':'更新想法失败'}),500
+    finally:cur.close();conn.close()
+
+@app.route('/api/thought-chains/<int:chain_id>/links', methods=['POST'])
+def thought_link_create_api(chain_id):
+    if not _thought_owner_required():return jsonify({'success':False,'message':'未授权'}),403
+    d=request.get_json(silent=True) or {}; owner=session['user_id']; rel=d.get('relation_type','develop')
+    if rel not in LINK_TYPES:return jsonify({'success':False,'message':'关系类型无效'}),400
+    a,b=d.get('from_idea_id'),d.get('to_idea_id')
+    if not a or not b or a==b:return jsonify({'success':False,'message':'关系两端不能为空且不能自环'}),400
+    conn=get_db_connection();cur=conn.cursor(dictionary=True)
+    try:
+        if not _owned_chain(cur,chain_id,owner):return jsonify({'success':False,'message':'思维链不存在'}),404
+        cur.execute("SELECT COUNT(*) n FROM ideas WHERE id IN (%s,%s) AND chain_id=%s AND owner_id=%s",(a,b,chain_id,owner))
+        if cur.fetchone()['n']!=2:return jsonify({'success':False,'message':'想法不属于该思维链'}),400
+        cur.execute("INSERT INTO idea_links (chain_id,from_idea_id,to_idea_id,relation_type,created_by) VALUES (%s,%s,%s,%s,%s)",(chain_id,a,b,rel,owner));conn.commit();return jsonify({'success':True,'link_id':cur.lastrowid})
+    except mysql.connector.Error:
+        conn.rollback(); return jsonify({'success':False,'message':'关系已存在或保存失败'}),409
+    finally:cur.close();conn.close()
+
 # ===================== 笔记与书签 =====================
 @app.route('/api/student/bookmark', methods=['POST'])
 def api_student_bookmark():
@@ -7659,9 +7801,35 @@ def student_collections():
                 if r.get('updated_at') and hasattr(r['updated_at'], 'isoformat'):
                     r['updated_at'] = r['updated_at'].isoformat()
 
+        thought_chains = []
+        cur.execute("SELECT * FROM thought_chains WHERE owner_id=%s ORDER BY updated_at DESC, created_at DESC", (student_id,))
+        chain_rows = cur.fetchall()
+        type_labels = {'question':'疑问','hypothesis':'假设','inference':'推论','analogy':'类比','counterexample':'反例','reflection':'反思','conclusion':'结论'}
+        status_labels = {'exploratory':'试探','evidence_supported':'有证据支持','challenged':'被挑战','revised':'已修正','abandoned':'已放弃'}
+        for chain in chain_rows:
+            cur.execute("SELECT i.*, c.concept_name FROM ideas i LEFT JOIN knowledge_concepts c ON i.trigger_concept_id=c.id WHERE i.chain_id=%s AND i.owner_id=%s ORDER BY i.created_at, i.id", (chain['id'], student_id))
+            ideas = cur.fetchall()
+            for idea in ideas:
+                idea['thought_type_label'] = type_labels.get(idea['thought_type'], idea['thought_type'])
+                idea['status_label'] = status_labels.get(idea['status'], idea['status'])
+            chain['ideas'] = ideas
+            chain['idea_count'] = len(ideas)
+            thought_chains.append(chain)
+        cur.execute("""
+            SELECT sn.content, sn.updated_at, sn.target_type, sn.target_id,
+                   CASE WHEN sn.target_type='concept' THEN c.concept_name
+                        WHEN sn.target_type='document' THEN kd.title
+                        ELSE '灵感笔记' END AS target_name
+            FROM student_notes sn
+            LEFT JOIN knowledge_concepts c ON sn.target_type='concept' AND sn.target_id=c.id
+            LEFT JOIN knowledge_documents kd ON sn.target_type='document' AND sn.target_id=kd.id
+            WHERE sn.student_id=%s AND sn.parent_note_id IS NULL
+            ORDER BY sn.updated_at DESC, sn.id DESC
+        """, (student_id,))
+        legacy_notes = cur.fetchall()
         cur.close(); conn.close()
 
-        return render_template('student/collections.html',
+        return render_template('student/collections_stage1.html',
                                bookmarked_concepts=bookmarked_concepts,
                                bookmarked_docs=bookmarked_docs,
                                kb_list=kb_list,
@@ -7670,7 +7838,9 @@ def student_collections():
                                replies_by_parent=replies_by_parent,
                                recent_docs=recent_docs,
                                doc_concept_map=doc_concept_map,
-                               concept_docs=concept_docs)
+                               concept_docs=concept_docs,
+                               thought_chains=thought_chains,
+                               legacy_notes=legacy_notes)
     except Exception as e:
         app.logger.error(f'加载收藏失败: {str(e)}', exc_info=True)
         flash(f'加载收藏失败: {str(e)}', 'danger')
