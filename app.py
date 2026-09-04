@@ -7588,8 +7588,16 @@ def thought_idea_create_api(chain_id):
     if confidence < 1 or confidence > 5: return jsonify({'success': False, 'message': '置信度必须为 1-5'}), 400
     conn=get_db_connection(); cur=conn.cursor(dictionary=True)
     try:
-        if not _owned_chain(cur,chain_id,owner_id): return jsonify({'success': False,'message':'思维链不存在'}),404
+        chain = _owned_chain(cur,chain_id,owner_id)
+        if not chain: return jsonify({'success': False,'message':'思维链不存在'}),404
         concept_id=data.get('trigger_concept_id') or None
+        if concept_id:
+            cur.execute("""
+                SELECT c.id FROM knowledge_concepts c
+                JOIN knowledge_documents d ON c.knowledge_document_id=d.id
+                WHERE c.id=%s AND d.knowledge_base_id=%s
+            """, (concept_id, chain.get('knowledge_base_id')))
+            if not cur.fetchone(): return jsonify({'success':False,'message':'所选概念不属于该思维链知识库'}),400
         literature = data.get('literature') or {}
         literature_title = str(literature.get('title') or '').strip()[:500] or None
         literature_abstract = str(literature.get('abstract') or '').strip() or None
@@ -7600,7 +7608,11 @@ def thought_idea_create_api(chain_id):
         prev_id=data.get('previous_idea_id')
         if prev_id:
             cur.execute("SELECT id FROM ideas WHERE id=%s AND chain_id=%s AND owner_id=%s",(prev_id,chain_id,owner_id))
-            if cur.fetchone(): cur.execute("INSERT INTO idea_links (chain_id,from_idea_id,to_idea_id,relation_type,created_by) VALUES (%s,%s,%s,'develop',%s)",(chain_id,prev_id,idea_id,owner_id))
+            if not cur.fetchone():
+                conn.rollback()
+                return jsonify({'success':False,'message':'上一条想法不存在或不属于当前思维链'}),400
+            cur.execute("INSERT INTO idea_links (chain_id,from_idea_id,to_idea_id,relation_type,created_by) VALUES (%s,%s,%s,'develop',%s)",(chain_id,prev_id,idea_id,owner_id))
+            cur.execute("INSERT INTO idea_events (chain_id,idea_id,actor_id,event_type,after_json) VALUES (%s,%s,%s,'idea_linked',%s)",(chain_id,idea_id,owner_id,_json_value({'from_idea_id':prev_id,'to_idea_id':idea_id,'relation_type':'develop'})))
         cur.execute("UPDATE thought_chains SET updated_at=NOW() WHERE id=%s",(chain_id,)); conn.commit()
         return jsonify({'success':True,'idea_id':idea_id})
     except Exception as e:
@@ -7923,6 +7935,15 @@ def student_collections():
             ORDER BY sn.updated_at DESC, sn.id DESC
         """, (student_id,))
         legacy_notes = cur.fetchall()
+        stats = {'chain_count': 0, 'knowledge_base_count': 0, 'concept_count': 0, 'idea_count': 0, 'active_30_days': 0, 'type_counts': {key: 0 for key in type_labels}}
+        cur.execute("SELECT COUNT(*) AS chain_count, COUNT(DISTINCT knowledge_base_id) AS knowledge_base_count, COUNT(DISTINCT trigger_concept_id) AS concept_count FROM thought_chains WHERE owner_id=%s", (student_id,))
+        summary = cur.fetchone()
+        stats.update({key: summary[key] or 0 for key in ('chain_count', 'knowledge_base_count', 'concept_count')})
+        cur.execute("SELECT thought_type, COUNT(*) AS count FROM ideas WHERE owner_id=%s GROUP BY thought_type", (student_id,))
+        for row in cur.fetchall(): stats['type_counts'][row['thought_type']] = row['count']
+        stats['idea_count'] = sum(stats['type_counts'].values())
+        cur.execute("SELECT COUNT(*) AS count FROM ideas WHERE owner_id=%s AND created_at >= NOW() - INTERVAL 30 DAY", (student_id,))
+        stats['active_30_days'] = cur.fetchone()['count'] or 0
         cur.close(); conn.close()
 
         return render_template('student/collections_stage1.html',
@@ -7936,7 +7957,8 @@ def student_collections():
                                doc_concept_map=doc_concept_map,
                                concept_docs=concept_docs,
                                thought_chains=thought_chains,
-                               legacy_notes=legacy_notes)
+                               legacy_notes=legacy_notes,
+                               stats=stats)
     except Exception as e:
         app.logger.error(f'加载收藏失败: {str(e)}', exc_info=True)
         flash(f'加载收藏失败: {str(e)}', 'danger')
