@@ -27,9 +27,7 @@ The platform supports Python, Perl, Java, and C programming exercises, asynchron
   - Literature-origin ideas can store the article title, abstract, and full-text/source URL
 - **Exam Paper Management** -- Generate A/B exam papers with intelligent question selection
 - **Student Management** -- Monitor student progress and override grades
-- **Bioinformatics Tools** -- Browse a curated external-resource directory, starting with Gene Expression tools (GEO, ENCODE, GTEx, JBrowse, Morpheus, and others)
-  - Search by tool name or description, sort by curated order/name, and open verified source links in a new tab
-  - The collection provides navigation only; external tools are operated by their original websites
+- **Bioinformatics Tools** -- Curated external-resource directory, starting with Gene Expression tools; authenticated students, teachers, and administrators can search, sort, inspect source metadata, and open verified external links
 
 ### Admin
 - **Account Management** -- Create/edit/toggle/delete users across all roles

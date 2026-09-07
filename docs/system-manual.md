@@ -216,7 +216,21 @@
 
 当前思维链默认私有，学生和教师只能查看自己的思维链。班级公开、教师查看学生链和任务看板尚未启用。
 
-### 4.7 学生账户管理入口
+### 4.7 生物信息学工具集合
+
+三种角色登录后均可从控制台的「🧬 生物信息学工具」模块进入 `/bioinformatics-tools`。当前首期提供 Gene Expression / 基因表达分类，包含经整理的外部资源目录。
+
+- `/bioinformatics-tools`：工具分类首页。
+- `/bioinformatics-tools/gene-expression`：Gene Expression 工具列表。
+- `/bioinformatics-tools/gene-expression/<tool_slug>`：单个工具详情、来源信息和访问链接。
+- 支持按工具名称/简介搜索，以及推荐顺序或名称排序。
+- 工具链接使用新标签页和 `noopener noreferrer` 安全属性。
+- 本平台仅提供分类导航，工具由其原网站运行；来源核验日期表示目录整理时间，不代表本平台实时保证外部站点可用。
+- 当前目录为只读，未开放用户投稿、收藏和管理员在线编辑。
+
+当前已整理的资源包括 GEO、ENCODE、Morpheus、GTEx、JBrowse、CZ CELLxGENE、xCell、FANTOM 等。工具名称、简介、目标 URL 和来源页面保存在 `bioinformatics_tools` 与 `bioinformatics_tool_categories` 中，目录初始化是幂等的，不会重复插入。
+
+### 4.8 学生账户管理入口
 
 教师主页的「账号管理」卡片链接到 `/teacher/account_management`，仅展示学生账户。新建/禁用/删除学生账户的教师侧入口见 §5.1（管理员专属），但 `register`/`toggle_login` 实际无角色校验（见 §10.4、§10.9）。
 
