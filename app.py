@@ -1957,6 +1957,77 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
+def _admin_tools_required():
+    return 'user_id' in session and session.get('role') == 'admin'
+
+
+def _valid_external_tool_url(value):
+    return isinstance(value, str) and value.startswith(('https://', 'http://')) and len(value) <= 1000
+
+
+@app.route('/admin/bioinformatics-tools')
+def admin_bioinformatics_tools():
+    if not _admin_tools_required():
+        return jsonify({'success': False, 'message': '仅管理员可管理工具目录'}), 403
+    conn=get_db_connection(); cur=conn.cursor(dictionary=True)
+    try:
+        cur.execute("SELECT * FROM bioinformatics_tool_categories ORDER BY curated_order,name")
+        categories=cur.fetchall()
+        cur.execute("SELECT bt.*,bc.name AS category_name FROM bioinformatics_tools bt JOIN bioinformatics_tool_categories bc ON bt.category_id=bc.id ORDER BY bc.curated_order,bt.curated_order,bt.name")
+        tools=cur.fetchall()
+        return render_template('bioinformatics_tools/admin.html', categories=categories, tools=tools)
+    finally: cur.close(); conn.close()
+
+
+@app.route('/api/admin/bioinformatics-tools/categories/<int:category_id>', methods=['PATCH'])
+def admin_update_tool_category(category_id):
+    if not _admin_tools_required(): return jsonify({'success': False, 'message': '仅管理员可管理工具目录'}), 403
+    data=request.get_json(silent=True) or {}; fields=[]; values=[]
+    if 'name' in data and str(data['name']).strip(): fields.append('name=%s'); values.append(str(data['name']).strip()[:255])
+    if 'description' in data: fields.append('description=%s'); values.append(str(data['description']).strip())
+    if 'curated_order' in data:
+        try: fields.append('curated_order=%s'); values.append(max(0,int(data['curated_order'])))
+        except (TypeError,ValueError): return jsonify({'success':False,'message':'排序必须是整数'}),400
+    if 'is_published' in data: fields.append('is_published=%s'); values.append(bool(data['is_published']))
+    if not fields: return jsonify({'success':False,'message':'没有可更新字段'}),400
+    conn=get_db_connection();cur=conn.cursor()
+    try:
+        values.append(category_id); cur.execute("UPDATE bioinformatics_tool_categories SET " + ','.join(fields) + ",updated_at=NOW() WHERE id=%s",values)
+        if cur.rowcount != 1: conn.rollback(); return jsonify({'success':False,'message':'分类不存在'}),404
+        conn.commit(); return jsonify({'success':True})
+    finally: cur.close();conn.close()
+
+
+@app.route('/api/admin/bioinformatics-tools/<int:tool_id>', methods=['PATCH'])
+def admin_update_bioinformatics_tool(tool_id):
+    if not _admin_tools_required(): return jsonify({'success': False, 'message': '仅管理员可管理工具目录'}), 403
+    data=request.get_json(silent=True) or {}; fields=[]; values=[]
+    text_fields={'name':255,'description':None,'source_url':1000,'source_note':500}
+    for field,limit in text_fields.items():
+        if field in data:
+            value=str(data[field]).strip()
+            if not value or (limit and len(value)>limit): return jsonify({'success':False,'message':field+'内容无效'}),400
+            if field=='source_url' and not _valid_external_tool_url(value): return jsonify({'success':False,'message':'来源链接必须是 http(s) URL'}),400
+            fields.append(field+'=%s'); values.append(value)
+    if 'url' in data:
+        value=str(data['url']).strip()
+        if not _valid_external_tool_url(value): return jsonify({'success':False,'message':'工具链接必须是 http(s) URL'}),400
+        fields.append('url=%s');values.append(value)
+    for field in ('category_id','curated_order'):
+        if field in data:
+            try: value=max(0,int(data[field]))
+            except (TypeError,ValueError): return jsonify({'success':False,'message':field+'必须是整数'}),400
+            fields.append(field+'=%s');values.append(value)
+    if 'is_published' in data: fields.append('is_published=%s');values.append(bool(data['is_published']))
+    if not fields:return jsonify({'success':False,'message':'没有可更新字段'}),400
+    conn=get_db_connection();cur=conn.cursor()
+    try:
+        values.append(tool_id);cur.execute("UPDATE bioinformatics_tools SET "+','.join(fields)+",updated_at=NOW() WHERE id=%s",values)
+        if cur.rowcount != 1:conn.rollback();return jsonify({'success':False,'message':'工具不存在'}),404
+        conn.commit();return jsonify({'success':True})
+    finally:cur.close();conn.close()
+
+
 @app.route('/bioinformatics-tools')
 def bioinformatics_tools_index():
     if 'user_id' not in session:

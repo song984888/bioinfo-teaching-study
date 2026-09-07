@@ -226,7 +226,7 @@
 - 支持按工具名称/简介搜索，以及推荐顺序或名称排序。
 - 工具链接使用新标签页和 `noopener noreferrer` 安全属性。
 - 本平台仅提供分类导航，工具由其原网站运行；来源核验日期表示目录整理时间，不代表本平台实时保证外部站点可用。
-- 当前目录为只读，未开放用户投稿、收藏和管理员在线编辑。
+- 学生和教师只能浏览；管理员可进入 `/admin/bioinformatics-tools` 编辑分类和工具的名称、简介、目标链接、来源链接、排序及发布状态。管理员修改后需要点击保存，前台只显示已发布条目。
 
 当前已整理的资源包括 GEO、ENCODE、Morpheus、GTEx、JBrowse、CZ CELLxGENE、xCell、FANTOM，以及 Jpred3、I-TASSER、PSIPRED、QUARK、AlphaFold Database 等。工具名称、简介、目标 URL 和来源页面保存在 `bioinformatics_tools` 与 `bioinformatics_tool_categories` 中，目录初始化是幂等的，不会重复插入。
 
