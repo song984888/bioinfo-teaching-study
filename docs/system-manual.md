@@ -218,7 +218,7 @@
 
 ### 4.7 生物信息学工具集合
 
-三种角色登录后均可从控制台的「🧬 生物信息学工具」模块进入 `/bioinformatics-tools`。当前首期提供 Gene Expression / 基因表达分类，包含经整理的外部资源目录。
+三种角色登录后均可从控制台的「🧬 生物信息学工具」模块进入 `/bioinformatics-tools`。当前提供 Gene Expression / 基因表达和 Protein Structure and Function Prediction / 蛋白质结构与功能预测两个分类，包含经整理的外部资源目录。
 
 - `/bioinformatics-tools`：工具分类首页。
 - `/bioinformatics-tools/gene-expression`：Gene Expression 工具列表。
@@ -228,7 +228,7 @@
 - 本平台仅提供分类导航，工具由其原网站运行；来源核验日期表示目录整理时间，不代表本平台实时保证外部站点可用。
 - 当前目录为只读，未开放用户投稿、收藏和管理员在线编辑。
 
-当前已整理的资源包括 GEO、ENCODE、Morpheus、GTEx、JBrowse、CZ CELLxGENE、xCell、FANTOM 等。工具名称、简介、目标 URL 和来源页面保存在 `bioinformatics_tools` 与 `bioinformatics_tool_categories` 中，目录初始化是幂等的，不会重复插入。
+当前已整理的资源包括 GEO、ENCODE、Morpheus、GTEx、JBrowse、CZ CELLxGENE、xCell、FANTOM，以及 Jpred3、I-TASSER、PSIPRED、QUARK、AlphaFold Database 等。工具名称、简介、目标 URL 和来源页面保存在 `bioinformatics_tools` 与 `bioinformatics_tool_categories` 中，目录初始化是幂等的，不会重复插入。
 
 ### 4.8 学生账户管理入口
 

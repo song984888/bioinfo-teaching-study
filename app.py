@@ -448,6 +448,39 @@ def get_published_tool(category_slug, tool_slug):
 
 ensure_bioinformatics_tools_catalog()
 
+def ensure_additional_protein_tools_catalog():
+    """幂等追加 Protein Structure and Function Prediction 分类。"""
+    category = ('protein-structure-and-function-prediction', 'Protein Structure and Function Prediction / 蛋白质结构与功能预测', 'Protein structure modeling, secondary-structure, folding, and function-prediction resources.')
+    tools = [
+        ('jpred3','Jpred3','Predict protein secondary structure from an amino-acid sequence.','https://www.compbio.dundee.ac.uk/jpred/',10),
+        ('i-tasser','I-TASSER','Web server for protein structure and function prediction from sequence.','https://zhanggroup.org/I-TASSER/',20),
+        ('psipred','PSIPRED','Protein secondary-structure prediction with related topology and fold-recognition methods.','https://bioinf.cs.ucl.ac.uk/psipred/',30),
+        ('quark','QUARK','Ab initio protein folding and structure prediction from amino-acid sequence.','https://zhanggroup.org/QUARK/',40),
+        ('protein-model-portal','Protein Model Portal','Access comparative-modeling results and protein model assessment services.','https://www.proteinmodelportal.org/',50),
+        ('lomets','LOMETS','Meta-threading server for protein structure prediction.','https://zhanggroup.org/LOMETS/',60),
+        ('muster','MUSTER','Protein threading method for identifying template structures from PDB.','https://zhanggroup.org/MUSTER/',70),
+        ('segmer','SEGMER','Segmental threading method for recognizing protein substructure motifs.','https://zhanggroup.org/SEGMER/',80),
+        ('svmseq','SVMSEQ','Support-vector-machine method for protein residue contact prediction.','https://zhanggroup.org/SVMSEQ/',90),
+        ('bspred','BSpred','Sequence-based prediction of protein binding sites.','https://zhanggroup.org/BSpred/',100),
+        ('anglor','ANGLOR','Machine-learning prediction of protein backbone torsion angles.','https://zhanggroup.org/ANGLOR/',110),
+        ('bsp-slim','BSP-SLIM','Blind molecular-docking and binding-site prediction method.','https://zhanggroup.org/BSP-SLIM/',120),
+        ('remo','REMO','Construct atomic protein structures from C-alpha traces.','https://zhanggroup.org/REMO/',130),
+        ('coth','COTH','Multiple-chain protein threading method for protein complexes.','https://zhanggroup.org/COTH/',140),
+        ('alphafold-db','AlphaFold Database','Browse predicted protein structures and related structural information.','https://alphafold.ebi.ac.uk/',150),
+        ('genomics2proteins','Genomics 2 Proteins','Connect genetic screening results with protein sequence and structure resources.','https://genomics2proteins.org/',160),
+    ]
+    conn=get_db_connection(); cur=conn.cursor()
+    try:
+        cur.execute("INSERT INTO bioinformatics_tool_categories (slug,name,description,curated_order,is_published) VALUES (%s,%s,%s,2,TRUE) ON DUPLICATE KEY UPDATE name=VALUES(name),description=VALUES(description),is_published=TRUE", category)
+        cur.execute("SELECT id FROM bioinformatics_tool_categories WHERE slug=%s", (category[0],)); category_id=cur.fetchone()[0]
+        checked=date.today()
+        for slug,name,description,url,order in tools:
+            cur.execute("INSERT INTO bioinformatics_tools (category_id,slug,name,description,url,source_url,source_checked_at,source_note,curated_order,is_published) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE) ON DUPLICATE KEY UPDATE category_id=VALUES(category_id),name=VALUES(name),description=VALUES(description),url=VALUES(url),source_url=VALUES(source_url),source_checked_at=VALUES(source_checked_at),source_note=VALUES(source_note),curated_order=VALUES(curated_order),is_published=TRUE", (category_id,slug,name,description,url,'https://www.bitnos.com/protein-structure-and-function-prediction',checked,'Bitnos Protein Structure and Function Prediction category listing',order))
+        conn.commit()
+    finally: cur.close(); conn.close()
+
+ensure_additional_protein_tools_catalog()
+
 def convert_decimal_for_json(data):
     """
     转换数据中的Decimal类型为float/int以便JSON序列化
