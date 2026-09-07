@@ -27,7 +27,7 @@ The platform supports Python, Perl, Java, and C programming exercises, asynchron
   - Literature-origin ideas can store the article title, abstract, and full-text/source URL
 - **Exam Paper Management** -- Generate A/B exam papers with intelligent question selection
 - **Student Management** -- Monitor student progress and override grades
-- **Bioinformatics Tools** -- Curated external-resource directory for Gene Expression and Protein Structure/Function Prediction; authenticated students and teachers can browse, while administrators can also edit tool metadata and publication status
+- **Bioinformatics Tools** -- Curated external-resource directory for Gene Expression, Protein Structure/Function Prediction, DNA Alignment, and Genetic Variations; authenticated students and teachers can browse, while administrators can also edit tool metadata and publication status
 
 ### Admin
 - **Account Management** -- Create/edit/toggle/delete users across all roles

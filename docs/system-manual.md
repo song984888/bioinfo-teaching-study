@@ -218,7 +218,7 @@
 
 ### 4.7 生物信息学工具集合
 
-三种角色登录后均可从控制台的「🧬 生物信息学工具」模块进入 `/bioinformatics-tools`。当前提供 Gene Expression / 基因表达和 Protein Structure and Function Prediction / 蛋白质结构与功能预测两个分类，包含经整理的外部资源目录。
+三种角色登录后均可从控制台的「🧬 生物信息学工具」模块进入 `/bioinformatics-tools`。当前提供 Gene Expression / 基因表达、Protein Structure and Function Prediction / 蛋白质结构与功能预测、DNA Alignment / DNA 序列比对和 Genetic Variations / 遗传变异四个分类，包含经整理的外部资源目录。
 
 - `/bioinformatics-tools`：工具分类首页。
 - `/bioinformatics-tools/gene-expression`：Gene Expression 工具列表。
@@ -228,7 +228,7 @@
 - 本平台仅提供分类导航，工具由其原网站运行；来源核验日期表示目录整理时间，不代表本平台实时保证外部站点可用。
 - 学生和教师只能浏览；管理员可进入 `/admin/bioinformatics-tools` 编辑分类和工具的名称、简介、目标链接、来源链接、排序及发布状态。管理员修改后需要点击保存，前台只显示已发布条目。
 
-当前已整理的资源包括 GEO、ENCODE、Morpheus、GTEx、JBrowse、CZ CELLxGENE、xCell、FANTOM，以及 Jpred3、I-TASSER、PSIPRED、QUARK、AlphaFold Database 等。工具名称、简介、目标 URL 和来源页面保存在 `bioinformatics_tools` 与 `bioinformatics_tool_categories` 中，目录初始化是幂等的，不会重复插入。
+当前已整理的资源包括 GEO、ENCODE、Morpheus、GTEx、JBrowse、CZ CELLxGENE、xCell、FANTOM、Jpred3、I-TASSER、PSIPRED、QUARK、AlphaFold Database，以及 DNA Alignment 和 Genetic Variations 分类下的 BLASTN、ClustalW、DIALIGN、PipMaker、dbSNP、HaploReg、GWAS Catalog、ClinVar、LOVD 等。工具名称、简介、目标 URL 和来源页面保存在 `bioinformatics_tools` 与 `bioinformatics_tool_categories` 中，目录初始化是幂等的，不会重复插入。
 
 ### 4.8 学生账户管理入口
 
