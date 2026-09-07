@@ -368,6 +368,86 @@ def get_db_connection():
 
 ensure_thought_chain_stage1_schema()
 
+def ensure_bioinformatics_tools_catalog():
+    """创建并幂等播种 Gene Expression 外部工具目录。"""
+    category = ('gene-expression', 'Gene Expression / 基因表达', 'Gene expression data, visualization, and analysis resources.')
+    tools = [
+        ('geo-ncbi','Gene Expression Omnibus (GEO - NCBI)','Public repository for microarray, sequencing, and high-throughput functional genomic data.','https://www.ncbi.nlm.nih.gov/geo/',10),
+        ('encode','ENCODE','Resource for functional elements of the human genome and transcriptional regulation.','https://www.encodeproject.org/',20),
+        ('washu-epigenome-browser','WashU Human Epigenome Browser','Browser for exploring epigenome atlas data in genomic context.','https://epigenome.wustl.edu/',30),
+        ('ucsc-gene-sorter','UCSC Gene Sorter','Explore expression, homology, and related information for groups of genes.','https://genome.ucsc.edu/cgi-bin/hgNear',40),
+        ('morpheus','Morpheus','Web-based matrix visualization and analysis with heat maps, clustering, and annotations.','https://software.broadinstitute.org/morpheus/',50),
+        ('arraymining','ArrayMining','Online microarray analysis including normalization, clustering, classification, and gene-set analysis.','https://arraymining.net/',60),
+        ('mouse-brain-atlas','Mouse Brain Atlas of Gene Expression','Searchable genome-wide map of gene expression in the mouse brain.','https://mouse.brain-map.org/',70),
+        ('roadmap-epigenomics','Roadmap Epigenomics Project','Reference epigenomic maps covering methylation, histone marks, and chromatin accessibility.','https://www.roadmapepigenomics.org/',80),
+        ('gtex','GTEx','Maps genetic effects on gene expression across human tissues.','https://gtexportal.org/',90),
+        ('ihec','International Human Epigenome Consortium (IHEC)','Reference human epigenome maps for the research community.','https://ihec-epigenomes.org/',100),
+        ('fantom','FANTOM','Consortium resource for maps of gene activity.','https://fantom.gsc.riken.jp/',110),
+        ('jbrowse','JBrowse','JavaScript and HTML5 genome browser for genomic data exploration.','https://jbrowse.org/',120),
+        ('coxpresdb','COXPRESdb','Coexpression relationship database for multiple animal species.','https://coxpresdb.jp/',130),
+        ('cellxgene','CZ CELLxGENE','Portal for finding, querying, analyzing, and downloading single-cell data.','https://cellxgene.cziscience.com/',140),
+        ('xcell','xCell','Gene-signature-based cell-type enrichment analysis.','https://xcell.ucsf.edu/',150),
+        ('omicspred','OmicsPred','Open resource for genetic scores and multi-omic trait prediction.','https://omicspred.org/',160),
+    ]
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("""CREATE TABLE IF NOT EXISTS bioinformatics_tool_categories (
+            id INT AUTO_INCREMENT PRIMARY KEY, slug VARCHAR(100) NOT NULL UNIQUE,
+            name VARCHAR(255) NOT NULL, description TEXT, curated_order INT NOT NULL DEFAULT 0,
+            is_published BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS bioinformatics_tools (
+            id INT AUTO_INCREMENT PRIMARY KEY, category_id INT NOT NULL,
+            slug VARCHAR(150) NOT NULL UNIQUE, name VARCHAR(255) NOT NULL, description TEXT NOT NULL,
+            url VARCHAR(1000) NOT NULL, source_url VARCHAR(1000) NOT NULL, source_checked_at DATE NOT NULL,
+            source_note VARCHAR(500), curated_order INT NOT NULL DEFAULT 0, is_published BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NULL,
+            INDEX idx_bio_tool_category (category_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""")
+        cur.execute("INSERT INTO bioinformatics_tool_categories (slug,name,description,curated_order,is_published) VALUES (%s,%s,%s,1,TRUE) ON DUPLICATE KEY UPDATE name=VALUES(name),description=VALUES(description),is_published=TRUE", category)
+        cur.execute("SELECT id FROM bioinformatics_tool_categories WHERE slug=%s", (category[0],)); category_id=cur.fetchone()[0]
+        checked=date.today()
+        for slug,name,description,url,order in tools:
+            cur.execute("INSERT INTO bioinformatics_tools (category_id,slug,name,description,url,source_url,source_checked_at,source_note,curated_order,is_published) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE) ON DUPLICATE KEY UPDATE category_id=VALUES(category_id),name=VALUES(name),description=VALUES(description),url=VALUES(url),source_url=VALUES(source_url),source_checked_at=VALUES(source_checked_at),source_note=VALUES(source_note),curated_order=VALUES(curated_order),is_published=TRUE", (category_id,slug,name,description,url,'https://www.bitnos.com/gene-expression',checked,'Bitnos Gene Expression category listing',order))
+        conn.commit()
+    finally: cur.close(); conn.close()
+
+
+def get_published_tool_categories():
+    conn=get_db_connection(); cur=conn.cursor(dictionary=True)
+    try:
+        cur.execute("SELECT * FROM bioinformatics_tool_categories WHERE is_published=1 ORDER BY curated_order,name")
+        return cur.fetchall()
+    finally: cur.close(); conn.close()
+
+
+def get_published_tools(category_slug, search='', order='curated'):
+    order_sql = 'bt.name ASC' if order == 'name' else 'bt.curated_order ASC, bt.name ASC'
+    conn=get_db_connection(); cur=conn.cursor(dictionary=True)
+    try:
+        params=[category_slug]
+        sql="""SELECT bt.*, bc.slug AS category_slug, bc.name AS category_name
+               FROM bioinformatics_tools bt JOIN bioinformatics_tool_categories bc ON bt.category_id=bc.id
+               WHERE bc.slug=%s AND bc.is_published=1 AND bt.is_published=1"""
+        if search:
+            sql += " AND (bt.name LIKE %s OR bt.description LIKE %s)"; term='%'+search[:100]+'%'; params.extend([term,term])
+        sql += " ORDER BY " + order_sql
+        cur.execute(sql, params); return cur.fetchall()
+    finally: cur.close(); conn.close()
+
+
+def get_published_tool(category_slug, tool_slug):
+    conn=get_db_connection(); cur=conn.cursor(dictionary=True)
+    try:
+        cur.execute("""SELECT bt.*, bc.slug AS category_slug, bc.name AS category_name
+                       FROM bioinformatics_tools bt JOIN bioinformatics_tool_categories bc ON bt.category_id=bc.id
+                       WHERE bc.slug=%s AND bt.slug=%s AND bc.is_published=1 AND bt.is_published=1""", (category_slug,tool_slug))
+        return cur.fetchone()
+    finally: cur.close(); conn.close()
+
+ensure_bioinformatics_tools_catalog()
+
 def convert_decimal_for_json(data):
     """
     转换数据中的Decimal类型为float/int以便JSON序列化
@@ -1843,6 +1923,36 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for('login'))
+
+@app.route('/bioinformatics-tools')
+def bioinformatics_tools_index():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    return render_template('bioinformatics_tools/index.html', categories=get_published_tool_categories())
+
+
+@app.route('/bioinformatics-tools/<category_slug>')
+def bioinformatics_tool_category(category_slug):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    categories = get_published_tool_categories()
+    category = next((item for item in categories if item['slug'] == category_slug), None)
+    if not category:
+        abort(404)
+    search = (request.args.get('q') or '').strip()
+    order = request.args.get('order') if request.args.get('order') in ('curated', 'name') else 'curated'
+    return render_template('bioinformatics_tools/category.html', category=category, tools=get_published_tools(category_slug, search, order), search=search, order=order)
+
+
+@app.route('/bioinformatics-tools/<category_slug>/<tool_slug>')
+def bioinformatics_tool_detail(category_slug, tool_slug):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    tool = get_published_tool(category_slug, tool_slug)
+    if not tool:
+        abort(404)
+    return render_template('bioinformatics_tools/detail.html', tool=tool)
+
 
 @app.route('/dashboard')
 def dashboard():
