@@ -405,11 +405,11 @@ def ensure_bioinformatics_tools_catalog():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NULL,
             INDEX idx_bio_tool_category (category_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""")
-        cur.execute("INSERT INTO bioinformatics_tool_categories (slug,name,description,curated_order,is_published) VALUES (%s,%s,%s,1,TRUE) ON DUPLICATE KEY UPDATE name=VALUES(name),description=VALUES(description),is_published=TRUE", category)
+        cur.execute("INSERT IGNORE INTO bioinformatics_tool_categories (slug,name,description,curated_order,is_published) VALUES (%s,%s,%s,1,TRUE)", category)
         cur.execute("SELECT id FROM bioinformatics_tool_categories WHERE slug=%s", (category[0],)); category_id=cur.fetchone()[0]
         checked=date.today()
         for slug,name,description,url,order in tools:
-            cur.execute("INSERT INTO bioinformatics_tools (category_id,slug,name,description,url,source_url,source_checked_at,source_note,curated_order,is_published) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE) ON DUPLICATE KEY UPDATE category_id=VALUES(category_id),name=VALUES(name),description=VALUES(description),url=VALUES(url),source_url=VALUES(source_url),source_checked_at=VALUES(source_checked_at),source_note=VALUES(source_note),curated_order=VALUES(curated_order),is_published=TRUE", (category_id,slug,name,description,url,'https://www.bitnos.com/gene-expression',checked,'Bitnos Gene Expression category listing',order))
+            cur.execute("INSERT IGNORE INTO bioinformatics_tools (category_id,slug,name,description,url,source_url,source_checked_at,source_note,curated_order,is_published) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE)", (category_id,slug,name,description,url,'https://www.bitnos.com/gene-expression',checked,'Bitnos Gene Expression category listing',order))
         conn.commit()
     finally: cur.close(); conn.close()
 
@@ -471,11 +471,11 @@ def ensure_additional_protein_tools_catalog():
     ]
     conn=get_db_connection(); cur=conn.cursor()
     try:
-        cur.execute("INSERT INTO bioinformatics_tool_categories (slug,name,description,curated_order,is_published) VALUES (%s,%s,%s,2,TRUE) ON DUPLICATE KEY UPDATE name=VALUES(name),description=VALUES(description),is_published=TRUE", category)
+        cur.execute("INSERT IGNORE INTO bioinformatics_tool_categories (slug,name,description,curated_order,is_published) VALUES (%s,%s,%s,2,TRUE)", category)
         cur.execute("SELECT id FROM bioinformatics_tool_categories WHERE slug=%s", (category[0],)); category_id=cur.fetchone()[0]
         checked=date.today()
         for slug,name,description,url,order in tools:
-            cur.execute("INSERT INTO bioinformatics_tools (category_id,slug,name,description,url,source_url,source_checked_at,source_note,curated_order,is_published) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE) ON DUPLICATE KEY UPDATE category_id=VALUES(category_id),name=VALUES(name),description=VALUES(description),url=VALUES(url),source_url=VALUES(source_url),source_checked_at=VALUES(source_checked_at),source_note=VALUES(source_note),curated_order=VALUES(curated_order),is_published=TRUE", (category_id,slug,name,description,url,'https://www.bitnos.com/protein-structure-and-function-prediction',checked,'Bitnos Protein Structure and Function Prediction category listing',order))
+            cur.execute("INSERT IGNORE INTO bioinformatics_tools (category_id,slug,name,description,url,source_url,source_checked_at,source_note,curated_order,is_published) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE)", (category_id,slug,name,description,url,'https://www.bitnos.com/protein-structure-and-function-prediction',checked,'Bitnos Protein Structure and Function Prediction category listing',order))
         conn.commit()
     finally: cur.close(); conn.close()
 
@@ -495,14 +495,42 @@ def ensure_dna_and_variation_tools_catalog():
     try:
         checked=date.today()
         for order,(slug,name,description,tools) in enumerate(groups,3):
-            cur.execute("INSERT INTO bioinformatics_tool_categories (slug,name,description,curated_order,is_published) VALUES (%s,%s,%s,%s,TRUE) ON DUPLICATE KEY UPDATE name=VALUES(name),description=VALUES(description),is_published=TRUE",(slug,name,description,order))
+            cur.execute("INSERT IGNORE INTO bioinformatics_tool_categories (slug,name,description,curated_order,is_published) VALUES (%s,%s,%s,%s,TRUE)",(slug,name,description,order))
             cur.execute("SELECT id FROM bioinformatics_tool_categories WHERE slug=%s",(slug,)); category_id=cur.fetchone()[0]
             for item_order,(tool_slug,tool_name,tool_description,url) in enumerate(tools,10):
-                cur.execute("INSERT INTO bioinformatics_tools (category_id,slug,name,description,url,source_url,source_checked_at,source_note,curated_order,is_published) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE) ON DUPLICATE KEY UPDATE category_id=VALUES(category_id),name=VALUES(name),description=VALUES(description),url=VALUES(url),source_url=VALUES(source_url),source_checked_at=VALUES(source_checked_at),source_note=VALUES(source_note),curated_order=VALUES(curated_order),is_published=TRUE",(category_id,tool_slug,tool_name,tool_description,url,'https://www.bitnos.com/'+slug,checked,'Bitnos category listing',item_order))
+                cur.execute("INSERT IGNORE INTO bioinformatics_tools (category_id,slug,name,description,url,source_url,source_checked_at,source_note,curated_order,is_published) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE)",(category_id,tool_slug,tool_name,tool_description,url,'https://www.bitnos.com/'+slug,checked,'Bitnos category listing',item_order))
         conn.commit()
     finally: cur.close();conn.close()
 
 ensure_dna_and_variation_tools_catalog()
+
+def ensure_protein_expression_interaction_catalog():
+    """幂等追加 Protein Expression 与 Protein Interactions 分类。"""
+    groups = [
+        ('protein-expression','Protein Expression / 蛋白质表达','Protein abundance, localization, tissue, and cell-expression resources.',[
+            ('human-protein-atlas','The Human Protein Atlas','Map human protein expression and localization across tissues, organs, and cells using integrated omics data.','https://www.proteinatlas.org/'),
+        ]),
+        ('protein-interactions','Protein Interactions / 蛋白质相互作用','Experimentally determined and predicted protein interaction and binding resources.',[
+            ('dip','DIP','Catalog experimentally determined protein-protein interactions from multiple sources.','https://dip.doe-mbi.ucla.edu/'),
+            ('string','STRING','Explore known and predicted protein-protein interaction networks.','https://string-db.org/'),
+            ('bindingdb','BindingDB','Database of measured binding affinities, especially interactions between drug targets and small molecules.','https://www.bindingdb.org/'),
+            ('i2d','I2D','Explore known and predicted protein-protein interactions and interaction networks.','https://ophid.utoronto.ca/iid'),
+            ('mint','MINT','Experimentally verified molecular interactions curated from scientific literature.','https://mint.bio.uniroma2.it/'),
+            ('biogrid','BioGRID','Public repository of genetic and protein interaction datasets for model organisms and humans.','https://thebiogrid.org/'),
+        ]),
+    ]
+    conn=get_db_connection();cur=conn.cursor()
+    try:
+        checked=date.today()
+        for order,(slug,name,description,tools) in enumerate(groups,5):
+            cur.execute("INSERT IGNORE INTO bioinformatics_tool_categories (slug,name,description,curated_order,is_published) VALUES (%s,%s,%s,%s,TRUE)",(slug,name,description,order))
+            cur.execute("SELECT id FROM bioinformatics_tool_categories WHERE slug=%s",(slug,));category_id=cur.fetchone()[0]
+            for item_order,(tool_slug,tool_name,tool_description,url) in enumerate(tools,10):
+                cur.execute("INSERT IGNORE INTO bioinformatics_tools (category_id,slug,name,description,url,source_url,source_checked_at,source_note,curated_order,is_published) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE)",(category_id,tool_slug,tool_name,tool_description,url,'https://www.bitnos.com/'+slug,checked,'Bitnos category listing',item_order))
+        conn.commit()
+    finally:cur.close();conn.close()
+
+ensure_protein_expression_interaction_catalog()
 
 def convert_decimal_for_json(data):
     """

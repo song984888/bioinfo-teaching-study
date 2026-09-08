@@ -3,7 +3,9 @@
   'gene-expression':'基因表达',
   'protein-structure-and-function-prediction':'蛋白质结构与功能预测',
   'dna-alignment':'DNA 序列比对',
-  'genetic-variations':'遗传变异'
+  'genetic-variations':'遗传变异',
+  'protein-expression':'蛋白质表达',
+  'protein-interactions':'蛋白质相互作用'
 }.get(slug, '生物信息学工具') }}图标" style="--logo-size:{{ size }}px">
 {% if slug == 'gene-expression' %}
 <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M13 49V31M25 49V18M37 49V26M49 49V12"/><path class="accent" d="M9 49h46"/><circle class="dot" cx="13" cy="27" r="3"/><circle class="dot" cx="25" cy="14" r="3"/><circle class="dot" cx="37" cy="22" r="3"/><circle class="dot" cx="49" cy="8" r="3"/></svg>
@@ -13,6 +15,10 @@
 <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M9 18h46M9 32h46M9 46h46"/><path class="accent" d="M18 13v10M30 27v10M46 41v10"/><circle class="dot" cx="46" cy="32" r="3"/></svg>
 {% elif slug == 'genetic-variations' %}
 <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M16 8c28 14 4 34 32 48M48 8C20 22 44 42 16 56"/><path class="accent" d="M22 15h20M18 27h28M19 39h26M23 51h18"/><circle class="dot" cx="46" cy="27" r="4"/></svg>
+{% elif slug == 'protein-expression' %}
+<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M13 48h38M17 44V30M28 44V18M39 44V25M50 44V12"/><path class="accent" d="M12 16c8-9 12 9 20 0s12 9 20 0"/><circle class="dot" cx="50" cy="9" r="3"/></svg>
+{% elif slug == 'protein-interactions' %}
+<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="18" cy="20" r="7"/><circle cx="46" cy="18" r="7"/><circle cx="32" cy="45" r="8"/><path class="accent" d="M24 22l16-2M22 26l7 12M42 24l-7 13"/><circle class="dot" cx="32" cy="29" r="3"/></svg>
 {% else %}
 <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="20"/><path class="accent" d="M20 32h24M32 20v24"/></svg>
 {% endif %}
