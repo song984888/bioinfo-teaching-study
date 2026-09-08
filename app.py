@@ -581,6 +581,47 @@ def ensure_gene_protein_information_catalog():
 
 ensure_gene_protein_information_catalog()
 
+def ensure_student_tool_activity_schema():
+    """创建学生生信工具点击学习记录表。"""
+    conn=get_db_connection();cur=conn.cursor()
+    try:
+        cur.execute("""CREATE TABLE IF NOT EXISTS student_tool_activity (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            student_id VARCHAR(191) NOT NULL,
+            category_id INT NOT NULL,
+            tool_id INT NOT NULL,
+            topic_slug VARCHAR(100) NOT NULL,
+            clicked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_sta_student_time (student_id,clicked_at),
+            INDEX idx_sta_topic (student_id,topic_slug),
+            INDEX idx_sta_tool (student_id,tool_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""")
+        conn.commit()
+    finally:cur.close();conn.close()
+
+
+def get_student_tool_learning(student_id):
+    """汇总学生工具访问频率和主题偏好。"""
+    result={'has_data':False,'total_clicks':0,'recent_30_days':0,'tool_count':0,'topic_views':[],'tool_views':[]}
+    conn=get_db_connection();cur=conn.cursor(dictionary=True)
+    try:
+        cur.execute("""SELECT COUNT(*) total_clicks,
+                    SUM(CASE WHEN clicked_at >= DATE_SUB(NOW(),INTERVAL 30 DAY) THEN 1 ELSE 0 END) recent_30_days,
+                    COUNT(DISTINCT tool_id) tool_count
+                    FROM student_tool_activity WHERE student_id=%s""",(student_id,))
+        row=cur.fetchone() or {};result.update({'total_clicks':int(row.get('total_clicks') or 0),'recent_30_days':int(row.get('recent_30_days') or 0),'tool_count':int(row.get('tool_count') or 0)})
+        cur.execute("""SELECT a.topic_slug,c.name topic_name,COUNT(*) views FROM student_tool_activity a
+                    LEFT JOIN bioinformatics_tool_categories c ON a.category_id=c.id
+                    WHERE a.student_id=%s GROUP BY a.topic_slug,c.name ORDER BY views DESC,c.name LIMIT 8""",(student_id,));result['topic_views']=cur.fetchall()
+        cur.execute("""SELECT a.tool_id,t.name tool_name,c.name topic_name,COUNT(*) views FROM student_tool_activity a
+                    LEFT JOIN bioinformatics_tools t ON a.tool_id=t.id LEFT JOIN bioinformatics_tool_categories c ON a.category_id=c.id
+                    WHERE a.student_id=%s GROUP BY a.tool_id,t.name,c.name ORDER BY views DESC,t.name LIMIT 8""",(student_id,));result['tool_views']=cur.fetchall()
+        result['has_data']=result['total_clicks']>0
+        return result
+    finally:cur.close();conn.close()
+
+ensure_student_tool_activity_schema()
+
 def convert_decimal_for_json(data):
     """
     转换数据中的Decimal类型为float/int以便JSON序列化
@@ -938,7 +979,7 @@ def calculate_similarity(str1, str2):
 
 
 
-def auto_suggestion_ollama(student_name,start_date,end_date,active_days,total_days,attendance_rate,exam_metrics, exercise_metrics, kb_learning=''):
+def auto_suggestion_ollama(student_name,start_date,end_date,active_days,total_days,attendance_rate,exam_metrics, exercise_metrics, kb_learning='', tool_learning=''):
     SUGGESTION_MODEL = CONFIG["OLLAMA_MODEL"]['deepseek-r1-1.5b']
     SUGGESTION_ENDPOINT = CONFIG["OLLAMA_ENDPOINT"]
     SUGGESTION_TIMEOUT = 45
@@ -954,7 +995,8 @@ def auto_suggestion_ollama(student_name,start_date,end_date,active_days,total_da
         attendance_rate=attendance_rate,
         exam_metrics=exam_metrics,
         exercise_metrics=exercise_metrics,
-        kb_learning=kb_learning
+        kb_learning=kb_learning,
+        tool_learning=tool_learning
     )
 
     # 准备API请求数据
@@ -997,7 +1039,7 @@ def auto_suggestion_ollama(student_name,start_date,end_date,active_days,total_da
 
 
 
-def auto_suggestion(student_name,start_date,end_date,active_days,total_days,attendance_rate,exam_metrics, exercise_metrics, kb_learning=''):
+def auto_suggestion(student_name,start_date,end_date,active_days,total_days,attendance_rate,exam_metrics, exercise_metrics, kb_learning='', tool_learning=''):
     SUGGESTION_MODEL = CONFIG["DEEPSEEK_MODEL"]
     SUGGESTION_API_KEY = CONFIG["DEEPSEEK_API_KEY"]
     SUGGESTION_ENDPOINT = CONFIG["DEEPSEEK_ENDPOINT"]
@@ -1014,7 +1056,8 @@ def auto_suggestion(student_name,start_date,end_date,active_days,total_days,atte
         attendance_rate=attendance_rate,
         exam_metrics=exam_metrics,
         exercise_metrics=exercise_metrics,
-        kb_learning=kb_learning
+        kb_learning=kb_learning,
+        tool_learning=tool_learning
     )
 
     # 准备API请求数据
@@ -2146,6 +2189,22 @@ def bioinformatics_tool_category(category_slug):
     search = (request.args.get('q') or '').strip()
     order = request.args.get('order') if request.args.get('order') in ('curated', 'name') else 'curated'
     return render_template('bioinformatics_tools/category.html', category=category, tools=get_published_tools(category_slug, search, order), search=search, order=order)
+
+
+@app.route('/bioinformatics-tools/<category_slug>/<tool_slug>/visit')
+def bioinformatics_tool_visit(category_slug, tool_slug):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    tool=get_published_tool(category_slug,tool_slug)
+    if not tool or not _valid_external_tool_url(tool['url']):
+        abort(404)
+    if session.get('role')=='student':
+        conn=get_db_connection();cur=conn.cursor()
+        try:
+            cur.execute("INSERT INTO student_tool_activity (student_id,category_id,tool_id,topic_slug) VALUES (%s,%s,%s,%s)",(session['user_id'],tool['category_id'],tool['id'],tool['category_slug']))
+            conn.commit()
+        finally:cur.close();conn.close()
+    return redirect(tool['url'])
 
 
 @app.route('/bioinformatics-tools/<category_slug>/<tool_slug>')
@@ -3434,6 +3493,20 @@ def study_suggestion():
     else:
         kb_learning_text = "（暂无知识库学习记录）"
 
+    # 获取生信工具点击学习情况，供个性化建议使用
+    tool_learning = get_student_tool_learning(student['id'])
+    if tool_learning.get('has_data'):
+        tool_lines = [f"- 生信工具总点击：{tool_learning['total_clicks']}次，近30天{tool_learning['recent_30_days']}次，涉及{tool_learning['tool_count']}个工具"]
+        if tool_learning.get('topic_views'):
+            topics = [f"{v['topic_name'] or v['topic_slug']}（{v['views']}次）" for v in tool_learning['topic_views'][:5]]
+            tool_lines.append(f"- 关注的工具主题Top：{', '.join(topics)}")
+        if tool_learning.get('tool_views'):
+            tools = [f"{v['tool_name']}（{v['views']}次）" for v in tool_learning['tool_views'][:5]]
+            tool_lines.append(f"- 常用工具Top：{', '.join(tools)}")
+        tool_learning_text='\n'.join(tool_lines)
+    else:
+        tool_learning_text='（暂无生信工具学习记录）'
+
     study_suggestion = auto_suggestion(
         student_name=student_name,
         start_date=student_learning_period_metrics['start_date'],
@@ -3443,7 +3516,8 @@ def study_suggestion():
         attendance_rate=student_learning_period_metrics['attendance_rate'],
         exam_metrics=exam_metrics,
         exercise_metrics=exercise_metrics,
-        kb_learning=kb_learning_text
+        kb_learning=kb_learning_text,
+        tool_learning=tool_learning_text
     )
     # just used to test with simple local ollama model and suggestion is fake!! 
     #study_suggestion_simple_test = '{**zhangsan的学习建议报告**   📊 当前学习状态： 学习周期178天中仅有效学习29天（16.29%），练习量偏少（45题），但考试参与度较高（75次）。Perl基础语法掌握较好，但在DNA序列处理、生物信息学工具开发等应用领域存在明显短板，成绩波动较大（0-100分）。  🏆 优势领域： 1. **正则表达式处理** - 满分通过Chapter-10考核，展现了精准的模式匹配能力和边界处理意识，代码符合Perl最佳实践  🚧 待加强领域： 1. **DNA序列生成与分析** - 平均分26.67，常出现逻辑偏离问题（如误用文本处理代替序列生成）。建议：  📝 学习计划： - **优先级训练**：每周完成2次DNA突变模拟练习（使用`substr`随机替换位点） ⏰ 学习习惯建议：  当前学习频率较低（平均6天1次），但夜间学习活跃（49次练习在晚间）。建议： 💡 导师寄语： 1. **🐞 Debug精神**你的正则表达式就像精准的CRISPR基因编辑——继续保持这种模式匹配的敏锐度！}'  
@@ -3557,7 +3631,8 @@ def study_suggestion():
                             exam_metrics=exam_metrics,
                             exercise_metrics=exercise_metrics,
                             student_learning_period_metrics=student_learning_period_metrics,
-                            kb_learning=kb_learning)
+                            kb_learning=kb_learning,
+                            tool_learning=tool_learning)
 
 
 

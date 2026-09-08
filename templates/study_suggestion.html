@@ -175,6 +175,24 @@
                                     <div class="metric-label">文献检索次数</div>
                                 </div>
                             </div>
+                            <div class="col-md-4 mb-4">
+                                <div class="metric-card">
+                                    <div class="metric-value">{{ tool_learning.total_clicks if tool_learning else 0 }}</div>
+                                    <div class="metric-label">生信工具点击次数</div>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-4">
+                                <div class="metric-card">
+                                    <div class="metric-value">{{ tool_learning.tool_count if tool_learning else 0 }}</div>
+                                    <div class="metric-label">使用过的生信工具数</div>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-4">
+                                <div class="metric-card">
+                                    <div class="metric-value">{{ tool_learning.recent_30_days if tool_learning else 0 }}</div>
+                                    <div class="metric-label">近30天工具访问次数</div>
+                                </div>
+                            </div>
                         </div>
                         
                         <!-- 学习时间分布 -->
