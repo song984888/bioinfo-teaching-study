@@ -979,7 +979,7 @@ def calculate_similarity(str1, str2):
 
 
 
-def auto_suggestion_ollama(student_name,start_date,end_date,active_days,total_days,attendance_rate,exam_metrics, exercise_metrics, kb_learning='', tool_learning=''):
+def auto_suggestion_ollama(student_name,start_date,end_date,active_days,total_days,attendance_rate,exam_metrics, exercise_metrics, kb_learning='', tool_learning='', notes_learning=''):
     SUGGESTION_MODEL = CONFIG["OLLAMA_MODEL"]['deepseek-r1-1.5b']
     SUGGESTION_ENDPOINT = CONFIG["OLLAMA_ENDPOINT"]
     SUGGESTION_TIMEOUT = 45
@@ -996,7 +996,8 @@ def auto_suggestion_ollama(student_name,start_date,end_date,active_days,total_da
         exam_metrics=exam_metrics,
         exercise_metrics=exercise_metrics,
         kb_learning=kb_learning,
-        tool_learning=tool_learning
+        tool_learning=tool_learning,
+        notes_learning=notes_learning
     )
 
     # 准备API请求数据
@@ -1039,7 +1040,7 @@ def auto_suggestion_ollama(student_name,start_date,end_date,active_days,total_da
 
 
 
-def auto_suggestion(student_name,start_date,end_date,active_days,total_days,attendance_rate,exam_metrics, exercise_metrics, kb_learning='', tool_learning=''):
+def auto_suggestion(student_name,start_date,end_date,active_days,total_days,attendance_rate,exam_metrics, exercise_metrics, kb_learning='', tool_learning='', notes_learning=''):
     SUGGESTION_MODEL = CONFIG["DEEPSEEK_MODEL"]
     SUGGESTION_API_KEY = CONFIG["DEEPSEEK_API_KEY"]
     SUGGESTION_ENDPOINT = CONFIG["DEEPSEEK_ENDPOINT"]
@@ -1057,7 +1058,8 @@ def auto_suggestion(student_name,start_date,end_date,active_days,total_days,atte
         exam_metrics=exam_metrics,
         exercise_metrics=exercise_metrics,
         kb_learning=kb_learning,
-        tool_learning=tool_learning
+        tool_learning=tool_learning,
+        notes_learning=notes_learning
     )
 
     # 准备API请求数据
@@ -3507,6 +3509,19 @@ def study_suggestion():
     else:
         tool_learning_text='（暂无生信工具学习记录）'
 
+    # 获取学习笔记情况（传统笔记 + 思维链）
+    conn_notes = get_db_connection(); cur_notes = conn_notes.cursor(dictionary=True)
+    cur_notes.execute("SELECT COUNT(*) cnt FROM student_notes WHERE student_id=%s", (student['id'],))
+    traditional_notes = cur_notes.fetchone()['cnt']
+    cur_notes.execute("SELECT COUNT(*) cnt FROM thought_chains WHERE owner_id=%s", (student['id'],))
+    thought_chains = cur_notes.fetchone()['cnt']
+    cur_notes.close(); conn_notes.close()
+    total_notes = traditional_notes + thought_chains
+    if total_notes > 0:
+        notes_learning_text = f"- 学习笔记总数：{total_notes}条（传统笔记{traditional_notes}条，思维链{thought_chains}条）"
+    else:
+        notes_learning_text = "（暂无学习笔记记录）"
+
     study_suggestion = auto_suggestion(
         student_name=student_name,
         start_date=student_learning_period_metrics['start_date'],
@@ -3517,7 +3532,8 @@ def study_suggestion():
         exam_metrics=exam_metrics,
         exercise_metrics=exercise_metrics,
         kb_learning=kb_learning_text,
-        tool_learning=tool_learning_text
+        tool_learning=tool_learning_text,
+        notes_learning=notes_learning_text
     )
     # just used to test with simple local ollama model and suggestion is fake!! 
     #study_suggestion_simple_test = '{**zhangsan的学习建议报告**   📊 当前学习状态： 学习周期178天中仅有效学习29天（16.29%），练习量偏少（45题），但考试参与度较高（75次）。Perl基础语法掌握较好，但在DNA序列处理、生物信息学工具开发等应用领域存在明显短板，成绩波动较大（0-100分）。  🏆 优势领域： 1. **正则表达式处理** - 满分通过Chapter-10考核，展现了精准的模式匹配能力和边界处理意识，代码符合Perl最佳实践  🚧 待加强领域： 1. **DNA序列生成与分析** - 平均分26.67，常出现逻辑偏离问题（如误用文本处理代替序列生成）。建议：  📝 学习计划： - **优先级训练**：每周完成2次DNA突变模拟练习（使用`substr`随机替换位点） ⏰ 学习习惯建议：  当前学习频率较低（平均6天1次），但夜间学习活跃（49次练习在晚间）。建议： 💡 导师寄语： 1. **🐞 Debug精神**你的正则表达式就像精准的CRISPR基因编辑——继续保持这种模式匹配的敏锐度！}'  
