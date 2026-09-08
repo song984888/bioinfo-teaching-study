@@ -532,6 +532,55 @@ def ensure_protein_expression_interaction_catalog():
 
 ensure_protein_expression_interaction_catalog()
 
+def ensure_gene_protein_information_catalog():
+    """幂等追加 Gene Information Search 与 Protein Informations 分类。"""
+    groups = [
+        ('gene-information-search','Gene Information Search / 基因信息检索','Genome browsers, gene nomenclature, sequence archives, and integrated gene information resources.',[
+            ('ensembl','Ensembl','Genome browser and freely available genome databases for vertebrates.','https://www.ensembl.org/'),
+            ('ncbi-genome-data-viewer','NCBI Genome Data Viewer','View, search, and navigate complete genomes down to sequence-level detail.','https://www.ncbi.nlm.nih.gov/genome/gdv/'),
+            ('gene-info-encode','ENCODE','Explore functional elements, transcripts, and regulatory annotations in the human genome.','https://www.encodeproject.org/'),
+            ('omim','OMIM','Referenced compendium of human genes, genetic phenotypes, and Mendelian disorders.','https://omim.org/'),
+            ('hgnc','HGNC','Curated repository of approved human gene symbols and names.','https://www.genenames.org/'),
+            ('gene-info-washu-browser','WashU Human Epigenome Browser','Explore epigenomic annotations and genes in genomic and metadata context.','https://epigenomegateway.wustl.edu/'),
+            ('genecards','GeneCards','Integrated searchable information about human genes, products, functions, and diseases.','https://www.genecards.org/'),
+            ('ucsc-genome-browser','UCSC Genome Browser','Interactive access to genome sequences and integrated annotations.','https://genome.ucsc.edu/'),
+            ('ncbi-nucleotide','NCBI Nucleotide','Sequence collection integrating GenBank, RefSeq, TPA, PDB, and related sources.','https://www.ncbi.nlm.nih.gov/nucleotide/'),
+            ('ena','European Nucleotide Archive','Public archive for submitted nucleotide sequences and sequencing data.','https://www.ebi.ac.uk/ena/browser/home'),
+            ('biogps','BioGPS','Extensible gene annotation portal for exploring gene and protein function.','http://biogps.org/'),
+            ('ncbi-genome','NCBI Genome','Genome, chromosome, assembly, and integrated map information across organism groups.','https://www.ncbi.nlm.nih.gov/datasets/genome/'),
+            ('hervd','HERVd','Resource for screening the human genome for endogenous retroviruses.','https://herv.img.cas.cz/'),
+            ('gydb','GyDB','Editable database for viruses and transposable elements organized by phylogeny.','https://gydb.org/'),
+            ('ncbi-bioproject','NCBI BioProject','Search sequencing, assembly, annotation, and mapping projects by organism.','https://www.ncbi.nlm.nih.gov/bioproject/'),
+        ]),
+        ('protein-informations','Protein Informations / 蛋白质信息','Protein sequences, functions, structures, expression, modifications, and proteomics resources.',[
+            ('uniprot','UniProt','Comprehensive protein sequence and functional information, including UniProtKB, UniRef, and UniParc.','https://www.uniprot.org/'),
+            ('expasy','ExPASy','SIB portal for life-science databases and software tools, including proteomics resources.','https://www.expasy.org/'),
+            ('protein-info-human-protein-atlas','The Human Protein Atlas','Explore protein expression and localization in tissues, cancers, cells, and cell lines.','https://www.proteinatlas.org/'),
+            ('proteometools','ProteomeTools','Molecular and digital proteomics resources based on synthetic human peptides.','https://www.proteometools.org/'),
+            ('mapu','MAPU','Mass-spectrometry proteomics datasets serving as reference proteomes.','https://www.mapuproteome.com/'),
+            ('ncbi-protein','NCBI Protein','Protein sequences from translated coding regions and curated sequence resources.','https://www.ncbi.nlm.nih.gov/protein/'),
+            ('pdbsum','PDBsum','At-a-glance diagrams and summaries of macromolecular structures and interactions.','https://www.ebi.ac.uk/thornton-srv/databases/pdbsum/'),
+            ('phosphositeplus','PhosphoSitePlus','Curated information about phosphorylation and other protein post-translational modifications.','https://www.phosphosite.org/'),
+            ('wwpdb','Worldwide Protein Data Bank','Global deposition, processing, and distribution framework for PDB structural data.','https://www.wwpdb.org/'),
+            ('peptideatlas','PeptideAtlas','Multi-organism compendium of peptides identified in mass-spectrometry experiments.','https://www.peptideatlas.org/'),
+            ('proteome-commons','Proteome Commons','Collaborative proteomics project and annotation resource.','https://proteomecommons.org/'),
+            ('chembl','ChEMBL','Open database of bioactive molecules and reported protein-ligand interactions.','https://www.ebi.ac.uk/chembl/'),
+            ('srmatlas','SRMAtlas','Targeted proteomics assays for detecting and quantifying proteins by mass spectrometry.','https://www.srmatlas.org/'),
+        ]),
+    ]
+    conn=get_db_connection();cur=conn.cursor()
+    try:
+        checked=date.today()
+        for order,(slug,name,description,tools) in enumerate(groups,7):
+            cur.execute("INSERT IGNORE INTO bioinformatics_tool_categories (slug,name,description,curated_order,is_published) VALUES (%s,%s,%s,%s,TRUE)",(slug,name,description,order))
+            cur.execute("SELECT id FROM bioinformatics_tool_categories WHERE slug=%s",(slug,));category_id=cur.fetchone()[0]
+            for item_order,(tool_slug,tool_name,tool_description,url) in enumerate(tools,10):
+                cur.execute("INSERT IGNORE INTO bioinformatics_tools (category_id,slug,name,description,url,source_url,source_checked_at,source_note,curated_order,is_published) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE)",(category_id,tool_slug,tool_name,tool_description,url,'https://www.bitnos.com/'+slug,checked,'Bitnos category listing',item_order))
+        conn.commit()
+    finally:cur.close();conn.close()
+
+ensure_gene_protein_information_catalog()
+
 def convert_decimal_for_json(data):
     """
     转换数据中的Decimal类型为float/int以便JSON序列化

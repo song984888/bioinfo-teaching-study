@@ -218,7 +218,7 @@
 
 ### 4.7 生物信息学工具集合
 
-三种角色登录后均可从控制台的「🧬 生物信息学工具」模块进入 `/bioinformatics-tools`。当前提供 Gene Expression、Protein Structure and Function Prediction、DNA Alignment、Genetic Variations、Protein Expression 和 Protein Interactions 六个分类。
+三种角色登录后均可从控制台的「🧬 生物信息学工具」模块进入 `/bioinformatics-tools`。当前提供八个分类：Gene Information Search、Gene Expression、DNA Alignment、Genetic Variations、Protein Informations、Protein Expression、Protein Interactions，以及 Protein Structure and Function Prediction。
 
 - `/bioinformatics-tools`：工具分类首页。
 - `/bioinformatics-tools/gene-expression`：Gene Expression 工具列表。
@@ -228,7 +228,7 @@
 - 本平台仅提供分类导航，工具由其原网站运行；来源核验日期表示目录整理时间，不代表本平台实时保证外部站点可用。
 - 学生和教师只能浏览；管理员可进入 `/admin/bioinformatics-tools` 编辑分类和工具的名称、简介、目标链接、来源链接、排序及发布状态。管理员修改后需要点击保存，前台只显示已发布条目。
 
-当前已整理的资源包括 GEO、ENCODE、Morpheus、GTEx、JBrowse、CZ CELLxGENE、xCell、FANTOM、Jpred3、I-TASSER、PSIPRED、QUARK、AlphaFold Database、BLASTN、ClustalW、dbSNP、ClinVar，以及 Protein Expression 分类下的 Human Protein Atlas 和 Protein Interactions 分类下的 DIP、STRING、BindingDB、I2D、MINT、BioGRID。工具名称、简介、目标 URL 和来源页面保存在 `bioinformatics_tools` 与 `bioinformatics_tool_categories` 中，目录初始化是幂等的，不会重复插入。
+当前目录还包括 Gene Information Search 分类下的 Ensembl、NCBI Genome Data Viewer、OMIM、HGNC、GeneCards、UCSC Genome Browser、ENA、BioGPS 等，以及 Protein Informations 分类下的 UniProt、ExPASy、Human Protein Atlas、NCBI Protein、PDBsum、PhosphoSitePlus、wwPDB、PeptideAtlas、ChEMBL 和 SRMAtlas 等。工具名称、简介、目标 URL 和来源页面保存在 `bioinformatics_tools` 与 `bioinformatics_tool_categories` 中，目录初始化是幂等的，不会重复插入。
 
 ### 4.8 学生账户管理入口
 
