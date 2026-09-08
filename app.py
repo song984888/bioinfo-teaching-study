@@ -7729,6 +7729,8 @@ def api_student_feed():
         my_exercises = cur.fetchone()['cnt']
         cur.execute("SELECT COUNT(*) AS cnt FROM student_notes WHERE student_id=%s", (student_id,))
         my_notes = cur.fetchone()['cnt']
+        cur.execute("SELECT COUNT(DISTINCT tool_id) AS cnt FROM student_tool_activity WHERE student_id=%s", (student_id,))
+        my_tools = cur.fetchone()['cnt']
 
         return jsonify({
             'success': True,
@@ -7739,7 +7741,8 @@ def api_student_feed():
                 'concepts_viewed': my_concepts,
                 'kbs_browsed': my_kbs,
                 'exercises_done': my_exercises,
-                'notes_written': my_notes
+                'notes_written': my_notes,
+                'tools_used': my_tools
             }
         })
     except Exception as e:

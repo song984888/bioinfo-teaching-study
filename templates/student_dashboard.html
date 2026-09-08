@@ -130,6 +130,7 @@
             <div class="stat-card-mini"><span id="statExercises">-</span><small>抽题练习</small></div>
             <div class="stat-card-mini"><span id="statDocs">-</span><small>文献检索</small></div>
             <div class="stat-card-mini"><span id="statNotes">-</span><small>学习笔记</small></div>
+            <div class="stat-card-mini"><span id="statTools">-</span><small>生信工具</small></div>
         </div>
         <small class="text-muted" id="feedStats"></small>
     </div>
@@ -153,6 +154,7 @@
             document.getElementById('statExercises').textContent = stats.exercises_done || 0;
             document.getElementById('statDocs').textContent = stats.kbs_browsed || 0;
             document.getElementById('statNotes').textContent = stats.notes_written || 0;
+            document.getElementById('statTools').textContent = stats.tools_used || 0;
 
             renderLatest(data.latest_docs || []);
             renderTrending(data.trending_concepts || []);
