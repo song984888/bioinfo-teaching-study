@@ -113,7 +113,7 @@
         <div class="selection-step" id="step3">
             <div class="language-grid">
                 {% for lang, config in languages.items() %}
-                <div class="language-card" data-lang="{{ lang }}">
+                <div class="language-card" data-lang="{{ lang }}" data-count-1="0" data-count-2="0" data-count-3="0">
                     <div class="language-icon">
                         {% if lang == 'python' %}🐍
                         {% elif lang == 'java' %}☕
@@ -123,6 +123,7 @@
                     </div>
                     <div class="language-name">{{ config.display_name }}</div>
                     <div class="language-ext">.{{ config.ext }}</div>
+                    <div class="language-count" style="font-size: 0.85em; color: #666; margin-top: 4px;">加载中...</div>
                 </div>
                 {% endfor %}
             </div>
@@ -132,20 +133,23 @@
         <!-- 步骤 4: 选择难度 -->
         <div class="selection-step" id="step4">
             <div class="difficulty-options">
-                <div class="difficulty-card" data-difficulty="1">
+                <div class="difficulty-card" data-difficulty="1" data-question-count="0">
                     <div class="difficulty-stars">★☆☆</div>
                     <div class="difficulty-name">简单</div>
                     <div class="difficulty-desc">适合初学者练习基础语法</div>
+                    <div class="difficulty-count" style="font-size: 0.9em; color: #888; margin-top: 8px;">0 题可用</div>
                 </div>
-                <div class="difficulty-card" data-difficulty="2">
+                <div class="difficulty-card" data-difficulty="2" data-question-count="0">
                     <div class="difficulty-stars">★★☆</div>
                     <div class="difficulty-name">中等</div>
                     <div class="difficulty-desc">需要理解基本算法</div>
+                    <div class="difficulty-count" style="font-size: 0.9em; color: #888; margin-top: 8px;">0 题可用</div>
                 </div>
-                <div class="difficulty-card" data-difficulty="3">
+                <div class="difficulty-card" data-difficulty="3" data-question-count="0">
                     <div class="difficulty-stars">★★★</div>
                     <div class="difficulty-name">困难</div>
                     <div class="difficulty-desc">挑战复杂问题解决能力</div>
+                    <div class="difficulty-count" style="font-size: 0.9em; color: #888; margin-top: 8px;">0 题可用</div>
                 </div>
             </div>
             <input type="hidden" name="difficulty" id="selectedDifficulty">
@@ -173,6 +177,8 @@
     // KB→概念级联数据
     const kbConcepts = {{ kb_concepts_map|tojson|safe or '{}' }};
     const theoryAvail = {{ theory_availability|tojson|safe or '{}' }};
+    const topicLangDiffCounts = {{ topic_lang_diff_counts|tojson|safe or '{}' }};
+    const langDiffCounts = {{ language_difficulty_counts|tojson|safe or '{}' }};
 
     function onTheoryKbChange() {
         var kbId = document.getElementById('theoryKbSelect').value;
@@ -336,6 +342,9 @@
             // 更新隐藏字段值
             document.getElementById('selectedTopic').value = selectedTopic;
             
+            // 更新语言选项的题目数量并隐藏无题目的语言
+            updateLanguageOptions();
+            
             // 添加视觉反馈
             this.style.border = "2px solid #4CAF50";
             this.style.boxShadow = "0 0 10px rgba(76, 175, 80, 0.5)";
@@ -345,6 +354,16 @@
     // 语言选择
     document.querySelectorAll('.language-card').forEach(card => {
         card.addEventListener('click', function() {
+            const count1 = parseInt(this.dataset.count1) || 0;
+            const count2 = parseInt(this.dataset.count2) || 0;
+            const count3 = parseInt(this.dataset.count3) || 0;
+            const totalCount = count1 + count2 + count3;
+            
+            // 如果没有题目，不允许选择
+            if (totalCount === 0) {
+                return;
+            }
+            
             // 移除之前的选择
             document.querySelectorAll('.language-card').forEach(c => {
                 c.classList.remove('selected');
@@ -357,6 +376,9 @@
             // 更新隐藏字段值
             document.getElementById('selectedLanguage').value = selectedLanguage;
             
+            // 更新难度选项的题目数量
+            updateDifficultyOptions();
+            
             // 添加视觉反馈
             this.style.border= "2px solid #2196F3";
             this.style.boxShadow = "0 0 10px rgba(33, 150, 243, 0.5)";
@@ -366,6 +388,13 @@
     // 难度选择
     document.querySelectorAll('.difficulty-card').forEach(card => {
         card.addEventListener('click', function() {
+            const questionCount = parseInt(this.dataset.questionCount) || 0;
+            
+            // 如果没有题目，不允许选择
+            if (questionCount === 0) {
+                return;
+            }
+            
             // 移除之前的选择
             document.querySelectorAll('.difficulty-card').forEach(c => {
                 c.classList.remove('selected');
@@ -383,6 +412,76 @@
             this.style.boxShadow = "0 0 10px rgba(255, 152, 0, 0.5)";
         });
     });
+    
+    // 更新语言选项的题目数量
+    function updateLanguageOptions() {
+        if (!selectedTopic) return;
+        
+        document.querySelectorAll('.language-card').forEach(card => {
+            const lang = card.dataset.lang;
+            let count1 = 0, count2 = 0, count3 = 0;
+            
+            // 统计每个难度的题目数
+            for (let diff = 1; diff <= 3; diff++) {
+                const key = `${selectedTopic}|${lang}|${diff}`;
+                const count = topicLangDiffCounts[key] || 0;
+                if (diff === 1) count1 = count;
+                else if (diff === 2) count2 = count;
+                else if (diff === 3) count3 = count;
+            }
+            
+            const totalCount = count1 + count2 + count3;
+            
+            // 更新data属性
+            card.dataset.count1 = count1;
+            card.dataset.count2 = count2;
+            card.dataset.count3 = count3;
+            
+            // 更新显示
+            const countDiv = card.querySelector('.language-count');
+            if (countDiv) {
+                countDiv.textContent = `${totalCount} 题可用`;
+            }
+            
+            // 隐藏或显示
+            if (totalCount === 0) {
+                card.style.display = 'none';
+            } else {
+                card.style.display = 'block';
+                card.style.opacity = '1';
+                card.style.pointerEvents = 'auto';
+            }
+        });
+    }
+    
+    // 更新难度选项的题目数量
+    function updateDifficultyOptions() {
+        if (!selectedTopic || !selectedLanguage) return;
+        
+        document.querySelectorAll('.difficulty-card').forEach(card => {
+            const diff = card.dataset.difficulty;
+            const key = `${selectedTopic}|${selectedLanguage}|${diff}`;
+            const count = topicLangDiffCounts[key] || 0;
+            
+            // 更新data属性
+            card.dataset.questionCount = count;
+            
+            // 更新显示
+            const countDiv = card.querySelector('.difficulty-count');
+            if (countDiv) {
+                countDiv.textContent = `${count} 题可用`;
+            }
+            
+            // 隐藏或显示
+            if (count === 0) {
+                card.style.display = 'none';
+            } else {
+                card.style.display = 'block';
+                card.style.opacity = '1';
+                card.style.pointerEvents = 'auto';
+            }
+        });
+    }
     
     // 表单提交前验证
     document.getElementById('exerciseForm').addEventListener('submit', function(e) {

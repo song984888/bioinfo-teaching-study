@@ -3093,6 +3093,30 @@ def exercise_selection():
             key = f"({r['topic']}, {r['difficulty']})"
             theory_availability[key] = r['cnt']
 
+        # 编程题语言和难度的题目统计
+        cursor.execute("""
+            SELECT language, difficulty, COUNT(*) AS cnt
+            FROM questions
+            WHERE (review_status = 'approved' OR is_approved = 1)
+            GROUP BY language, difficulty
+        """)
+        language_difficulty_counts = {}
+        for r in cursor.fetchall():
+            key = f"{r['language']}_{r['difficulty']}"
+            language_difficulty_counts[key] = r['cnt']
+
+        # 按主题+语言+难度统计（用于动态过滤）
+        cursor.execute("""
+            SELECT topic, language, difficulty, COUNT(*) AS cnt
+            FROM questions
+            WHERE (review_status = 'approved' OR is_approved = 1)
+            GROUP BY topic, language, difficulty
+        """)
+        topic_lang_diff_counts = {}
+        for r in cursor.fetchall():
+            key = f"{r['topic']}|{r['language']}|{r['difficulty']}"
+            topic_lang_diff_counts[key] = r['cnt']
+
         return render_template('exercise_selection.html',
                               topics=topics,
                               languages=languages,
@@ -3101,7 +3125,9 @@ def exercise_selection():
                               topic_descriptions=CONFIG['EXERCISE_TOPIC'],
                               kb_list=kb_list,
                               kb_concepts_map=kb_concepts_map,
-                              theory_availability=theory_availability)
+                              theory_availability=theory_availability,
+                              language_difficulty_counts=language_difficulty_counts,
+                              topic_lang_diff_counts=topic_lang_diff_counts)
     
     except Exception as e:
         flash(f'加载题目选择失败: {str(e)}', 'danger')
