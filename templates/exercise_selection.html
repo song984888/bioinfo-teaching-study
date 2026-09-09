@@ -32,7 +32,7 @@
         <!-- 步骤 1: 选择题型 -->
         <div class="selection-step active" id="step1">
             <div class="question-type-grid">
-                <div class="question-type-card" data-type="programming">
+                <div class="question-type-card" data-type="programming" data-count="{{ topic_counts.values()|sum }}">
                     <div class="type-icon">💻</div>
                     <div class="type-name">程序设计题目</div>
                     <div class="type-desc">编写代码解决实际问题</div>
@@ -41,9 +41,12 @@
                         <span class="feature">✓ 自动评测</span>
                         <span class="feature">✓ 即时反馈</span>
                     </div>
+                    <div class="type-count" style="margin-top: 12px; font-size: 1.1em; font-weight: 600; color: #4CAF50;">
+                        {{ topic_counts.values()|sum }} 题可用
+                    </div>
                 </div>
                 
-                <div class="question-type-card" data-type="theory">
+                <div class="question-type-card" data-type="theory" data-count="{{ theory_availability.values()|sum }}">
                     <div class="type-icon">📚</div>
                     <div class="type-name">理论知识题目</div>
                     <div class="type-desc">概念理解和理论应用</div>
@@ -51,6 +54,9 @@
                         <span class="feature">✓ 概念理解</span>
                         <span class="feature">✓ 理论分析</span>
                         <span class="feature">✓ 深度思考</span>
+                    </div>
+                    <div class="type-count" style="margin-top: 12px; font-size: 1.1em; font-weight: 600; color: #4CAF50;">
+                        {{ theory_availability.values()|sum }} 题可用
                     </div>
                 </div>
             </div>
@@ -286,6 +292,14 @@
     // 题型选择
     document.querySelectorAll('.question-type-card').forEach(card => {
         card.addEventListener('click', function() {
+            const questionCount = parseInt(this.dataset.count) || 0;
+            
+            // 如果没有题目，不允许选择
+            if (questionCount === 0) {
+                alert('该题型暂无可用题目');
+                return;
+            }
+            
             // 移除之前的选择
             document.querySelectorAll('.question-type-card').forEach(c => {
                 c.classList.remove('selected');
@@ -324,6 +338,16 @@
             // 添加视觉反馈
             this.style.border = "2px solid #673AB7";
             this.style.boxShadow = "0 0 10px rgba(103, 58, 183, 0.5)";
+        });
+    });
+    
+    // 页面加载时隐藏没有题目的题型
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.question-type-card').forEach(card => {
+            const questionCount = parseInt(card.dataset.count) || 0;
+            if (questionCount === 0) {
+                card.style.display = 'none';
+            }
         });
     });
     
