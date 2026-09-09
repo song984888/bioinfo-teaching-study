@@ -1,244 +1,183 @@
-# Bioinformatics Teaching & Learning Platform
+# 生物信息学教与学平台
 
-A Flask-based web platform for bioinformatics education. It connects student practice and examinations with AI-assisted question generation, teacher review, intelligent exam-paper generation, document-based knowledge bases, interactive knowledge graphs, literature search, and personalized study suggestions. The application uses MySQL for persistent data and supports local Ollama models or DeepSeek APIs for AI features.
+中文生物信息学在线教学平台，支持编程练习、考试测评、知识库管理、学习笔记和智能学习建议等功能。
 
-The platform supports Python, Perl, Java, and C programming exercises, asynchronous background tasks, three-state question review, document/concept provenance, and role-based access for students, teachers, and administrators.
+## 主要功能
 
-## Features
+### 1. 题库管理系统
+- **编程题库**：10,612+ 道编程题目，涵盖 Perl、Python、C 等语言
+- **难度分级**：初级（4,810题）、中级（3,434题）、高级（2,368题）
+- **主题分类**：正则表达式、文件测试、列表变量、数组变量等 Chapter 主题
+- **理论题库**：概念理解和理论知识题目
 
-### Student
-- **Online Exam** -- Select topic/language/difficulty, write code, submit for AI auto-grading
-- **Mock Exam** -- Practice in a simulated exam environment
-- **Exercise Mode** -- Choose topic/language/difficulty for self-paced practice
-- **Grade History** -- View past exam results with AI scores and teacher feedback
-- **Study Suggestions** -- Personalized AI-generated learning recommendations
+### 2. 学生端功能
 
-### Teacher
-- **Question Generation** -- AI-powered programming and theory question generation
-  - 3 topic source modes: template topics, user's knowledge base concepts, or custom
-  - Select specific concepts from knowledge base + supplementary instructions
-- **Question Review** -- Approve/reject with status tabs (pending/approved/rejected)
-  - Rejection reason tracking and reviewer metadata
-  - Code debug/run -- test sample answers directly in browser
-- **Knowledge Base** -- Upload documents, extract concepts, build knowledge graphs; only the owner or admin can edit, while other teachers can browse public bases
-- **Learning Notes / Thought Chains** -- Create private chains anchored to a public knowledge base and core concept; add typed ideas, continue from the previous idea, and review the chain timeline
-  - Right-side statistics include chain, knowledge-base, concept, total-idea, per-type, and last-30-day activity counts
-  - The selected chain's development path is shown as a horizontal date/type timeline
-  - Literature-origin ideas can store the article title, abstract, and full-text/source URL
-- **Exam Paper Management** -- Generate A/B exam papers with intelligent question selection
-- **Student Management** -- Monitor student progress and override grades
-- **Bioinformatics Tools** -- Curated external-resource directory for eight categories including gene/protein information, expression, interactions, alignment, variants, and structure/function prediction; authenticated students and teachers can browse, while administrators can edit metadata and publication status
+#### 抽题练习
+- **智能选题流程**：题型 → 主题 → 语言 → 难度
+- **实时题目统计**：每个选项显示可用题目数量
+- **智能过滤**：自动隐藏无题目的选项，避免空选
+- **代码编辑器**：支持语法高亮、自动补全
+- **即时反馈**：自动评测和AI评分
 
-### Admin
-- **Account Management** -- Create/edit/toggle/delete users across all roles
-- **Question Management** -- Browse, delete, and review all questions
-- **Knowledge Base CRUD** -- Full management: create, edit, upload, delete from dashboard
-- **Global Access** -- Access all teacher features and pages
+#### 模拟考试
+- **自定义考试**：选择主题、难度和题目数量
+- **限时测试**：支持倒计时和自动提交
+- **成绩报告**：详细的答题统计和分析
 
-### System
-- **Multi-Language Code Execution** -- Python (direct) / Java (javac → java) / C (gcc → binary) / Perl (direct)
-- **Knowledge Graph** -- Visualize concept relationships extracted from documents; filter by document and minimum frequency, with automatic relayout
-- **Background Tasks** -- Question generation runs asynchronously with progress tracking
-- **3-State Review** -- pending → approved/rejected with rejection reasons
-- **Question Quality Gate** -- Rejects trivial fixed-output answers before they enter the question bank
-- **Dynamic Exercise Topics** -- Student topics are loaded from currently approved programming questions
+#### 知识库学习
+- **文献管理**：上传和浏览生物信息学文献
+- **核心概念**：自动提取和关联文献中的核心概念
+- **概念学习中心**：聚合所有公开知识库的概念
+- **浏览记录**：跟踪学生的知识库浏览行为
 
-## Dashboard Screens
+#### 生信工具学习
+- **工具分类**：基因表达、DNA对比、序列分析等主题
+- **工具收藏**：NCBI GEO、BLAST、UniProt 等常用工具
+- **学习追踪**：记录学生点击的工具和主题偏好
+- **统计分析**：使用频率、主题偏好、常用工具排名
 
-The repository includes real dashboard screenshots for the three role-based workspaces:
+#### 学习笔记
+- **传统笔记**：关联知识库、概念和文档的学习笔记
+- **思维链**：绑定知识库和核心概念的结构化思维过程
+- **合并统计**：学生首页统一显示传统笔记和思维链总数
 
-- [Admin dashboard](docs/admin.png)
-- [Teacher dashboard](docs/teacher.png)
-- [Student dashboard](docs/student.png)
+#### 学习建议
+- **数据驱动**：基于练习、考试、知识库、工具和笔记的综合分析
+- **AI生成**：使用 DeepSeek 或 Ollama 模型生成个性化建议
+- **多维度评估**：
+  - 编程练习成绩和主题掌握度
+  - 考试成绩和错误模式
+  - 知识库浏览兴趣和文献阅读
+  - 生信工具使用频率和主题偏好
+  - 学习笔记数量和知识整理习惯
 
-These screenshots were provided by the project owner and show the actual application dashboard interfaces.
+#### 学习进度统计
+- 概念学习数量
+- 抽题练习次数
+- 文献检索记录
+- 学习笔记总数（传统笔记 + 思维链）
+- 生信工具使用数（使用过的不同工具数量）
 
-## Architecture
+### 3. 教师端功能
+- **题目审核**：审核学生提交的编程题目
+- **知识库管理**：创建和编辑知识库、上传文献、标注概念
+- **学生管理**：查看学生学习详情、练习记录、考试成绩
+- **学习建议查看**：查看学生的AI生成学习建议（包含笔记统计）
+- **生信工具管理**：添加、编辑和分类生物信息学工具
 
-```
-┌─────────────────────┐
-│   Flask Web App      │
-│   app.py (Flask)     │
-├─────────────────────┤
-│  ┌───────────────┐  │
-│  │  Admin Panel  │  │
-│  │  (dashboard)  │  │
-│  ├───────────────┤  │
-│  │ Teacher Panel │  │
-│  │ (dashboard)   │  │
-│  ├───────────────┤  │
-│  │Student Panel  │  │
-│  │ (dashboard)   │  │
-│  └───────────────┘  │
-│         │           │
-│  ┌──────▼──────┐    │
-│  │  Templates  │    │
-│  │  (Jinja2)   │    │
-│  └──────┬──────┘    │
-│         │           │
-├─────────┼───────────┤
-│  ┌──────▼──────┐    │      ┌──────────────┐
-│  │   MySQL     │◄───┼──────│  code_exam   │
-│  │  connector  │    │      └──────────────┘
-│  └─────────────┘    │
-│         │           │
-│  ┌──────▼──────┐    │      ┌──────────────┐
-│  │   Ollama    │◄───┼──────│  localhost   │
-│  │  / DeepSeek │    │      │   :11434     │
-│  └─────────────┘    │      └──────────────┘
-│         │           │
-│  ┌──────▼──────┐    │
-│  │Subprocess   │    │
-│  │(python3,    │    │
-│  │ javac, gcc, │    │
-│  │ perl)       │    │
-│  └─────────────┘    │
-└─────────────────────┘
-```
+### 4. 管理员功能
+- **用户管理**：管理学生和教师账号
+- **题库导入**：批量导入编程题目（支持 SQL 格式）
+- **系统配置**：配置考试、练习、知识库等模块
+- **数据统计**：全局学习数据和系统使用情况
 
-## Database Schema (MySQL: `code_exam_v231`)
+## 技术栈
 
-### Core Tables
+- **后端**：Python Flask
+- **数据库**：MySQL / MariaDB
+- **前端**：HTML5, CSS3, JavaScript (Vanilla)
+- **AI集成**：DeepSeek API / Ollama (本地模型)
+- **代码编辑器**：Ace Editor
 
-| Table | Key Columns |
-|-------|-------------|
-| `users` | id, name, employee_id (UNIQUE), role (student/teacher/admin), password, can_login |
-| `questions` | id, topic, difficulty, question_text, sample_answer, hints (JSON), language, aiModel, **review_status**, review_comment, reviewed_by, reviewed_at |
-| `theory_questions` | id, topic, question_type, question_text, sample_answer, grading_criteria, difficulty, score, **review_status** |
-| `exams` | id, student_id, question_id, student_answer, score, ai_score, ai_comment, teacher_score, teacher_comment, is_reviewed |
-| `exercises` | id, student_id, question_id, student_answer, score |
-| `knowledge_bases` | id, name, description, owner_id, is_public |
-| `knowledge_documents` | id, knowledge_base_id, title, content, file_path, file_type |
-| `knowledge_concepts` | id, knowledge_document_id, concept_name, concept_type, frequency |
-| `student_notes` | id, student_id, target_type, target_id, content, parent_note_id, tags | 学生/教师个人学习笔记，按当前用户隔离 |
-| `thought_chains` | id, owner_id, title, question, knowledge_base_id, trigger_concept_id, visibility, status | 私有思维链，绑定公开知识库和核心概念 |
-| `ideas` | id, chain_id, owner_id, content, thought_type, status, confidence, literature_title, literature_abstract, literature_url | 结构化想法及文献来源 |
-| `idea_links` | id, chain_id, from_idea_id, to_idea_id, relation_type, created_by | 想法发展/反驳等关系 |
-| `idea_events` | id, chain_id, idea_id, actor_id, event_type, before_json, after_json | 想法操作事件记录 |
-| `exam_papers` | id, paper_name, course_name, exam_duration, total_score, paper_a_json, paper_b_json, answer_a_json, answer_b_json, created_by | 试卷 |
-| `tasks` | id, user_id, task_type, parameters (JSON), status, progress, result |
+## 最近更新 (2026-09-08)
 
-### Review Status (v2.0)
+### 学习笔记统计增强
+- ✅ 学生首页"学习笔记"统计合并传统笔记和思维链
+- ✅ 学习建议生成时包含笔记数据和类型分析
+- ✅ 提示词模板新增"学习笔记评估"模块
 
-Questions now use a 3-state `review_status` column:
-- `pending` -- awaiting teacher review
-- `approved` -- approved and available for exams
-- `rejected` -- rejected with optional reason and reviewer tracking
+### 生信工具学习追踪
+- ✅ 学生点击工具时自动记录（教师点击不记录）
+- ✅ 统计：总点击次数、近30天点击、使用工具数、主题偏好、常用工具
+- ✅ 学习建议整合工具学习数据
+- ✅ 学生首页显示生信工具使用统计
 
-## Recent Improvements (2026-06)
+### 抽题练习智能选题
+- ✅ 题型选择显示可用题目数量（程序设计：10612题、理论知识：XX题）
+- ✅ 主题选择显示每个主题的题目数量
+- ✅ 语言选择显示当前主题下每种语言的题目数量
+- ✅ 难度选择显示当前主题+语言组合下的题目数量
+- ✅ 自动隐藏没有题目的选项
+- ✅ 禁止选择0题的选项
 
-### Admin Knowledge Base Full CRUD
-- Create/edit/delete knowledge bases directly from admin dashboard
-- Assign owner when creating, modify name/description/visibility
-- Upload documents and manage concepts inline
+### 题库导入
+- ✅ 成功导入 10,612 道编程题目
+- ✅ 支持旧版 SQL 格式（10列）到新版表结构（16列）的自动映射
+- ✅ 使用临时表方案处理表结构差异
 
-### 3-Source Topic Selection for Question Generation
-- **Template Topics** -- 20 preset Chapter topics from curriculum
-- **User Knowledge Base** -- Select specific concepts from own KBs + supplementary instructions
-- **Custom Topic** -- Free-text topic input
+## 数据库表结构
 
-### Question Review Classification
-- 3 status tabs: Pending / Approved / Rejected with counts
-- Reject with optional reason, track reviewer and timestamp
-- Color-coded rows (green=approved, red=rejected)
-- Code debug/run from question detail page (test sample answers inline)
+### 核心表
+- `users` - 用户账号（学生、教师、管理员）
+- `questions` - 题库（编程题和理论题）
+- `exercises` - 学生练习记录
+- `exams` - 考试记录
+- `knowledge_bases` - 知识库
+- `knowledge_documents` - 知识库文献
+- `knowledge_concepts` - 核心概念
+- `student_notes` - 学生学习笔记
+- `thought_chains` - 学生思维链
+- `bioinformatics_tools` - 生信工具库
+- `student_tool_activity` - 学生工具点击记录
+- `study_suggestions` - 学习建议记录
 
-### Code Execution (Compiled Languages)
-- **Python/Perl** -- Direct execution via subprocess
-- **Java** -- javac compile → java execute with classpath
-- **C** -- gcc compile → binary execution with -lm flag
-- Compilation artifacts automatically cleaned up
+### 浏览记录表
+- `concept_view_logs` - 概念浏览记录
+- `kb_view_logs` - 知识库浏览记录
+- `document_view_logs` - 文档查看记录
 
-### Code Cleanup Fixes
-- Fixed `//` comment regex using DOTALL (was removing entire code blocks)
-- Preserved `#include` and `#define` preprocessor directives for C
-- Separate handling of single-line vs block comments
+## 配置要求
 
-### Dashboard & Navigation
-- Admin dashboard with 4 tabs: accounts, questions, knowledge bases, quick navigation
-- All dashboards updated with correct links and navigation
-- Knowledge graph accessible from knowledge base cards and admin dashboard
+- Python 3.9+
+- MySQL 5.7+ / MariaDB 10.3+
+- Flask 及相关依赖（见 `requirements.txt`）
+- （可选）DeepSeek API Key 或 Ollama 本地部署
 
-## Installation
-
-See **[INSTALL.md](INSTALL.md)** for complete setup instructions.
-
-### Quick Start
+## 启动方式
 
 ```bash
-git clone https://github.com/song984888/bioinfo-teaching-study.git
-cd bioinfo-teaching-study
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-gunicorn --workers 5 --bind 0.0.0.0:5000 app:app
-# → http://172.24.64.53:8080 (external mapping)
+# 激活虚拟环境
+source .venv-hermes/bin/activate
+
+# 启动服务
+python app.py
 ```
 
-### Test Accounts
+默认访问地址：http://127.0.0.1:5000
 
-| Role | ID | Password |
-|------|-----|----------|
-| Admin | admin | configured locally |
-| Teacher | teacher | configured locally |
-| Student | s001 | configured locally |
+## 项目结构
 
-## Prerequisites
+```
+.
+├── app.py                      # 主应用入口
+├── myscripts/
+│   └── config_modules/
+│       ├── my_config.py        # 配置文件
+│       └── prompt_templates.py # AI提示词模板
+├── templates/                  # HTML模板
+│   ├── student_dashboard.html  # 学生首页
+│   ├── exercise_selection.html # 抽题练习选择
+│   └── ...
+├── static/                     # 静态资源
+├── demo_data/                  # 示例数据
+│   └── programe_question.sql   # 题库SQL文件（19MB）
+└── requirements.txt            # Python依赖
 
-| Dependency | Purpose |
-|-----------|---------|
-| Python 3.7+ | Runtime |
-| MySQL Server | Database (localhost, database: `code_exam_v231`) |
-| DeepSeek API Key | AI question generation, grading, suggestions |
-| [Ollama](https://ollama.com) | Optional: Local LLM (model: `qwen2.5-coder:32b`) |
-| GCC / JDK / Perl | Code execution for C, Java, Perl |
-
-## Usage
-
-### Start the Application
-
-```bash
-gunicorn --workers 5 --bind 0.0.0.0:5000 app:app
-# Web interface: http://172.24.64.53:8080 (external mapping)
-# Default admin ID: admin (use the locally configured password)
 ```
 
-### Student Flow
-1. Login at `/login` (register if first time)
-2. Dashboard → Start Exam / Mock Exam / Exercises
-3. Select topic, language, difficulty
-4. Write code and submit
-5. View grades and AI feedback
+## 开发计划
 
-### Teacher Flow
-1. Login → Teacher Dashboard
-2. Design questions: generate theory/programming questions via AI
-3. Review pending questions: approve or reject with reason
-4. Manage knowledge bases: upload documents, extract concepts
-5. Manage knowledge bases: upload documents, extract concepts, and view graphs
-6. Open the central **Learning Notes** card to review personal notes from literature research
-7. Create exam papers and view student records
+- [ ] 增加更多编程语言支持（Java、R、Shell）
+- [ ] 优化AI学习建议的准确性和个性化
+- [ ] 增加学生间协作学习功能
+- [ ] 移动端适配优化
+- [ ] 数据可视化增强（学习曲线、知识图谱）
 
-### Admin Flow
-1. Login → Admin Dashboard
-2. Tab 1: Manage user accounts (create/edit/toggle/delete)
-3. Tab 2: Manage questions (browse/delete)
-4. Tab 3: Manage knowledge bases (create/edit/delete/upload)
-5. Quick Nav Tab: Access all teacher features
-6. Can access any teacher page with full permissions
+## 许可证
 
-## Project Files
+本项目仅供教学使用。
 
-| File | Description |
-|------|-------------|
-| `app.py` | Main Flask application |
-| `requirements.txt` | Python dependencies |
-| `INSTALL.md` | Installation guide |
-| `templates/` | Jinja2 HTML templates |
-| `static/` | CSS/JS static assets |
-| `myscripts/config_modules/` | Configuration files (my_config.py, prompts, topics) |
-| `myscripts/` | Utility scripts (admin, debug, DB tools) |
-| `docs/` | Documentation
+## 联系方式
 
-## Author
-
-Songht — Version 2.1, July 2026
+- GitHub: https://github.com/song984888/bioinfo-teaching-study
+- 维护者: song984888 <307852487@qq.com>
