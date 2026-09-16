@@ -26,6 +26,7 @@
                     <a href="{{ url_for('help_page') }}">📖 帮助</a>
                     {% if session.role == 'student' %}
                     <a href="{{ url_for('student_collections') }}">📝 学习笔记</a>
+                    <a href="{{ url_for('study_suggestions_history') }}">🗂️ 历史学习建议查看</a>
                     {% endif %}
                     <a href="{{ url_for('logout') }}">退出</a>
                 {% else %}

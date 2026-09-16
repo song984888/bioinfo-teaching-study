@@ -3677,6 +3677,87 @@ def study_suggestion():
                             tool_learning=tool_learning)
 
 
+# 学习建议分节标记（生成模板固定使用这些 emoji 标题）
+SUGGESTION_SECTION_MARKERS = [
+    ('current_status', '📊 当前学习状态'),
+    ('strengths', '🏆 优势领域'),
+    ('improvements', '🚧 待加强领域'),
+    ('plan', '📝 学习计划'),
+    ('habits', '⏰ 学习习惯建议'),
+    ('encouragement', '💡 导师寄语'),
+]
+
+
+def split_suggestion_sections(text):
+    """按固定 emoji 标题把学习建议正文切分为可读的分节列表。
+
+    生成结果是一段包含 📊/🏆/🚧/📝/⏰/💡 标记的长文本。这里按标记位置切分，
+    既保留原有分节含义，也不依赖旧 parse_suggestion 的正则（其部分模式含
+    行尾锚点问题）。未能匹配标记的文本作为整体单节返回，避免内容丢失。
+    """
+    raw = (text or '').strip()
+    if not raw:
+        return []
+    positions = []
+    for key, marker in SUGGESTION_SECTION_MARKERS:
+        idx = raw.find(marker)
+        if idx != -1:
+            positions.append((idx, key, marker))
+    if not positions:
+        return [{'key': 'full', 'title': '学习建议', 'body': raw}]
+    positions.sort()
+    sections = []
+    # 第一个标记之前的内容（如报告标题）单独保留
+    if positions[0][0] > 0:
+        prefix = raw[:positions[0][0]].strip()
+        if prefix:
+            sections.append({'key': 'header', 'title': '报告', 'body': prefix})
+    for i, (start, key, marker) in enumerate(positions):
+        end = positions[i + 1][0] if i + 1 < len(positions) else len(raw)
+        body = raw[start + len(marker):end].strip()
+        body = body.lstrip('：:').strip()
+        title = marker.split(' ', 1)[-1] if ' ' in marker else marker
+        sections.append({'key': key, 'title': title, 'body': body})
+    return sections
+
+
+@app.route('/student/study_suggestions/history')
+def study_suggestions_history():
+    """学生查看历史生成的学习建议（按时间倒序，仅本人数据）。"""
+    if 'user_id' not in session or session['role'] != 'student':
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute(
+            """
+            SELECT id, user_name, created_at, study_suggestion
+            FROM study_suggestions
+            WHERE user_id = %s
+            ORDER BY created_at DESC, id DESC
+            """,
+            (session['user_id'],))
+        rows = cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
+
+    suggestions = []
+    for row in rows:
+        suggestions.append({
+            'id': row['id'],
+            'user_name': row['user_name'],
+            'created_at': row['created_at'],
+            'sections': split_suggestion_sections(row['study_suggestion']),
+            'raw': row['study_suggestion'] or '',
+        })
+
+    return render_template('student/suggestion_history.html',
+                           suggestions=suggestions,
+                           total_count=len(suggestions))
+
+
 
 # 教师功能
 @app.route('/teacher/generate_questions', methods=['GET', 'POST'])
