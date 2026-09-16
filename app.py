@@ -3567,101 +3567,126 @@ def study_suggestion():
     #study_suggestion = study_suggestion_simple_test
     #app.logger.info(f"suggestion_sample_test: {study_suggestion}")
     
-    # 学习数据保存至exercise_metrics, exam_metrics, user_suggestions表中
+    # 学习数据保存至exercise_metrics, exam_metrics, study_suggestions表中
+    # 三张表独立写入、各自提交：任一指标缺失或失败都不应阻断历史学习建议的留存。
+    user_name_for_db = session.get('name') or student_name
+    user_id_for_db = session['user_id']
+
+    def _jdump(obj):
+        return json.dumps(obj, ensure_ascii=False)
+
+    # 1) exercise_metrics（指标不完整时跳过，不再因缺键抛异常）
     try:
-        # insert into exercise_metrics
-        metrics_data = exercise_metrics
-        app.logger.info(f"{metrics_data}")
-        sql = """
-        INSERT INTO exercise_metrics (
-            user_name, user_id, time_distribution, hot_topic, total_exercises,
-            topics_distribution, difficulty_distribution, language_distribution,
-            first_exercise_date, last_exercise_date
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """
-        values = (
-            session['name'],session['user_id'],
-            json.dumps(metrics_data['time_distribution'], ensure_ascii=False),
-            json.dumps(metrics_data['hot_topic'], ensure_ascii=False),
-            metrics_data['total_exercises'],
-            json.dumps(metrics_data['topic_distribution'], ensure_ascii=False),
-            json.dumps(metrics_data['difficulty_distribution'], ensure_ascii=False),
-            json.dumps(metrics_data['language_distribution'], ensure_ascii=False),
-            metrics_data['first_exercise_date'],
-            metrics_data['last_exercise_date']
-        )
-        cursor.execute(sql, values)
-        # insert into exam_metrics
-        metrics_data = exam_metrics
-        app.logger.info(f"{metrics_data.keys()}")
-        sql = """
-        INSERT INTO exam_metrics (
-           user_name, user_id, total_exams, first_exam_date, last_exam_date,
-           ai_scores, teacher_scores, topic_scores, score_differences, avg_ai_score,
-           avg_teacher_score, avg_score_difference, difficulties,
-           topic_counts, difficulty_scores, difficulty_counts, ai_comments, teacher_comments,
-           common_ai_feedback, common_teacher_feedback, comment_lengths, avg_comment_length,
-           max_comment_length, min_comment_length, comment_length_distribution, score_trend,
-           reviewed_percentage, topics
-        ) VALUES (%s, %s, %s, %s, %s, 
-                  %s, %s, %s, %s, %s, 
-                  %s, %s, %s, %s, %s,
-                  %s, %s, %s, %s, %s,
-                  %s, %s, %s, %s, %s, 
-                  %s, %s, %s)
-        """
-        values = (
-            session['name'],session['user_id'],
-            metrics_data['total_exams'],
-            metrics_data['first_exam_date'],
-            metrics_data['last_exam_date'],
-            json.dumps(metrics_data['ai_scores'], ensure_ascii=False),
-            json.dumps(metrics_data['teacher_scores'], ensure_ascii=False),
-            json.dumps(metrics_data['topic_scores'], ensure_ascii=False),
-            json.dumps(metrics_data['score_differences'], ensure_ascii=False),
-            metrics_data['avg_ai_score'],
-            metrics_data['avg_teacher_score'],
-            metrics_data['avg_score_difference'],
-            json.dumps(metrics_data['difficulties'], ensure_ascii=False),
-            json.dumps(metrics_data['topic_counts'], ensure_ascii=False),
-            json.dumps(metrics_data['difficulty_scores'], ensure_ascii=False),
-            json.dumps(metrics_data['difficulty_counts'], ensure_ascii=False),
-            json.dumps(metrics_data['ai_comments'], ensure_ascii=False),
-            json.dumps(metrics_data['teacher_comments'], ensure_ascii=False),
-            json.dumps(metrics_data['common_ai_feedback'], ensure_ascii=False),
-            json.dumps(metrics_data['common_teacher_feedback'], ensure_ascii=False),
-            json.dumps(metrics_data['comment_lengths'], ensure_ascii=False),
-            metrics_data['avg_comment_length'],
-            metrics_data['max_comment_length'],
-            metrics_data['min_comment_length'],
-            json.dumps(metrics_data['comment_length_distribution'], ensure_ascii=False),
-            json.dumps(metrics_data['score_trend'], ensure_ascii=False),
-            metrics_data['reviewed_percentage'],
-            json.dumps(metrics_data['topics'], ensure_ascii=False),
-        )
-        # 执行插入操作
-        cursor.execute(sql, values)
-        conn.commit()
-        # insert into study_suggestions
+        em = exercise_metrics if isinstance(exercise_metrics, dict) else {}
+        if 'time_distribution' in em:
+            sql = """
+            INSERT INTO exercise_metrics (
+                user_name, user_id, time_distribution, hot_topic, total_exercises,
+                topics_distribution, difficulty_distribution, language_distribution,
+                first_exercise_date, last_exercise_date
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            values = (
+                user_name_for_db, user_id_for_db,
+                _jdump(em.get('time_distribution')),
+                _jdump(em.get('hot_topic')),
+                em.get('total_exercises'),
+                _jdump(em.get('topic_distribution')),
+                _jdump(em.get('difficulty_distribution')),
+                _jdump(em.get('language_distribution')),
+                em.get('first_exercise_date'),
+                em.get('last_exercise_date')
+            )
+            cursor.execute(sql, values)
+            conn.commit()
+            app.logger.info("exercise_metrics 写入成功")
+        else:
+            app.logger.info("练习指标不完整，跳过 exercise_metrics 写入")
+    except Exception as e:
+        conn.rollback()
+        app.logger.error(f"exercise_metrics 写入失败: {str(e)}")
+
+    # 2) exam_metrics（未参加考试时 exam_metrics 为错误字典，跳过即可）
+    try:
+        xm = exam_metrics if isinstance(exam_metrics, dict) else {}
+        if 'total_exams' in xm:
+            sql = """
+            INSERT INTO exam_metrics (
+               user_name, user_id, total_exams, first_exam_date, last_exam_date,
+               ai_scores, teacher_scores, topic_scores, score_differences, avg_ai_score,
+               avg_teacher_score, avg_score_difference, difficulties,
+               topic_counts, difficulty_scores, difficulty_counts, ai_comments, teacher_comments,
+               common_ai_feedback, common_teacher_feedback, comment_lengths, avg_comment_length,
+               max_comment_length, min_comment_length, comment_length_distribution, score_trend,
+               reviewed_percentage, topics
+            ) VALUES (%s, %s, %s, %s, %s, 
+                      %s, %s, %s, %s, %s, 
+                      %s, %s, %s, %s, %s,
+                      %s, %s, %s, %s, %s,
+                      %s, %s, %s, %s, %s, 
+                      %s, %s, %s)
+            """
+            values = (
+                user_name_for_db, user_id_for_db,
+                xm.get('total_exams'),
+                xm.get('first_exam_date'),
+                xm.get('last_exam_date'),
+                _jdump(xm.get('ai_scores')),
+                _jdump(xm.get('teacher_scores')),
+                _jdump(xm.get('topic_scores')),
+                _jdump(xm.get('score_differences')),
+                xm.get('avg_ai_score'),
+                xm.get('avg_teacher_score'),
+                xm.get('avg_score_difference'),
+                _jdump(xm.get('difficulties')),
+                _jdump(xm.get('topic_counts')),
+                _jdump(xm.get('difficulty_scores')),
+                _jdump(xm.get('difficulty_counts')),
+                _jdump(xm.get('ai_comments')),
+                _jdump(xm.get('teacher_comments')),
+                _jdump(xm.get('common_ai_feedback')),
+                _jdump(xm.get('common_teacher_feedback')),
+                _jdump(xm.get('comment_lengths')),
+                xm.get('avg_comment_length'),
+                xm.get('max_comment_length'),
+                xm.get('min_comment_length'),
+                _jdump(xm.get('comment_length_distribution')),
+                _jdump(xm.get('score_trend')),
+                xm.get('reviewed_percentage'),
+                _jdump(xm.get('topics')),
+            )
+            cursor.execute(sql, values)
+            conn.commit()
+            app.logger.info("exam_metrics 写入成功")
+        else:
+            app.logger.info("考试指标不完整，跳过 exam_metrics 写入")
+    except Exception as e:
+        conn.rollback()
+        app.logger.error(f"exam_metrics 写入失败: {str(e)}")
+
+    # 3) study_suggestions（核心：无论指标写入是否成功，历史建议必须落库）
+    try:
         sql = """
         INSERT INTO study_suggestions (
             user_name, user_id,
             study_suggestion
         ) VALUES (%s,%s,%s )
         """
-        values = ( 
-            session['name'],session['user_id'],
-            study_suggestion
-        )
-        cursor.execute(sql, values)
+        cursor.execute(sql, (user_name_for_db, user_id_for_db, study_suggestion))
         conn.commit()
-
-        cursor.close()
-        conn.close()
-        app.logger.error(f"写入学生学习数据及建议成功~~")
+        app.logger.info("历史学习建议写入成功")
     except Exception as e:
-        error_msg = f"写入学生学习数据及建议失败: {str(e)}"
-        app.logger.error(error_msg)
+        conn.rollback()
+        app.logger.error(f"study_suggestions 写入失败: {str(e)}")
+    finally:
+        try:
+            cursor.close()
+        except Exception:
+            pass
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 
