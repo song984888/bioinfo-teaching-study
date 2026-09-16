@@ -622,6 +622,22 @@ def get_student_tool_learning(student_id):
 
 ensure_student_tool_activity_schema()
 
+
+def ensure_study_suggestions_snapshot_schema():
+    """为 study_suggestions 增加数据快照字段，支持历史建议按原始报告样式回放。"""
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("SHOW COLUMNS FROM study_suggestions")
+        cols = {row[0] for row in cur.fetchall()}
+        if 'metrics_snapshot' not in cols:
+            cur.execute("ALTER TABLE study_suggestions ADD COLUMN metrics_snapshot LONGTEXT NULL")
+            conn.commit()
+            app.logger.info("study_suggestions.metrics_snapshot 字段已添加")
+    finally:
+        cur.close(); conn.close()
+
+
+ensure_study_suggestions_snapshot_schema()
 def convert_decimal_for_json(data):
     """
     转换数据中的Decimal类型为float/int以便JSON序列化
@@ -3665,14 +3681,50 @@ def study_suggestion():
         app.logger.error(f"exam_metrics 写入失败: {str(e)}")
 
     # 3) study_suggestions（核心：无论指标写入是否成功，历史建议必须落库）
+    #    同时保存本次的数据快照，供历史页按原始报告样式（含图表）回放。
+    snapshot_json = None
     try:
-        sql = """
-        INSERT INTO study_suggestions (
-            user_name, user_id,
-            study_suggestion
-        ) VALUES (%s,%s,%s )
-        """
-        cursor.execute(sql, (user_name_for_db, user_id_for_db, study_suggestion))
+        snapshot = {
+            'student': dict(student) if isinstance(student, dict) else {},
+            'report_date': report_date,
+            'exercise_metrics': exercise_metrics if isinstance(exercise_metrics, dict) else {},
+            'slp_metrics': student_learning_period_metrics if isinstance(student_learning_period_metrics, dict) else {},
+            'kb_learning': kb_learning if isinstance(kb_learning, dict) else {},
+            'tool_learning': tool_learning if isinstance(tool_learning, dict) else {},
+        }
+        snapshot_json = json.dumps(snapshot, ensure_ascii=False, default=str)
+    except Exception as e:
+        app.logger.warning(f"学习建议数据快照序列化失败，仅保存正文: {e}")
+
+    try:
+        if snapshot_json is not None:
+            try:
+                sql = """
+                INSERT INTO study_suggestions (
+                    user_name, user_id,
+                    study_suggestion, metrics_snapshot
+                ) VALUES (%s,%s,%s,%s )
+                """
+                cursor.execute(sql, (user_name_for_db, user_id_for_db, study_suggestion, snapshot_json))
+            except Exception as e:
+                # 老库尚未添加 metrics_snapshot 字段时退回仅正文写入，确保记录不丢失
+                conn.rollback()
+                app.logger.warning(f"快照字段写入失败，退回仅正文写入: {e}")
+                sql = """
+                INSERT INTO study_suggestions (
+                    user_name, user_id,
+                    study_suggestion
+                ) VALUES (%s,%s,%s )
+                """
+                cursor.execute(sql, (user_name_for_db, user_id_for_db, study_suggestion))
+        else:
+            sql = """
+            INSERT INTO study_suggestions (
+                user_name, user_id,
+                study_suggestion
+            ) VALUES (%s,%s,%s )
+            """
+            cursor.execute(sql, (user_name_for_db, user_id_for_db, study_suggestion))
         conn.commit()
         app.logger.info("历史学习建议写入成功")
     except Exception as e:
@@ -3748,35 +3800,85 @@ def split_suggestion_sections(text):
 
 @app.route('/student/study_suggestions/history')
 def study_suggestions_history():
-    """学生查看历史生成的学习建议（按时间倒序，仅本人数据）。"""
+    """学生查看历史生成的学习建议（列表 + 展开查看完整原始报告）。
+
+    生成时的数据快照保存在 metrics_snapshot 中，历史页据此按原始报告
+    版式（含 Chart.js 图表）回放；无快照的较早记录降级为正文展示。
+    """
     if 'user_id' not in session or session['role'] != 'student':
         return redirect(url_for('login'))
 
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
+    rows = []
     try:
-        cursor.execute(
-            """
-            SELECT id, user_name, created_at, study_suggestion
-            FROM study_suggestions
-            WHERE user_id = %s
-            ORDER BY created_at DESC, id DESC
-            """,
-            (session['user_id'],))
-        rows = cursor.fetchall()
+        try:
+            cursor.execute(
+                """
+                SELECT id, user_name, created_at, study_suggestion, metrics_snapshot
+                FROM study_suggestions
+                WHERE user_id = %s
+                ORDER BY created_at DESC, id DESC
+                """,
+                (session['user_id'],))
+            rows = cursor.fetchall()
+        except Exception as e:
+            # 老库尚未添加 metrics_snapshot 字段时退回仅正文查询
+            conn.rollback()
+            app.logger.warning(f"读取快照字段失败，退回仅正文查询: {e}")
+            cursor.execute(
+                """
+                SELECT id, user_name, created_at, study_suggestion
+                FROM study_suggestions
+                WHERE user_id = %s
+                ORDER BY created_at DESC, id DESC
+                """,
+                (session['user_id'],))
+            rows = cursor.fetchall()
     finally:
         cursor.close()
         conn.close()
 
     suggestions = []
     for row in rows:
-        suggestions.append({
+        raw = row.get('study_suggestion') or ''
+        snapshot = None
+        snapshot_raw = row.get('metrics_snapshot')
+        if snapshot_raw:
+            try:
+                parsed = json.loads(snapshot_raw)
+                if isinstance(parsed, dict):
+                    snapshot = parsed
+            except (ValueError, TypeError) as e:
+                app.logger.warning(f"历史建议快照解析失败 id={row.get('id')}: {e}")
+
+        sections = split_suggestion_sections(raw)
+        snippet = ''
+        for sec in sections:
+            body = (sec.get('body') or '').replace('\n', ' ').strip()
+            if body:
+                snippet = body[:160]
+                break
+        if not snippet:
+            snippet = raw.replace('\n', ' ').strip()[:160]
+
+        item = {
             'id': row['id'],
-            'user_name': row['user_name'],
-            'created_at': row['created_at'],
-            'sections': split_suggestion_sections(row['study_suggestion']),
-            'raw': row['study_suggestion'] or '',
-        })
+            'user_name': row.get('user_name') or '',
+            'created_at': row.get('created_at'),
+            'raw': raw,
+            'sections': sections,
+            'snippet': snippet,
+            'has_snapshot': bool(snapshot),
+            # 快照缺失时用兜底值，保证正文仍可展示
+            'student': (snapshot or {}).get('student') or {'name': row.get('user_name') or '', 'employee_id': session['user_id'], 'course': '生物信息学', 'level': '初级'},
+            'report_date': (snapshot or {}).get('report_date') or (row.get('created_at').strftime('%Y年%m月%d日') if row.get('created_at') else ''),
+            'exercise_metrics': (snapshot or {}).get('exercise_metrics') or {},
+            'slp_metrics': (snapshot or {}).get('slp_metrics') or {},
+            'kb_learning': (snapshot or {}).get('kb_learning') or {},
+            'tool_learning': (snapshot or {}).get('tool_learning') or {},
+        }
+        suggestions.append(item)
 
     return render_template('student/suggestion_history.html',
                            suggestions=suggestions,

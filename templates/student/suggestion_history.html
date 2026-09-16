@@ -1,41 +1,55 @@
 {% extends "base.html" %}
 {% block title %}历史学习建议{% endblock %}
+{% block styles %}
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+{% endblock %}
 {% block content %}
 <style>
-.sug-hist{max-width:960px;margin:0 auto;padding:24px}
-.sug-hist-head{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:8px}
+.sug-hist{max-width:1080px;margin:0 auto;padding:24px}
+.sug-hist-head{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:18px}
 .sug-hist-head h2{margin:0;font-size:1.5rem;color:#2e3a59}
 .sug-hist-head .sub{color:#7a869e;font-size:.9rem;margin-top:4px}
-.sug-hist-actions{display:flex;gap:10px;align-items:center}
+.sug-hist-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .sug-count-badge{background:#eef3ff;color:#4a69bd;border-radius:999px;padding:5px 14px;font-size:.85rem;font-weight:600}
 .sug-btn{text-decoration:none;border-radius:8px;padding:9px 16px;font-size:.9rem;font-weight:600;transition:all .2s}
 .sug-btn.primary{background:#4a69bd;color:#fff}
 .sug-btn.primary:hover{background:#3a56a4}
 .sug-btn.ghost{background:#fff;color:#4a69bd;border:1px solid #d8e0f5}
 .sug-btn.ghost:hover{background:#f4f7ff}
-.sug-card{background:#fff;border:1px solid #eef0f5;border-radius:12px;padding:20px 22px;margin-bottom:18px;box-shadow:0 2px 10px rgba(30,40,90,.05)}
-.sug-card-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;padding-bottom:12px;margin-bottom:14px;border-bottom:1px dashed #e6ebf7}
-.sug-card-time{font-weight:700;color:#2e3a59;font-size:1.05rem}
-.sug-card-tag{font-size:.78rem;color:#8a94ad}
-.sug-section{margin-bottom:14px}
-.sug-section:last-child{margin-bottom:0}
-.sug-section h4{margin:0 0 6px;font-size:.96rem;color:#2e59d9;display:flex;align-items:center;gap:6px}
-.sug-section-body{white-space:pre-wrap;line-height:1.75;color:#41506b;font-size:.93rem;word-break:break-word}
-.sug-raw-toggle{margin-top:12px;font-size:.82rem;color:#8a94ad;cursor:pointer;user-select:none;background:none;border:none;padding:0}
-.sug-raw-toggle:hover{color:#4a69bd}
-.sug-raw{display:none;margin-top:10px;padding:12px 14px;background:#f7f9fc;border-radius:8px;white-space:pre-wrap;font-size:.86rem;color:#55617d;line-height:1.7;max-height:340px;overflow:auto}
+/* 列表条目 */
+.sug-item{background:#fff;border:1px solid #eef0f5;border-radius:12px;margin-bottom:14px;overflow:hidden;box-shadow:0 2px 8px rgba(30,40,90,.05)}
+.sug-item-head{display:flex;align-items:center;gap:14px;padding:16px 20px;cursor:pointer;user-select:none;transition:background .15s}
+.sug-item-head:hover{background:#f7f9ff}
+.sug-item-badge{width:40px;height:40px;flex:0 0 40px;border-radius:10px;background:#eef3ff;color:#4a69bd;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.95rem}
+.sug-item-main{flex:1;min-width:0}
+.sug-item-title{font-weight:700;color:#2e3a59;font-size:1rem;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sug-item-meta{color:#8a94ad;font-size:.82rem;margin-top:4px;display:flex;gap:12px;flex-wrap:wrap}
+.sug-item-snippet{color:#5b6b8c;font-size:.85rem;margin-top:6px;line-height:1.6;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.sug-item-arrow{color:#4a69bd;font-size:.85rem;font-weight:600;flex:0 0 auto;display:flex;align-items:center;gap:6px}
+.sug-item-arrow .chev{transition:transform .2s}
+.sug-item.open .sug-item-arrow .chev{transform:rotate(180deg)}
+.sug-tag{display:inline-block;font-size:.72rem;border-radius:999px;padding:1px 9px;font-weight:600}
+.sug-tag.ok{background:#e7f6ec;color:#2e7d43}
+.sug-tag.legacy{background:#fff4e0;color:#9a6b16}
 .sug-empty{background:#fff;border:1px dashed #d8e0f5;border-radius:12px;padding:44px 24px;text-align:center;color:#8a94ad}
 .sug-empty .big{font-size:2.2rem;margin-bottom:10px}
 .sug-empty p{margin:0 0 6px;font-size:.95rem}
 .sug-empty .hint{font-size:.85rem;color:#a4aec4}
-@media (max-width:640px){.sug-hist{padding:16px}.sug-card{padding:16px}}
+/* 展开区：iframe 内嵌原始报告，样式与图表完全一致 */
+.sug-item-body{display:none;border-top:1px solid #f0f2f8;background:#f8f9fa}
+.sug-item.open .sug-item-body{display:block}
+.sug-frame{width:100%;border:0;display:block;min-height:520px}
+.sug-legacy-raw{margin:0;padding:18px 22px;white-space:pre-wrap;line-height:1.8;font-size:.9rem;color:#41506b;font-family:inherit}
+.sug-noframe{padding:18px;color:#8a5b16;background:#fff8ec;font-size:.88rem}
+@media (max-width:640px){.sug-hist{padding:14px}.sug-item-head{padding:14px}}
 </style>
 
 <div class="sug-hist">
     <div class="sug-hist-head">
         <div>
             <h2>🗂️ 历史学习建议</h2>
-            <div class="sub">这里保存你每次生成的学习建议，可随时回看学习轨迹的变化</div>
+            <div class="sub">点击任意一条展开查看完整报告（与生成时的原始页面样式、图表一致）</div>
         </div>
         <div class="sug-hist-actions">
             <span class="sug-count-badge">共 {{ total_count }} 条</span>
@@ -46,30 +60,62 @@
 
     {% if suggestions %}
         {% for item in suggestions %}
-        <div class="sug-card">
-            <div class="sug-card-head">
-                <span class="sug-card-time">
-                    {{ item.created_at.strftime('%Y-%m-%d %H:%M') if item.created_at else '未知时间' }}
-                </span>
-                <span class="sug-card-tag">第 {{ loop.index }} 条 · 记录 ID {{ item.id }} · {{ item.user_name }}</span>
-            </div>
-
-            {% if item.sections %}
-                {% for sec in item.sections %}
-                <div class="sug-section">
-                    <h4>{{ sec.title }}</h4>
-                    <div class="sug-section-body">{{ sec.body }}</div>
+        <div class="sug-item" id="sugItem_{{ item.id }}">
+            <div class="sug-item-head" role="button" tabindex="0"
+                 aria-expanded="false" aria-controls="sugBody_{{ item.id }}"
+                 data-report-id="{{ item.id }}"
+                 onclick="toggleSug({{ item.id }})"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleSug({{ item.id }});}">
+                <div class="sug-item-badge">{{ loop.index }}</div>
+                <div class="sug-item-main">
+                    <h3 class="sug-item-title">{{ item.created_at.strftime('%Y-%m-%d %H:%M') if item.created_at else '未知时间' }} 生成的学习建议</h3>
+                    <div class="sug-item-meta">
+                        <span>记录 ID {{ item.id }}</span>
+                        <span>{{ item.user_name }}</span>
+                        {% if item.has_snapshot %}
+                        <span class="sug-tag ok">完整报告</span>
+                        {% else %}
+                        <span class="sug-tag legacy">较早记录 · 仅正文</span>
+                        {% endif %}
+                    </div>
+                    {% if item.snippet %}<div class="sug-item-snippet">{{ item.snippet }}</div>{% endif %}
                 </div>
-                {% endfor %}
-            {% else %}
-                <div class="sug-section-body">{{ item.raw }}</div>
-            {% endif %}
-
-            {% if item.sections %}
-            <button type="button" class="sug-raw-toggle" onclick="toggleRaw(this)">查看原文</button>
-            <div class="sug-raw">{{ item.raw }}</div>
-            {% endif %}
+                <div class="sug-item-arrow"><span class="label">展开</span><span class="chev">▾</span></div>
+            </div>
+            <div class="sug-item-body" id="sugBody_{{ item.id }}" hidden>
+                {% if item.has_snapshot %}
+                {# 展开时由 JS 注入 srcdoc（原始报告片段），首屏不加载以节省资源 #}
+                {% else %}
+                <pre class="sug-legacy-raw">{{ item.raw }}</pre>
+                {% endif %}
+            </div>
         </div>
+        {# 报告 HTML 预渲染在隐藏模板中，展开时复制进 iframe，保证与原页面逐字节一致 #}
+        {% if item.has_snapshot %}
+        <template id="sugTpl_{{ item.id }}">
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>学习建议报告</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://unpkg.com/chart.js@3.9.1/dist/chart.min.js"></script>
+<style>body{background-color:#f8f9fa;margin:0}</style>
+</head>
+<body>
+{% set uid = item.id %}
+{% set auto_init = True %}
+{% with student=item.student, report_date=item.report_date, exercise_metrics=item.exercise_metrics,
+          student_learning_period_metrics=item.slp_metrics, kb_learning=item.kb_learning,
+          tool_learning=item.tool_learning, study_suggestion=item.raw %}
+{% include "student/_suggestion_report.html" %}
+{% endwith %}
+</body>
+</html>
+        </template>
+        {% endif %}
         {% endfor %}
     {% else %}
         <div class="sug-empty">
@@ -83,12 +129,44 @@
 
 {% block scripts %}
 <script>
-function toggleRaw(btn){
-    var box = btn.nextElementSibling;
-    if(!box) return;
-    var hidden = (box.style.display === '' || box.style.display === 'none');
-    box.style.display = hidden ? 'block' : 'none';
-    btn.textContent = hidden ? '收起原文' : '查看原文';
+function toggleSug(id){
+    var item=document.getElementById('sugItem_'+id);
+    var body=document.getElementById('sugBody_'+id);
+    var head=item.querySelector('.sug-item-head');
+    if(!item||!body)return;
+    var open=item.classList.toggle('open');
+    head.setAttribute('aria-expanded',open?'true':'false');
+    body.hidden=!open;
+    var label=item.querySelector('.sug-item-arrow .label');
+    if(label)label.textContent=open?'收起':'展开';
+    if(!open)return;
+    var tpl=document.getElementById('sugTpl_'+id);
+    if(tpl&&!body.querySelector('iframe')){
+        // 使用 DOM 属性赋值（而非 srcdoc 字符串拼接）避免引号转义问题
+        var frame=document.createElement('iframe');
+        frame.className='sug-frame';
+        frame.title='学习建议完整报告';
+        frame.setAttribute('loading','lazy');
+        body.appendChild(frame);
+        // <template> 内的 DOCTYPE/<html>/<body> 会被 HTML 解析器丢弃，
+        // 缺少 DOCTYPE 的 srcdoc 会进入怪异模式导致样式与原页面不一致，故显式补回。
+        frame.srcdoc='<!DOCTYPE html>\n<meta charset="UTF-8">'+tpl.innerHTML;
+        // iframe 内容变高时自适应
+        frame.addEventListener('load',function(){
+            try{
+                var doc=frame.contentDocument;
+                if(!doc)return;
+                var fit=function(){
+                    var h=Math.max(doc.body?doc.body.scrollHeight:0,doc.documentElement?doc.documentElement.scrollHeight:0);
+                    if(h>200)frame.style.height=(h+40)+'px';
+                };
+                fit();
+                setTimeout(fit,400);
+                setTimeout(fit,1200);
+                setTimeout(fit,2500);
+            }catch(e){console.error(e);}
+        });
+    }
 }
 </script>
 {% endblock %}

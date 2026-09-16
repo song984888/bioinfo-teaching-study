@@ -1,0 +1,538 @@
+{#
+  可复用的个性化学习建议报告片段。
+
+  原始生成页与学生历史查看页共用此片段，确保两处展示的版式、卡片、
+  进度条与 Chart.js 图表完全一致。
+
+  变量：
+    uid          : 容器唯一标识（避免多条记录时 id 冲突）
+    student      : {'name','employee_id','course','level'}
+    report_date  : 报告日期字符串
+    exercise_metrics : 练习指标 dict
+    student_learning_period_metrics : 学习周期指标 dict
+    kb_learning  : 知识库学习 dict（可为空）
+    tool_learning: 生信工具学习 dict（可为空）
+    study_suggestion : 建议正文
+    auto_init    : True 时立即渲染图表（原始页）；False 时仅注册初始化函数，
+                   由外层在展开时调用（历史页懒加载，避免隐藏容器宽高为 0）
+#}
+{% set uid = uid or 'main' %}
+{% set auto_init = auto_init if auto_init is defined else True %}
+<style>
+    .sug-report body, .sug-report {
+        background-color: #f8f9fa;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .sug-report .report-header {
+        background: linear-gradient(135deg, #e3f2fd, #f8f9fa);
+        padding: 20px;
+        border-radius: 10px;
+        border: 1px solid #dee2e6;
+        margin-bottom: 30px;
+    }
+    .sug-report .metric-card {
+        background: #f8f9fa;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        transition: all 0.3s;
+        padding: 15px;
+        text-align: center;
+    }
+    .sug-report .metric-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 6px 10px rgba(0,0,0,0.1);
+    }
+    .sug-report .metric-value {
+        font-weight: 700;
+        font-size: 1.8rem;
+        color: #4e73df;
+        margin-bottom: 5px;
+    }
+    .sug-report .metric-label {
+        font-size: 0.9rem;
+        color: #6c757d;
+        margin-bottom: 5px;
+    }
+    .sug-report .metric-trend {
+        font-size: 0.85rem;
+    }
+    .sug-report .status-summary {
+        border-left: 4px solid #4e73df;
+        padding: 15px;
+        background-color: #f8f9fa;
+        border-radius: 5px;
+        height: 100%;
+    }
+    .sug-report .chart-container {
+        position: relative;
+        height: 500px;
+        margin-top: 20px;
+    }
+    .sug-report .long-labels-chart {
+        height: 600px;
+    }
+    .sug-report .suggestion-section h3 {
+        border-bottom: 2px solid #4e73df;
+        padding-bottom: 5px;
+        margin-top: 25px;
+        color: #2e59d9;
+    }
+    .sug-report .suggestion-section ul {
+        padding-left: 20px;
+    }
+    .sug-report .suggestion-section li {
+        margin-bottom: 8px;
+    }
+    .sug-report .suggestion-section strong {
+        color: #2e59d9;
+    }
+    .sug-report .bg-purple {
+        background-color: #6f42c1;
+    }
+    .sug-report .btn-lg {
+        padding: 10px 20px;
+        font-size: 1.1rem;
+        margin: 10px;
+    }
+    .sug-report .progress {
+        height: 10px;
+    }
+    .sug-report .distribution-item {
+        margin-bottom: 15px;
+    }
+    .sug-report .content-title { color:#2e59d9; margin:18px 0 10px; }
+    .sug-report .content-paragraph { margin-bottom:10px; line-height:1.8; }
+    .sug-report .content-icon { margin-right:6px; }
+    .sug-report .content-highlight { color:#4e73df; }
+    .sug-report .content-quote { border-left:3px solid #4e73df; padding-left:12px; color:#666; margin:10px 0; }
+    .sug-report .content-link { color:#4e73df; }
+    .sug-report .content-strong { color:#2e59d9; }
+    .sug-report .content-em { color:#555; }
+    .sug-report .content-list { margin:8px 0 8px 4px; }
+</style>
+
+<div class="sug-report container py-5" id="sugReport_{{ uid }}"
+     data-auto-init="{{ '1' if auto_init else '0' }}"
+     data-topic="{{ (exercise_metrics.topic_distribution if exercise_metrics else {}) | tojson }}"
+     data-difficulty="{{ (exercise_metrics.difficulty_distribution if exercise_metrics else {}) | tojson }}"
+     data-content="{{ (study_suggestion or '') | tojson }}">
+
+    <!-- 报告头部 -->
+    <div class="report-header text-center mb-5">
+        <h1 class="display-4 mb-3"><i class="fas fa-graduation-cap me-2"></i>个性化学习建议报告</h1>
+        <p class="lead">基于您的学习历史数据定制的专属提升方案</p>
+        <div class="report-meta d-flex justify-content-center mt-4">
+            <div class="meta-item me-4">
+                <i class="fas fa-user fa-lg me-2"></i>
+                <span>{{ student.name }} | {{ student.employee_id }}</span>
+            </div>
+            <div class="meta-item me-4">
+                <i class="fas fa-book fa-lg me-2"></i>
+                <span>{{ student.course }} | {{ student.level }}阶段</span>
+            </div>
+            <div class="meta-item">
+                <i class="fas fa-calendar-alt fa-lg me-2"></i>
+                <span>{{ report_date }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 学习概览卡片 -->
+    <div class="card shadow-lg mb-5">
+        <div class="card-header bg-primary text-white">
+            <h2 class="mb-0"><i class="fas fa-chart-line me-2"></i>学习概览</h2>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <!-- 学习指标 -->
+                <div class="col-md-8">
+                    <div class="row metrics">
+                        <div class="col-md-4 mb-4">
+                            <div class="metric-card">
+                                <div class="metric-value">{{ exercise_metrics.total_exercises if exercise_metrics else 0 }}</div>
+                                <div class="metric-label">练习次数</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-4">
+                            <div class="metric-card">
+                                <div class="metric-value">{{ student_learning_period_metrics.active_days if student_learning_period_metrics else 0 }}</div>
+                                <div class="metric-label">学习总天数</div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-4 mb-4">
+                            <div class="metric-card">
+                                <div class="metric-value">{{ exercise_metrics.total_exercises if exercise_metrics else 0 }}</div>
+                                <div class="metric-label">练习次数(日期列表)</div>
+                                <div class="metric-trend text-success">
+                                    <i class="fas fa-arrow-up me-1"></i>{{ student_learning_period_metrics.active_dates if student_learning_period_metrics else '' }}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-4">
+                            <div class="metric-card">
+                                <div class="metric-value">{{ student_learning_period_metrics.attendance_rate if student_learning_period_metrics else 0 }}%</div>
+                                <div class="metric-label">参与练习频率(活跃期内每日练习填充比例)</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-4">
+                            <div class="metric-card">
+                                <div class="metric-value">{{ kb_learning.concept_count if kb_learning else 0 }}</div>
+                                <div class="metric-label">知识库-查看概念数</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-4">
+                            <div class="metric-card">
+                                <div class="metric-value">{{ kb_learning.document_count if kb_learning else 0 }}</div>
+                                <div class="metric-label">知识库-阅读文档/课件数</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-4">
+                            <div class="metric-card">
+                                <div class="metric-value">{{ kb_learning.total_concept_views if kb_learning else 0 }}</div>
+                                <div class="metric-label">文献检索次数</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-4">
+                            <div class="metric-card">
+                                <div class="metric-value">{{ tool_learning.total_clicks if tool_learning else 0 }}</div>
+                                <div class="metric-label">生信工具点击次数</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-4">
+                            <div class="metric-card">
+                                <div class="metric-value">{{ tool_learning.tool_count if tool_learning else 0 }}</div>
+                                <div class="metric-label">使用过的生信工具数</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-4">
+                            <div class="metric-card">
+                                <div class="metric-value">{{ tool_learning.recent_30_days if tool_learning else 0 }}</div>
+                                <div class="metric-label">近30天工具访问次数</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 学习时间分布 -->
+                    <div class="time-distribution mt-4">
+                        <h4 class="mb-3"><i class="fas fa-clock me-2 text-info"></i>学习时间分布</h4>
+                        <div class="col-md-4">
+                            <div class="metric-card h-100 p-4">
+                                <div class="d-flex align-items-center mb-1">
+                                    <div>
+                                        <div class="fas fa-arrow-up me-1">{{ exercise_metrics.first_exercise_date if exercise_metrics else '' }}</div>
+                                        <div class="metric-label text-muted">第一次练习时间</div>
+                                        <div class="fas fa-arrow-down me-1">{{ exercise_metrics.last_exercise_date if exercise_metrics else '' }}</div>
+                                        <div class="metric-label text-muted">最后一次练习时间</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% set td = (exercise_metrics.time_distribution if exercise_metrics and exercise_metrics.time_distribution else {'morning':0,'afternoon':0,'evening':0,'night':0}) %}
+                        <div class="distribution-chart">
+                            <div class="distribution-item">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span>早晨 (6-12点)</span>
+                                    <span>{{ td.morning }}%</span>
+                                </div>
+                                <div class="progress">
+                                    <div class="progress-bar" role="progressbar"
+                                         style="width: {{ td.morning }}%; background-color: #4e73df;"></div>
+                                </div>
+                            </div>
+                            <div class="distribution-item">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span>下午 (12-18点)</span>
+                                    <span>{{ td.afternoon }}%</span>
+                                </div>
+                                <div class="progress">
+                                    <div class="progress-bar" role="progressbar"
+                                         style="width: {{ td.afternoon }}%; background-color: #1cc88a;"></div>
+                                </div>
+                            </div>
+                            <div class="distribution-item">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span>晚上 (18-24点)</span>
+                                    <span>{{ td.evening }}%</span>
+                                </div>
+                                <div class="progress">
+                                    <div class="progress-bar" role="progressbar"
+                                         style="width: {{ td.evening }}%; background-color: #36b9cc;"></div>
+                                </div>
+                            </div>
+                            <div class="distribution-item">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span>深夜 (0-6点)</span>
+                                    <span>{{ td.night }}%</span>
+                                </div>
+                                <div class="progress">
+                                    <div class="progress-bar" role="progressbar"
+                                         style="width: {{ td.night }}%; background-color: #858796;"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 学习状态摘要 -->
+                <div class="col-md-4">
+                    <div class="status-summary">
+                        <h4 class="mb-3"><i class="fas fa-sticky-note me-2 text-primary"></i>学习状态摘要</h4>
+                        <p class="mb-0">{{ study_suggestion.split('📊')[1].split('🏆')[0]|trim if study_suggestion and '📊' in study_suggestion and '🏆' in study_suggestion else '暂无学习状态摘要' }}</p>
+                        <div class="key-topics mt-4">
+                            <h5><i class="fas fa-bookmark me-2 text-warning"></i>热门主题</h5>
+                            <div class="d-flex flex-wrap mt-2">
+                                {% for topic in (exercise_metrics.hot_topic if exercise_metrics and exercise_metrics.hot_topic else []) %}
+                                <span class="badge bg-info me-2 mb-2">{{ topic }}</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% if kb_learning and kb_learning.has_data %}
+                        <div class="key-topics mt-4">
+                            <h5><i class="fas fa-book-open me-2 text-success"></i>知识库学习</h5>
+                            <div class="mt-2">
+                                <p class="mb-1"><small>浏览知识库：<b>{{ kb_learning.kb_count }}</b> 个</small></p>
+                                <p class="mb-1"><small>查看概念：<b>{{ kb_learning.concept_count }}</b> 个</small></p>
+                                <p class="mb-1"><small>阅读文档：<b>{{ kb_learning.document_count }}</b> 篇</small></p>
+                                <p class="mb-1"><small>检索文献：<b>{{ kb_learning.total_concept_views }}</b> 次</small></p>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="key-topics mt-4">
+                            <h5><i class="fas fa-book-open me-2 text-muted"></i>知识库学习</h5>
+                            <p class="text-muted"><small>暂无知识库学习记录</small></p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- 学习建议内容 -->
+    <div class="card shadow-lg mb-5">
+        <div class="card-header bg-success text-white">
+            <h2 class="mb-0"><i class="fas fa-lightbulb me-2"></i>个性化学习建议</h2>
+        </div>
+        <div class="card-body">
+            <div class="suggestion-section">
+                <div class="content-card" id="contentDisplay_{{ uid }}">
+                <!-- 内容将通过JavaScript动态插入 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主题分析 -->
+    <div class="row">
+        <!-- 主题分布 -->
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header bg-info text-white">
+                    <h5><i class="fas fa-tags me-2"></i>主题分布</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container long-labels-chart">
+                        <canvas id="topicChart_{{ uid }}"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 难度分布 -->
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header bg-warning text-dark">
+                    <h5><i class="fas fa-chart-pie me-2"></i>难度分布</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="difficultyChart_{{ uid }}"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var root = document.getElementById('sugReport_{{ uid }}');
+    if (!root) return;
+
+    function safeParse(raw, fallback) {
+        try { return JSON.parse(raw); } catch (e) { return fallback; }
+    }
+
+    var topicDis = safeParse(root.getAttribute('data-topic'), {}) || {};
+    var difficultyDis = safeParse(root.getAttribute('data-difficulty'), {}) || {};
+    var deepSeekContent = safeParse(root.getAttribute('data-content'), '') || '';
+
+    function processInlineFormatting(text) {
+        return text
+            .replace(/\*\*(.*?)\*\*/g, '<strong class="content-strong">$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em class="content-em">$1</em>')
+            .replace(/`(.*?)`/g, '<code>$1</code>')
+            .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" class="content-link" target="_blank" rel="noopener">$1</a>');
+    }
+
+    function renderContent(content) {
+        var container = document.getElementById('contentDisplay_{{ uid }}');
+        if (!container) return;
+        var html = '';
+        var lines = String(content).split('\n').filter(function (l) { return l.trim(); });
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].trim();
+            if (!line) continue;
+            if (line.startsWith('**') && line.endsWith('**')) {
+                html += '<h1 class="content-title content-title-h1"><i class="fas fa-file-alt"></i>' + line.substring(2, line.length - 2) + '</h1>';
+            } else if (['📊','🏆','🚧','📝','⏰','💡'].some(function (ic) { return line.startsWith(ic); })) {
+                var icon = line.substring(0, 2);
+                var text = line.substring(2).trim();
+                html += '<p class="content-paragraph"><span class="content-icon">' + icon + '</span> ' + processInlineFormatting(text) + '</p>';
+            } else if (line.startsWith('→')) {
+                html += '<p class="content-paragraph" style="margin-left: 20px;"><span class="content-highlight">' + processInlineFormatting(line) + '</span></p>';
+            } else if (line.startsWith('>')) {
+                html += '<blockquote class="content-quote">' + processInlineFormatting(line.substring(1).trim()) + '</blockquote>';
+            } else {
+                html += '<p class="content-paragraph">' + processInlineFormatting(line) + '</p>';
+            }
+        }
+        container.innerHTML = html;
+    }
+
+    function wrapLabel(label, maxLineLength) {
+        maxLineLength = maxLineLength || 30;
+        if (label.length <= maxLineLength) return label;
+        var words = label.split(' ');
+        var lines = [];
+        var currentLine = '';
+        for (var i = 0; i < words.length; i++) {
+            if (currentLine.length + words[i].length > maxLineLength) {
+                lines.push(currentLine);
+                currentLine = words[i];
+            } else {
+                currentLine += (currentLine ? ' ' : '') + words[i];
+            }
+        }
+        if (currentLine) lines.push(currentLine);
+        return lines.join('\n');
+    }
+
+    // 图表只在容器可见且有尺寸时创建，避免隐藏状态下宽高为 0；
+    // Chart.js 可能晚于本内联脚本加载（CDN 位于页面 scripts 区块），故轮询等待。
+    function buildCharts() {
+        if (root.getAttribute('data-charts-built') === '1') return;
+        if (typeof Chart === 'undefined') {
+            setTimeout(buildCharts, 120);
+            return;
+        }
+        var tkeys = Object.keys(topicDis);
+        var tvalues = Object.values(topicDis);
+        var dvalues = Object.values(difficultyDis);
+
+        var topicCtx = document.getElementById('topicChart_{{ uid }}');
+        if (topicCtx && tkeys.length) {
+            var wrappedTopicLabels = tkeys.map(function (l) { return wrapLabel(l, 25); });
+            new Chart(topicCtx.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: wrappedTopicLabels,
+                    datasets: [{
+                        label: '练习次数',
+                        data: tvalues,
+                        backgroundColor: [
+                            'rgba(54, 162, 235, 0.5)',
+                            'rgba(75, 192, 192, 0.5)',
+                            'rgba(153, 102, 255, 0.5)',
+                            'rgba(255, 159, 64, 0.5)',
+                            'rgba(255, 99, 132, 0.5)',
+                            'rgba(255, 205, 86, 0.5)'
+                        ],
+                        borderColor: [
+                            'rgba(54, 162, 235, 1)',
+                            'rgba(75, 192, 192, 1)',
+                            'rgba(153, 102, 255, 1)',
+                            'rgba(255, 159, 64, 1)',
+                            'rgba(255, 99, 132, 1)',
+                            'rgba(255, 205, 86, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: { display: true, text: '各主题练习次数分布', font: { size: 16 } },
+                        legend: { position: 'top' },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    return tkeys[context.dataIndex] + ': ' + context.parsed.x;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: { ticks: { font: { size: 11 }, autoSkip: false, maxRotation: 0 } },
+                        x: { beginAtZero: true }
+                    }
+                }
+            });
+        }
+
+        var difficultyCtx = document.getElementById('difficultyChart_{{ uid }}');
+        if (difficultyCtx) {
+            new Chart(difficultyCtx.getContext('2d'), {
+                type: 'pie',
+                data: {
+                    labels: ['1-简单', '2-中等', '3-困难'],
+                    datasets: [{
+                        label: '难度分布',
+                        data: dvalues,
+                        backgroundColor: [
+                            'rgba(75, 192, 192, 0.5)',
+                            'rgba(255, 206, 86, 0.5)',
+                            'rgba(255, 99, 132, 0.5)'
+                        ],
+                        borderColor: [
+                            'rgba(75, 192, 192, 1)',
+                            'rgba(255, 206, 86, 1)',
+                            'rgba(255, 99, 132, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: { display: true, text: '练习难度分布', font: { size: 16 } },
+                        legend: { position: 'right' }
+                    }
+                }
+            });
+        }
+        root.setAttribute('data-charts-built', '1');
+    }
+
+    // 文本渲染与图表相互独立：即使 Chart.js 未加载也不影响建议正文显示
+    function initReport() {
+        renderContent(deepSeekContent);
+        buildCharts();
+    }
+
+    window['initSugReport_{{ uid }}'] = initReport;
+
+    if (root.getAttribute('data-auto-init') === '1') {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initReport);
+        } else {
+            initReport();
+        }
+    }
+})();
+</script>
