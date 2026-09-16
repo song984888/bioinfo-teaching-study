@@ -7126,6 +7126,23 @@ def download_document(kb_id, doc_id):
     )
 
 
+def build_safe_upload_name(original_filename, fallback='document'):
+    """生成安全的磁盘文件名。
+
+    secure_filename() 会剥离所有非 ASCII 字符，中文文件名（如“教学文档.pdf”）
+    会被处理成“pdf”甚至空字符串，空字符串会让 file.save() 指向目录并抛出
+    IsADirectoryError，导致上传接口返回 500。这里保留原始扩展名，并在
+    名称为空时回退到时间戳文件名。
+    """
+    import time as _time
+    stem, ext = os.path.splitext(os.path.basename(original_filename or ''))
+    ext = ext.lower()
+    safe_stem = secure_filename(stem)
+    if not safe_stem:
+        safe_stem = f"{fallback}_{_time.strftime('%Y%m%d%H%M%S')}"
+    return safe_stem + ext
+
+
 @app.route('/teacher/knowledge_bases/<int:kb_id>/upload', methods=['GET', 'POST'])
 def upload_document(kb_id):
     """上传文档到知识库"""
@@ -7151,7 +7168,7 @@ def upload_document(kb_id):
         return redirect(url_for('knowledge_bases'))
     
     if request.method == 'POST':
-        title = request.form['title']
+        title = (request.form.get('title') or '').strip()
         tags = request.form.get('tags', '')
         
         # 处理文件上传
@@ -7159,7 +7176,11 @@ def upload_document(kb_id):
             file = request.files['document_file']
             if file and file.filename:
                 original_filename = file.filename  # 保留原始文件名用于提取扩展名
-                safe_filename = secure_filename(file.filename)  # 安全文件名用于保存
+                safe_filename = build_safe_upload_name(file.filename)  # 安全文件名（保留中文文件的扩展名）
+
+                # 未填写标题时回退为原始文件名，避免 NOT NULL 约束报错
+                if not title:
+                    title = os.path.basename(original_filename) or safe_filename
                 
                 # 创建上传目录
                 upload_dir = os.path.join('uploads', 'knowledge_bases', str(kb_id))
@@ -7176,7 +7197,13 @@ def upload_document(kb_id):
                     file_path = os.path.join(upload_dir, new_filename)
                     flash(f'文件名重复，已重命名为：{new_filename}', 'info')
                 
-                file.save(file_path)
+                try:
+                    file.save(file_path)
+                except Exception as e:
+                    conn.rollback()
+                    app.logger.error(f"文档保存失败 kb={kb_id}: {e}", exc_info=True)
+                    flash(f'文件保存失败：{str(e)}', 'danger')
+                    return redirect(url_for('view_knowledge_base', kb_id=kb_id))
                 
                 # 从原始文件名提取文件类型（更可靠）
                 _, file_extension = os.path.splitext(original_filename.lower())
@@ -7212,11 +7239,17 @@ def upload_document(kb_id):
                     file_type = ''  # 清空文件类型
                 
                 # 保存到数据库
-                cursor.execute("""
-                    INSERT INTO knowledge_documents 
-                    (knowledge_base_id, title, content, file_path, file_type, tags)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                """, (kb_id, title, content, file_path, file_type, tags))
+                try:
+                    cursor.execute("""
+                        INSERT INTO knowledge_documents
+                        (knowledge_base_id, title, content, file_path, file_type, tags)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                    """, (kb_id, title, content, file_path, file_type, tags))
+                except Exception as e:
+                    conn.rollback()
+                    app.logger.error(f"文档记录入库失败 kb={kb_id}: {e}", exc_info=True)
+                    flash(f'文档保存失败：{str(e)}', 'danger')
+                    return redirect(url_for('view_knowledge_base', kb_id=kb_id))
                 
                 doc_id = cursor.lastrowid  # 获取刚插入的文档ID
                 conn.commit()
@@ -7246,13 +7279,21 @@ def upload_document(kb_id):
         # 处理文本内容
         elif 'content' in request.form:
             content = request.form['content']
-            cursor.execute("""
-                INSERT INTO knowledge_documents 
-                (knowledge_base_id, title, content, tags)
-                VALUES (%s, %s, %s, %s)
-            """, (kb_id, title, content, tags))
+            if not title:
+                title = '未命名文本'
+            try:
+                cursor.execute("""
+                    INSERT INTO knowledge_documents
+                    (knowledge_base_id, title, content, tags)
+                    VALUES (%s, %s, %s, %s)
+                """, (kb_id, title, content, tags))
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                app.logger.error(f"文本记录入库失败 kb={kb_id}: {e}", exc_info=True)
+                flash(f'文档保存失败：{str(e)}', 'danger')
+                return redirect(url_for('view_knowledge_base', kb_id=kb_id))
             
-            conn.commit()
             flash('文档创建成功！', 'success')
             return redirect(url_for('view_knowledge_base', kb_id=kb_id))
     
@@ -7807,9 +7848,10 @@ def student_concepts():
         return redirect(url_for('login'))
     conn = get_db_connection(); cur = conn.cursor(dictionary=True)
     try:
-        # 汇聚 public KBs 的概念，按名称去重，累加频率
+        # 汇聚 public KBs 的概念：同一知识库内按名称和类型去重，累加频率
         cur.execute("""
-            SELECT c.concept_name, c.concept_type,
+            SELECT kb.id AS knowledge_base_id, kb.name AS knowledge_base_name,
+                   c.concept_name, c.concept_type,
                    SUM(c.frequency) AS total_freq,
                    COUNT(DISTINCT c.knowledge_document_id) AS doc_count,
                    MAX(c.frequency) AS max_freq,
@@ -7818,22 +7860,37 @@ def student_concepts():
             JOIN knowledge_documents kd ON c.knowledge_document_id = kd.id
             JOIN knowledge_bases kb ON kd.knowledge_base_id = kb.id
             WHERE kb.is_public = 1
-            GROUP BY c.concept_name, c.concept_type
+            GROUP BY kb.id, kb.name, c.concept_name, c.concept_type
             ORDER BY total_freq DESC
         """)
         concepts = cur.fetchall()
+
+        cur.execute("""
+            SELECT DISTINCT kb.id, kb.name
+            FROM knowledge_bases kb
+            JOIN knowledge_documents kd ON kd.knowledge_base_id = kb.id
+            JOIN knowledge_concepts c ON c.knowledge_document_id = kd.id
+            WHERE kb.is_public = 1
+            ORDER BY kb.name
+        """)
+        knowledge_bases = cur.fetchall()
         cur.close(); conn.close()
 
-        # 类型分布统计
-        type_counts = {'entity': 0, 'relation': 0, 'attribute': 0}
-        for c in concepts:
-            t = c['concept_type'] or 'entity'
-            type_counts[t] = type_counts.get(t, 0) + 1
+        # 按知识库统计概念数量，与列表中的知识库+名称+类型聚合口径一致
+        knowledge_base_counts = []
+        for kb in knowledge_bases:
+            count = sum(1 for c in concepts if c['knowledge_base_id'] == kb['id'])
+            knowledge_base_counts.append({
+                'id': kb['id'],
+                'name': kb['name'],
+                'count': count
+            })
 
         return render_template('student/concepts.html',
                                concepts=concepts,
                                total=len(concepts),
-                               type_counts=type_counts)
+                               knowledge_bases=knowledge_bases,
+                               knowledge_base_counts=knowledge_base_counts)
     except Exception as e:
         flash(f'加载概念失败: {str(e)}', 'danger')
         return redirect(url_for('dashboard'))
