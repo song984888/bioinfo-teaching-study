@@ -31,10 +31,12 @@
 - **浏览记录**：跟踪学生的知识库浏览行为
 
 #### 生信工具学习
-- **工具分类**：基因表达、DNA对比、序列分析等主题
-- **工具收藏**：NCBI GEO、BLAST、UniProt 等常用工具
-- **学习追踪**：记录学生点击的工具和主题偏好
-- **统计分析**：使用频率、主题偏好、常用工具排名
+- **九大分类**：Bioinformatics Programming（生物信息学程序设计）、Gene Information Search、Gene Expression、DNA Alignment、Genetic Variations、Protein Informations、Protein Expression、Protein Interactions、Protein Structure and Function Prediction
+- **分类标识**：每个分类配有原创内联 SVG 小 Logo（绑定稳定 slug，管理员改名不丢图标）
+- **工具目录**：99 个经来源核验的外部工具（含管理员自建分类），带详情页、来源链接与核验日期，支持搜索/排序
+- **学习追踪**：学生点击"访问工具"时经平台跳转路由记录工具与主题（教师/管理员点击不记录）
+- **统计分析**：总点击次数、近30天点击、使用工具数、主题偏好、常用工具排名
+- **管理员维护**：`/admin/bioinformatics-tools` 可新建/编辑分类与工具的名称、简介、链接、排序与发布状态；启动播种幂等（仅缺失时插入），管理员编辑不被重启覆盖
 
 #### 学习笔记
 - **传统笔记**：关联知识库、概念和文档的学习笔记
@@ -44,6 +46,8 @@
 #### 学习建议
 - **数据驱动**：基于练习、考试、知识库、工具和笔记的综合分析
 - **AI生成**：使用 DeepSeek 或 Ollama 模型生成个性化建议
+- **历史查看**：顶栏「🗂️ 历史学习建议查看」入口，多条记录列表展示，点击展开即按**原始建议页面完整回放**（含主题分布条形图和难度饼图等全部图表，两处共用同一报告模板，样式完全一致）
+- **可靠落库**：生成时将练习/考试/知识库/工具/笔记指标以 JSON 快照随建议一并保存；三张指标表与建议各自独立写入，任一指标缺失不阻断历史保存
 - **多维度评估**：
   - 编程练习成绩和主题掌握度
   - 考试成绩和错误模式
@@ -79,7 +83,27 @@
 - **AI集成**：DeepSeek API / Ollama (本地模型)
 - **代码编辑器**：Ace Editor
 
-## 最近更新 (2026-09-08)
+## 最近更新 (2026-09-17)
+
+### 历史学习建议
+- ✅ 顶栏新增学生专属「🗂️ 历史学习建议查看」入口（`/student/study_suggestions/history`）
+- ✅ 多条历史建议以列表展示，点击展开完整回放，版式与图表和原始生成页**完全一致**（共用 `student/_suggestion_report.html` 报告片段）
+- ✅ 生成建议时保存指标 JSON 快照（`study_suggestions.metrics_snapshot`），历史回放含主题分布条形图、难度饼图
+- ✅ 无快照的早期记录自动降级为正文阅读模式，不报错
+
+### 学习建议落库修复
+- ✅ 修复"页面上有建议但数据库无历史记录"：原三张表写入在同一事务块中，无考试学生触发 `KeyError` 后建议 INSERT 被跳过
+- ✅ exercise_metrics / exam_metrics / study_suggestions 改为各自独立写入与提交，指标缺失自动跳过，历史建议必达
+
+### 知识库上传修复
+- ✅ 修复中文文件名导致 HTTP 500：`secure_filename()` 剥离非 ASCII 使文件名为空，现保留原扩展名、空名回退时间戳
+- ✅ 文件保存与入库路径均加异常保护，失败显示友好提示而非 500；标题留空自动回退为文件名
+- ✅ 验证产生的 6 条测试文档（含"边界-无扩展名""500复现""中文文件名测试""test-upload-doc"等）已按主键精确删除，真实文档无影响
+
+### 文档
+- ✅ README 与系统手册同步上述功能、表结构与运维记录
+
+## 此前更新 (2026-09-08)
 
 ### 学习笔记统计增强
 - ✅ 学生首页"学习笔记"统计合并传统笔记和思维链
@@ -117,9 +141,11 @@
 - `knowledge_concepts` - 核心概念
 - `student_notes` - 学生学习笔记
 - `thought_chains` - 学生思维链
+- `bioinformatics_tool_categories` - 生信工具分类
 - `bioinformatics_tools` - 生信工具库
 - `student_tool_activity` - 学生工具点击记录
-- `study_suggestions` - 学习建议记录
+- `study_suggestions` - 学习建议记录（含 `metrics_snapshot` 指标快照）
+- `exercise_metrics` / `exam_metrics` - 学生练习/考试聚合指标
 
 ### 浏览记录表
 - `concept_view_logs` - 概念浏览记录

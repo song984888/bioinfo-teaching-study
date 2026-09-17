@@ -1,6 +1,6 @@
 # 《生物信息学课程》教 & 学系统 — 完整功能与用户手册
 
-> 适用版本：基于 `app.py`（约 8285 行 Flask 应用）+ `my_config.py`（数据库初始化）的当前实现
+> 适用版本：基于 `app.py`（约 10,850 行 Flask 应用）+ `my_config.py`（数据库初始化）的当前实现
 > 配套文档：[`bioinfo-articles.md`](./bioinfo-articles.md)（文献检索模块专项说明）
 
 ---
@@ -93,7 +93,8 @@
 | `POST /submit_exercise` | `submit_exercise` | 提交代码，AI 自动评分，写入 `exercises`，返回 `{success, score, comment}` |
 | `GET /exercise_result` | `exercise_result` | 练习结果页（前端 `sessionStorage` 驱动，无会话校验） |
 | `POST /run_sample_code` | `run_sample_code` | 在线运行示例代码（`session` 校验；沙箱仅正则脱敏，见 §10.2） |
-| `GET, POST /student/study_suggestion` | `study_suggestion` | 学习建议：聚合考试/练习指标 → 调用 LLM `auto_suggestion` → 写入 `study_suggestions` 等表 |
+| `GET, POST /student/study_suggestion` | `study_suggestion` | 学习建议：聚合考试/练习/知识库/工具/笔记指标 → 调用 LLM `auto_suggestion` → 建议与指标快照写入 `study_suggestions`（三张表独立提交，见 §3.3） |
+| `GET /student/study_suggestions/history` | `study_suggestions_history` | 历史学习建议：当前学生全部建议按时间倒序列表，点击展开按原始报告样式（含图表）回放；仅本人可见 |
 | `GET /api/study_data/<int:user_id>` | `get_study_data` | 返回该用户的指标与建议 JSON（**无会话校验**，见 §10.9） |
 | `GET /student/collections` | `student_collections` | 学生/教师个人收藏与学习笔记总览 |
 | `POST /api/student/note` | `api_student_note` | 学生/教师保存自己的概念、文档或灵感笔记 |
@@ -112,7 +113,27 @@
 | `GET /student/grades` | `view_grades` | 成绩汇总（平均分、难度分布、优秀率、按主题/分数/日期列表） |
 | `GET /student/exam_detail/<int:exam_id>` | `exam_detail` | 单条考试详情（校验归属 `student_id=session['user_id']`） |
 
-### 3.3 文献检索（Bioinformatics）与帮助
+### 3.3 学习建议与历史查看
+
+学生在学习建议页生成个性化建议后，系统会把当次的完整指标（练习 `exercise_metrics`、学习周期统计、知识库浏览 `kb_learning`、生信工具点击 `tool_learning`、笔记统计，以及建议正文 `study_suggestion`）序列化为 JSON 写入 `study_suggestions.metrics_snapshot`。
+
+- 顶栏学生区提供「🗂️ 历史学习建议查看」入口 → `GET /student/study_suggestions/history`
+- 历史记录以**列表**形式按时间倒序展示（序号、生成时间、记录 ID、状态标签、摘要）
+- **点击任意一行展开**，即以原始学习建议页面的完整版式回放该条建议：概览卡片、优势/待改善领域、学习计划、学习习惯建议、导师寄语，以及主题分布条形图和难度饼图（Chart.js）
+- 生成页与历史展开共用同一报告片段 `templates/student/_suggestion_report.html`，样式与图表**逐字节一致**，后续维护只需改一处
+- 早期记录（快照功能上线之前生成的）没有 `metrics_snapshot`，自动降级为"较早记录 · 仅正文"阅读模式，完整显示建议文字，不报错
+- 三张表（`exercise_metrics` / `exam_metrics` / `study_suggestions`）各自独立事务提交：即使某学生缺少练习或考试指标，学习建议仍会正常落库并进入历史列表
+
+### 3.4 生信工具点击追踪
+
+学生从工具集合页（§4.7）点击「访问工具」时，先进入平台跳转路由 `GET /bioinformatics-tools/<category_slug>/<tool_slug>/visit`，向 `student_tool_activity` 写入一条记录（学生 + 工具 + 分类主题 + 时间）后再 302 重定向到外部站点。
+
+- 只有 `role='student'` 的访问会记录；教师/管理员点击不写入
+- `get_student_tool_learning(student_id)` 聚合：总点击、近 30 天点击、使用过的工具数、主题偏好 Top 8、常用工具 Top 5
+- 学生首页「📈 我的学习进度」的「生信工具」卡片显示使用过的工具数（`/api/student/feed` 的 `my_stats.tools_used`）
+- 上述统计同时注入学习建议生成链路（§3.3）
+
+### 3.5 文献检索（Bioinformatics）与帮助
 
 - `GET /bioinfo-articles`（`bioinfo_articles`）：文献智能检索主页。详见[第 6 章](#6-文献检索bioinformatics-模块)与 [`bioinfo-articles.md`](./bioinfo-articles.md)。
 - `GET /help`（`help_page`）：角色化帮助中心，详见[第 7 章](#7-帮助中心)。
@@ -175,7 +196,7 @@
 | `GET, POST /teacher/knowledge_bases/create` | `create_knowledge_base` | 新建知识库（`owner_id=session['user_id']`） |
 | `GET /teacher/knowledge_bases/<int:kb_id>` | `view_knowledge_base` | 知识库详情 + 文档列表 |
 | `POST .../delete` | `delete_knowledge_base` | 级联删除概念/关系/文档/库 |
-| `GET, POST .../upload` | `upload_document` | 上传文档（pdf/txt/doc/docx），抽取文本，写入 `knowledge_documents` |
+| `GET, POST .../upload` | `upload_document` | 上传文档（pdf/txt/doc/docx），抽取文本，写入 `knowledge_documents`。磁盘文件名由 `build_safe_upload_name()` 生成：保留原始扩展名（中文主名安全化，空名回退 `document_时间戳`），保存/入库失败回滚并提示，不再抛 500；标题留空自动回退为原始文件名 |
 | `GET .../document/<int:doc_id>` | `view_document` | 文档详情（含题目/概念统计） |
 | `GET .../document/<int:doc_id>/view_pdf` | `view_document_pdf` | 在线预览 PDF（`send_file` inline） |
 | `GET .../document/<int:doc_id>/download` | `download_document` | 下载文档（attachment） |
@@ -218,7 +239,7 @@
 
 ### 4.7 生物信息学工具集合
 
-三种角色登录后均可从控制台的「🧬 生物信息学工具」模块进入 `/bioinformatics-tools`。当前提供八个分类：Gene Information Search、Gene Expression、DNA Alignment、Genetic Variations、Protein Informations、Protein Expression、Protein Interactions，以及 Protein Structure and Function Prediction。
+三种角色登录后均可从控制台的「🧬 生物信息学工具」模块进入 `/bioinformatics-tools`。当前提供九个分类（共 99 个已核验工具）：Bioinformatics Programming（生物信息学程序设计）、Gene Information Search、Gene Expression、DNA Alignment、Genetic Variations、Protein Informations、Protein Expression、Protein Interactions，以及 Protein Structure and Function Prediction。每个分类配有原创内联 SVG 小 Logo（绑定稳定 slug，改名不丢图标）。
 
 - `/bioinformatics-tools`：工具分类首页。
 - `/bioinformatics-tools/gene-expression`：Gene Expression 工具列表。
@@ -226,7 +247,8 @@
 - 支持按工具名称/简介搜索，以及推荐顺序或名称排序。
 - 工具链接使用新标签页和 `noopener noreferrer` 安全属性。
 - 本平台仅提供分类导航，工具由其原网站运行；来源核验日期表示目录整理时间，不代表本平台实时保证外部站点可用。
-- 学生和教师只能浏览；管理员可进入 `/admin/bioinformatics-tools` 编辑分类和工具的名称、简介、目标链接、来源链接、排序及发布状态。管理员修改后需要点击保存，前台只显示已发布条目。
+- 学生和教师只能浏览；管理员可进入 `/admin/bioinformatics-tools` **新建**分类和工具，并编辑名称、简介、目标链接、来源链接、排序及发布状态。管理员修改后需要点击保存，前台只显示已发布条目。
+- 分类本身（如「生物信息学程序设计」）由管理员在管理页维护；工具经 `GET /bioinformatics-tools/<category>/<tool>/visit` 跳转访问，学生点击会写入 `student_tool_activity`（见 §3.4），教师/管理员点击不记录。
 
 当前目录还包括 Gene Information Search 分类下的 Ensembl、NCBI Genome Data Viewer、OMIM、HGNC、GeneCards、UCSC Genome Browser、ENA、BioGPS 等，以及 Protein Informations 分类下的 UniProt、ExPASy、Human Protein Atlas、NCBI Protein、PDBsum、PhosphoSitePlus、wwPDB、PeptideAtlas、ChEMBL 和 SRMAtlas 等。工具名称、简介、目标 URL 和来源页面保存在 `bioinformatics_tools` 与 `bioinformatics_tool_categories` 中，目录初始化是幂等的，不会重复插入。
 
@@ -337,8 +359,12 @@
 | `exams_mock` | 同上（FK→`questions_mock`） | 模拟考试 |
 | `exercises` | `id, student_id, question_id, student_answer, ai_score, ai_comment, submitted_at` | 练习 |
 | `tasks` | `id, user_id, task_type, parameters(LONGTEXT), status ENUM('pending','processing','completed','failed'), progress, total, log, result, ...` | 后台任务 |
-| `study_suggestions` | `id, user_id, user_name, study_suggestion(TEXT), created_at` | 学习建议 |
+| `study_suggestions` | `id, user_id, user_name, study_suggestion(TEXT), metrics_snapshot(LONGTEXT JSON), created_at` | 学习建议（含生成时的指标快照，供历史页按原样式回放，见 §3.3） |
 | `exam_metrics` / `exercise_metrics` | 各学生考试/练习聚合指标（`user_id` FK） | 指标缓存 |
+| `bioinformatics_tool_categories` | `id, slug(UNIQUE), name, description, curated_order, is_published` | 生信工具分类（9 个已发布） |
+| `bioinformatics_tools` | `id, category_id(FK), slug(UNIQUE), name, description, url, source_url, source_checked_at, source_note, curated_order, is_published` | 生信工具条目（99 个已发布） |
+| `student_tool_activity` | `id, student_id, category_id, tool_id, topic_slug, clicked_at` | 学生工具点击记录（仅学生计入，见 §3.4） |
+| `concept_view_logs` / `kb_view_logs` / `document_view_logs` | 学生浏览行为日志 | 概念/知识库/文档浏览记录 |
 | `knowledge_bases` | `id, name, description, owner_id, is_public, created_at, updated_at` | 知识库 |
 | `knowledge_documents` | `id, knowledge_base_id, title, content(LONGTEXT), file_path, file_type, tags, ...` | 文档 |
 | `knowledge_questions` | `id, knowledge_document_id, question_id, question_text, answer_text, question_type, difficulty, tags` | 文档-题目关联 |
@@ -357,23 +383,30 @@
 
 ## 9. 关键辅助函数与配置
 
-| 函数 | 位置 | 作用 |
+| 函数 | 位置（2026-09 当前代码） | 作用 |
 |------|------|------|
-| `authenticate_user(emp_id, password)` | `app.py:864` | 认证，返回 `None`/`"disabled"`/`"invalid"`/用户 id |
-| `simple_hash(password)` | `app.py:890` | `sha256(password).hexdigest()`，统一密码哈希 |
-| `get_db_connection()` | `app.py:290` | 返回 MySQL 连接（读 `CONFIG['SYNC_DB_CONFIG']`） |
-| `get_article_journals()` | `app.py:1728` | 读取期刊表；异常时回退硬编码 9 刊 |
-| `_journal_editor_required()` | `app.py:1757` | `role in ('teacher','admin')` |
-| `get_admin_dashboard_stats()` | `app.py:992` | 管理员主页统计 |
-| `get_teacher_dashboard_stats()` | `app.py:894` | 教师主页统计（按 `session['user_id']` 范围） |
-| `clean_code(code, language)` | `app.py:306` | 去注释/代码围栏 + 正则屏蔽危险模式（沙箱全部） |
-| `auto_grade` / `auto_grade_ollama` | `472` / `376` | AI 评分（失败回退 `default_grade`） |
-| `auto_suggestion` / `auto_suggestion_ollama` | `651` / `593` | LLM 学习建议文本 |
-| `calculate_exam_metrics` / `calculate_exercise_metrics` | `1230` / `1429` | 指标聚合 |
-| `QuestionGenerator` | `69` | 编程题异步生成 |
-| `TheoryQuestionGenerator` | `5077` | 理论题生成 |
-| `extract_concept_relations_with_ai` | `5438` | 用 DeepSeek 抽取概念关系 |
-| `get_prompt_content(prompt_key, default)` | `42` | 读 `prompt_configs` 覆盖（仅 `admin_prompts` 使用） |
+| `get_db_connection()` | `app.py:366` | 返回 MySQL 连接（读 `CONFIG['SYNC_DB_CONFIG']`） |
+| `authenticate_user(emp_id, password)` | `app.py:1275` | 认证，返回 `None`/`"disabled"`/`"invalid"`/用户 id |
+| `simple_hash(password)` | `app.py:1301` | `sha256(password).hexdigest()`，统一密码哈希 |
+| `get_teacher_dashboard_stats()` | `app.py:1305` | 教师主页统计（按 `session['user_id']` 范围） |
+| `get_admin_dashboard_stats()` | `app.py:1402` | 管理员主页统计 |
+| `calculate_exam_metrics` / `calculate_exercise_metrics` | `app.py:1640` / `1858` | 指标聚合 |
+| `_admin_tools_required()` | `app.py:~2121` | 工具目录管理端点权限（role=admin） |
+| `admin_create_bioinformatics_tool_category` / `admin_create_bioinformatics_tool` | `app.py:2201` / `2225` | 管理员新建分类/工具（slug 自动生成，重复返回 409） |
+| `bioinformatics_tool_visit(...)` | `app.py:2287` | 学生点击工具 → 写 `student_tool_activity` → 302 外跳 |
+| `get_student_tool_learning(student_id)` | `app.py:603` | 工具点击聚合（总数/近30天/工具数/主题偏好/常用工具） |
+| `study_suggestions_history()` | `app.py:3876` | 历史学习建议页（列表+展开回放） |
+| `split_suggestion_sections(text)` | `app.py:3842` | 无快照早期记录的正文分节 |
+| `auto_suggestion` / `auto_suggestion_ollama` | `app.py:1059` / `998` | LLM 学习建议文本（含 kb/tool/notes 学习参数） |
+| `build_safe_upload_name(original_filename)` | `app.py:7411` | 上传磁盘文件名：保留扩展名，中文/空名安全回退 |
+| `get_article_journals()` | `app.py:2511` | 读取期刊表；异常时回退硬编码 9 刊 |
+| `clean_code(code, language)` | `app.py:654` | 去注释/代码围栏 + 正则屏蔽危险模式（沙箱全部） |
+| `auto_grade` / `auto_grade_ollama` | `app.py:820` / `724` | AI 评分（失败回退 `default_grade`） |
+| `QuestionGenerator` / `TheoryQuestionGenerator` | `app.py:124` / `6387` | 编程题异步生成 / 理论题生成 |
+| `extract_concept_relations_with_ai` | `app.py:6784` | 用 DeepSeek 抽取概念关系 |
+| `get_prompt_content(prompt_key, default)` | `app.py:97` | 读 `prompt_configs` 覆盖（仅 `admin_prompts` 使用） |
+
+> 行号随代码提交漂移，仅供定位参考；以函数名检索为准。
 
 ---
 
@@ -435,10 +468,11 @@
 
 **学生**
 1. 登录（`emp_id` + 密码 + 角色选 student）
-2. 主页 → 习题练习 / 在线考试 / 模拟考试 → 提交后查看 AI 评分与成绩
-3. 学习建议 → 查看 LLM 生成的个性化建议
-4. 文献检索 → 选期刊、输入关键词、检索、批量提取创新点、深入研读单篇
-5. 帮助 → 角色化 FAQ
+2. 主页 → 习题练习 / 在线考试 / 模拟考试 → 提交后查看 AI 评分与成绩；选题每步显示可用题目数
+3. 学习建议 → 查看 LLM 生成的个性化建议；顶栏「🗂️ 历史学习建议查看」随时回看历次建议（含图表）
+4. 生物信息学工具 → 按九大分类浏览外部工具，点击「访问工具」跳转并计入学习数据
+5. 文献检索 → 选期刊、输入关键词、检索、批量提取创新点、深入研读单篇；记录想法可存入思维链
+6. 帮助 → 角色化 FAQ
 
 **教师**
 1. 智能出题 → 后台任务生成并自动审题（待审状态）
@@ -454,4 +488,5 @@
 1. 账户管理 → 增删改查用户、启停登录
 2. 题目管理 → 查看/删除题目
 3. 知识库管理 → 查看/删除/编辑知识库
-4. 提示词配置 → 编辑/重置提示词（注：当前不影响生成，见 §10.8）
+4. 生物信息学工具 → `/admin/bioinformatics-tools` 新建/编辑分类与工具、发布/下线
+5. 提示词配置 → 编辑/重置提示词（注：当前不影响生成，见 §10.8）

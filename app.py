@@ -2126,6 +2126,14 @@ def _valid_external_tool_url(value):
     return isinstance(value, str) and value.startswith(('https://', 'http://')) and len(value) <= 1000
 
 
+def _slugify_tool_key(value, kind='tool'):
+    """生成 URL slug：保留 ASCII 字母数字，中文等剥离后为空则用时间戳回退。"""
+    text = re.sub(r'[^a-z0-9]+', '-', str(value).strip().lower()).strip('-')
+    if not text:
+        text = f'{kind}-' + datetime.now().strftime('%Y%m%d%H%M%S')
+    return text[:150]
+
+
 @app.route('/admin/bioinformatics-tools')
 def admin_bioinformatics_tools():
     if not _admin_tools_required():
@@ -2187,6 +2195,72 @@ def admin_update_bioinformatics_tool(tool_id):
         if cur.rowcount != 1:conn.rollback();return jsonify({'success':False,'message':'工具不存在'}),404
         conn.commit();return jsonify({'success':True})
     finally:cur.close();conn.close()
+
+
+@app.route('/api/admin/bioinformatics-tool-categories', methods=['POST'])
+def admin_create_bioinformatics_tool_category():
+    """管理员新建工具分类。slug 缺省时由名称生成，冲突时追加序号。"""
+    if not _admin_tools_required(): return jsonify({'success': False, 'message': '仅管理员可管理工具目录'}), 403
+    data = request.get_json(silent=True) or {}
+    name = str(data.get('name') or '').strip()
+    if not name: return jsonify({'success': False, 'message': '分类名称不能为空'}), 400
+    description = str(data.get('description') or '').strip()
+    try: order = max(0, int(data.get('curated_order') or 0))
+    except (TypeError, ValueError): return jsonify({'success': False, 'message': '排序必须是整数'}), 400
+    slug = _slugify_tool_key(str(data.get('slug') or '').strip() or name, 'category')
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("INSERT INTO bioinformatics_tool_categories (slug,name,description,curated_order,is_published) VALUES (%s,%s,%s,%s,%s)",
+                    (slug, name[:255], description, order, bool(data.get('is_published', True))))
+        conn.commit()
+        return jsonify({'success': True, 'id': cur.lastrowid, 'slug': slug})
+    except Exception as exc:
+        conn.rollback()
+        if 'Duplicate' not in str(exc): raise
+        return jsonify({'success': False, 'message': '分类已存在（slug 冲突），请修改名称或 slug'}), 409
+    finally: cur.close(); conn.close()
+
+
+@app.route('/api/admin/bioinformatics-tools', methods=['POST'])
+def admin_create_bioinformatics_tool():
+    """管理员在指定分类下新建工具条目。"""
+    if not _admin_tools_required(): return jsonify({'success': False, 'message': '仅管理员可管理工具目录'}), 403
+    data = request.get_json(silent=True) or {}
+    name = str(data.get('name') or '').strip()
+    description = str(data.get('description') or '').strip()
+    url = str(data.get('url') or '').strip()
+    source_url = str(data.get('source_url') or '').strip()
+    source_checked_at = str(data.get('source_checked_at') or '').strip()
+    if not name: return jsonify({'success': False, 'message': '工具名称不能为空'}), 400
+    if not description: return jsonify({'success': False, 'message': '工具简介不能为空'}), 400
+    if not _valid_external_tool_url(url): return jsonify({'success': False, 'message': '工具链接必须是 http(s) URL'}), 400
+    if source_url and not _valid_external_tool_url(source_url): return jsonify({'success': False, 'message': '来源链接必须是 http(s) URL'}), 400
+    if not source_checked_at:
+        source_checked_at = datetime.now().strftime('%Y-%m-%d')
+    try:
+        category_id = int(data.get('category_id'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': '请选择所属分类'}), 400
+    try: order = max(0, int(data.get('curated_order') or 0))
+    except (TypeError, ValueError): return jsonify({'success': False, 'message': '排序必须是整数'}), 400
+    slug = _slugify_tool_key(str(data.get('slug') or '').strip() or name, 'tool')
+    conn = get_db_connection(); cur = conn.cursor(dictionary=True)
+    try:
+        cur.execute("SELECT id FROM bioinformatics_tool_categories WHERE id=%s", (category_id,))
+        if not cur.fetchone(): return jsonify({'success': False, 'message': '所属分类不存在'}), 400
+        cur.execute("""INSERT INTO bioinformatics_tools
+            (category_id,slug,name,description,url,source_url,source_checked_at,source_note,curated_order,is_published)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (category_id, slug, name[:255], description, url[:1000], (source_url or url)[:1000],
+             source_checked_at, str(data.get('source_note') or '').strip()[:500] or None,
+             order, bool(data.get('is_published', True))))
+        conn.commit()
+        return jsonify({'success': True, 'id': cur.lastrowid, 'slug': slug})
+    except Exception as exc:
+        conn.rollback()
+        if 'Duplicate' not in str(exc): raise
+        return jsonify({'success': False, 'message': '工具已存在（slug 冲突），请修改名称或 slug'}), 409
+    finally: cur.close(); conn.close()
 
 
 @app.route('/bioinformatics-tools')
