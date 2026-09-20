@@ -34,7 +34,7 @@ def title(slide, text, dark=False):
 
 def footer(slide, number, dark=False):
     color = 'CBD5E1' if dark else '94A3B8'
-    text_box(slide, .75, 7.08, 10.5, .18, '《生物信息学课程》教与学系统 · 项目汇报', 8.5, color)
+    text_box(slide, .75, 7.08, 10.5, .18, '基于AI大模型的生物信息学课程教学一体化平台 · 项目汇报', 8.5, color)
     text_box(slide, 12.05, 7.05, .45, .2, str(number), 9, color, True, PP_ALIGN.RIGHT)
 
 def bullet_slide(number, heading, bullets, accent=BLUE):
@@ -75,7 +75,7 @@ def pill(slide, left, top, width, text, color):
 
 # 1 Cover
 slide=prs.slides.add_slide(prs.slide_layouts[6]);set_bg(slide,NAVY)
-text_box(slide,.9,1.45,11.5,1.0,'《生物信息学课程》教与学系统',32,WHITE,True,PP_ALIGN.CENTER)
+text_box(slide,.9,1.45,11.5,1.0,'基于AI大模型的生物信息学课程教学一体化平台',32,WHITE,True,PP_ALIGN.CENTER)
 text_box(slide,1.6,2.72,10.1,.7,'课程教学 · 智能出题 · 知识库 · 考试评价',20,'D9E4F0',False,PP_ALIGN.CENTER)
 for x,t,c in [(2.05,'课程资源',BLUE),(4.35,'AI 出题',TEAL),(6.65,'人工审核',ORANGE),(8.95,'学习评价',PURPLE)]: pill(slide,x,4.15,1.85,t,c)
 text_box(slide,1.5,6.25,10.4,.28,'项目汇报展示 · 2026年08月26日 · 汇报成员：[待确认]',12,'CBD5E1',False,PP_ALIGN.CENTER)
