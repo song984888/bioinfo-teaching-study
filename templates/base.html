@@ -18,7 +18,13 @@
     {% block header %}
     <header>
         <div class="container">
-            <h1>基于AI大模型的生物信息学课程教学一体化平台</h1>
+            <h1 class="brand">
+                <span class="brand-mark" aria-hidden="true">🧬</span>
+                <span class="brand-text">
+                    <span class="brand-title">生物信息学课程教学一体化平台</span>
+                    <span class="brand-sub">基于 AI 大模型 · AI-Powered Bioinformatics Teaching</span>
+                </span>
+            </h1>
             <nav>
                 {% if session.user_id %}
                     <span>欢迎, {{ session.name }} ({{ session.role }})</span>
