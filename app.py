@@ -22,7 +22,7 @@ from datetime import datetime, timedelta, date
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'myscripts/config_modules'))
 
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash, abort, send_file, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash, abort, send_file, send_from_directory, Response
 from flask_session import Session
 from collections import defaultdict
 import jieba  # 添加中文分词支持
@@ -2413,6 +2413,63 @@ def bioinfo_articles():
     journals = get_article_journals()
     can_edit = session.get('role') in ('teacher', 'admin')
     return render_template('bioinfo-articles.html', journals=journals, can_edit_journals=can_edit)
+
+
+# ===== 文献检索上游 API 代理 =====
+# 浏览器所在网络不一定能直连 ebi.ac.uk / api.crossref.org（校园网/防火墙常见），
+# 直连失败时报 "Failed to fetch"。统一改为服务端代理后，浏览器只与平台自身通信，
+# 外部访问只发生在服务器上（并仅允许白名单主机与参数）。
+EPM_REST_BASE = 'https://www.ebi.ac.uk/europepmc/webservices/rest'
+CROSSREF_WORKS_URL = 'https://api.crossref.org/works'
+LITERATURE_UPSTREAM_TIMEOUT = 25
+
+
+def _literature_upstream(url, params=None):
+    try:
+        resp = requests.get(url, params=params, timeout=LITERATURE_UPSTREAM_TIMEOUT,
+                            headers={'User-Agent': 'bioinfo-teaching-platform/1.0'})
+    except requests.RequestException as exc:
+        app.logger.error('文献上游请求失败 %s: %s', url, exc)
+        return jsonify({'success': False, 'message': '无法连接文献数据源（上游网络故障），请稍后重试或联系管理员'}), 502
+    content_type = (resp.headers.get('Content-Type') or 'application/json').split(';')[0]
+    return Response(resp.content, status=resp.status_code, content_type=content_type)
+
+
+@app.route('/api/literature/europepmc/search')
+def api_literature_europepmc_search():
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': '未登录'}), 401
+    allowed = ('query', 'resultType', 'pageSize', 'format', 'sort', 'synonym', 'cursorMark')
+    params = {key: request.args[key] for key in allowed if key in request.args}
+    params.setdefault('format', 'json')
+    return _literature_upstream(EPM_REST_BASE + '/search', params)
+
+
+@app.route('/api/literature/europepmc/pmc/<int:pmc_id>/fulltext')
+def api_literature_europepmc_fulltext(pmc_id):
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': '未登录'}), 401
+    return _literature_upstream(f'{EPM_REST_BASE}/PMC/{pmc_id}/fullTextXML')
+
+
+@app.route('/api/literature/europepmc/pmc/<int:pmc_id>/figures')
+def api_literature_europepmc_figures(pmc_id):
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': '未登录'}), 401
+    return _literature_upstream(f'{EPM_REST_BASE}/PMC/{pmc_id}/figures')
+
+
+@app.route('/api/literature/crossref/works')
+def api_literature_crossref_works():
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': '未登录'}), 401
+    allowed = ('query.bibliographic', 'query.title', 'filter', 'rows', 'sort', 'order')
+    params = {key: request.args[key] for key in allowed if key in request.args}
+    try:
+        params['rows'] = str(min(max(int(params.get('rows', 100)), 1), 500))
+    except ValueError:
+        params['rows'] = '100'
+    return _literature_upstream(CROSSREF_WORKS_URL, params)
 
 
 @app.route('/api/teacher/uploadable_knowledge_bases', methods=['GET'])

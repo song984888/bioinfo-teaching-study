@@ -423,7 +423,8 @@
 
 {% block scripts %}
 <script>
-const API_BASE = 'https://www.ebi.ac.uk/europepmc/webservices/rest';
+// Europe PMC / Crossref 均通过平台 /api/literature/* 服务端代理访问（见 app.py），
+// 浏览器不再直连外部站点，避免校园网拦截导致的 Failed to fetch。
 let articles = [];
 let analysisCache = {};
 const canEditJournals = {{ 'true' if can_edit_journals else 'false' }};
@@ -457,10 +458,14 @@ async function searchCrossrefFallback(keywords, selectedJournals, yearFrom, year
     'type:journal-article'
   ].join(',');
   const response = await fetch(
-    `https://api.crossref.org/works?query.bibliographic=${encodeURIComponent(keywords || 'bioinformatics')}` +
+    `/api/literature/crossref/works?query.bibliographic=${encodeURIComponent(keywords || 'bioinformatics')}` +
     `&filter=${encodeURIComponent(filter)}&rows=${Math.max(100, Number(pageSize) * 5)}`
   );
-  if (!response.ok) throw new Error(`Crossref HTTP ${response.status}: ${response.statusText}`);
+  if (!response.ok) {
+    let detail = '';
+    try { detail = (await response.json()).message || ''; } catch (e) {}
+    throw new Error(`Crossref 检索失败 HTTP ${response.status}${detail ? ': ' + detail : ''}`);
+  }
   const payload = await response.json();
   return (payload.message?.items || []).map(item => ({
     title: (item.title || [])[0] || 'No Title',
@@ -552,11 +557,17 @@ async function searchArticles() {
       `sort=P_PDATE_D desc`,
       `synonym=true`
     ].join('&');
-    const url = `${API_BASE}/search?${params}`;
+    // 经平台服务端代理访问 Europe PMC：浏览器只需与本平台通信，
+    // 避免校园网/防火墙拦截 ebi.ac.uk 导致的 "Failed to fetch"。
+    const url = `/api/literature/europepmc/search?${params}`;
     console.log('Fetching:', url);
 
     const response = await fetch(url);
-    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    if (!response.ok) {
+      let detail = '';
+      try { detail = (await response.json()).message || ''; } catch (e) {}
+      throw new Error(detail || `HTTP ${response.status}: ${response.statusText}`);
+    }
 
     const data = await response.json();
     let rawArticles = data.resultList?.result || [];
@@ -1170,8 +1181,8 @@ function closeExplorer() {
 async function fetchFullText(pmcId) {
   const id = pmcId.replace(/^PMC/, '');
   const [ftRes, figRes] = await Promise.allSettled([
-    fetch(`${API_BASE}/PMC/${id}/fullTextXML`),
-    fetch(`${API_BASE}/PMC/${id}/figures`)
+    fetch(`/api/literature/europepmc/pmc/${id}/fulltext`),
+    fetch(`/api/literature/europepmc/pmc/${id}/figures`)
   ]);
   let xmlText = null, figs = [];
   if (ftRes.status === 'fulfilled' && ftRes.value.ok) {

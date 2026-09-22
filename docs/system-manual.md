@@ -300,6 +300,17 @@
 
 文献检索模块基于 **Europe PMC REST API**，提供检索、批量创新点提取、单篇深入研读、期刊列表管理（教师/管理员）等功能。完整说明见 [`bioinfo-articles.md`](./bioinfo-articles.md)，此处给出摘要。
 
+外部数据源统一走**平台服务端代理**（`/api/literature/*`，app.py）：浏览器只与平台通信，由服务器访问 `www.ebi.ac.uk` / `api.crossref.org`。这解决了校园网/防火墙拦截外部域名导致的 "检索失败: Failed to fetch"，也规避了上游无 CORS 头的问题。代理需登录、仅放行白名单参数、超时 25s，上游故障返回 502 与友好提示。
+
+### 6.0 文献数据源代理端点
+
+| 方法 + URL | 上游 | 说明 |
+|-----------|------|------|
+| `GET /api/literature/europepmc/search` | `ebi.ac.uk/.../search` | 检索透传（query/resultType/pageSize/sort/synonym/format/cursorMark） |
+| `GET /api/literature/europepmc/pmc/<pmc_id>/fulltext` | `.../PMC/<id>/fullTextXML` | 全文 XML（上游对无全文记录返回 404，前端已容错） |
+| `GET /api/literature/europepmc/pmc/<pmc_id>/figures` | `.../PMC/<id>/figures` | 图表列表（同上） |
+| `GET /api/literature/crossref/works` | `api.crossref.org/works` | 回退检索（rows 钳制 1–500） |
+
 ### 6.1 学生可见功能
 
 | 方法 + URL | 端点 | 说明 |

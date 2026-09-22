@@ -8,7 +8,7 @@
 
 ## 1. 功能概述
 
-`bioinfo-articles` 是一个面向生物信息学（默认聚焦「比较基因组学」）的文献检索与单篇研读工具。它直接调用 Europe PMC 公开 API，在浏览器端完成检索、筛选、创新点提取与结构化解析，**无需后端代理**。
+`bioinfo-articles` 是一个面向生物信息学（默认聚焦「比较基因组学」）的文献检索与单篇研读工具。它通过平台服务端代理（`/api/literature/*`）访问 Europe PMC 公开 API，检索、筛选、创新点提取与结构化解析在浏览器端完成；浏览器无需直连 `ebi.ac.uk`，避免校园网/防火墙拦截导致 "Failed to fetch"。
 
 核心能力：
 
@@ -144,7 +144,7 @@ comparative AND genomics AND (JOURNAL:"Nucleic Acids Res" OR JOURNAL:"Brief Bioi
 ## 5. 已知限制
 - 默认关键词与期刊偏向「比较基因组学」，如需其他方向可在检索面板自行修改关键词。
 - 全文 XML / 图表依赖 Europe PMC 的 OA JATS 子集可用性；部分新近或订阅制文章可能仅能基于摘要分析。
-- 客户端直接调用 Europe PMC API，受浏览器同源策略无关（API 支持 CORS），但依赖用户浏览器网络可访问 `ebi.ac.uk`。
+- 外部数据源（Europe PMC / Crossref）统一经平台 `/api/literature/*` 服务端代理访问，浏览器不直连外部域名；上游网络故障时代理返回 502 与友好提示。
 
 ---
 
