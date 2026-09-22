@@ -638,6 +638,23 @@ def ensure_study_suggestions_snapshot_schema():
 
 
 ensure_study_suggestions_snapshot_schema()
+
+
+def ensure_user_login_count_schema():
+    """为 users 增加 login_count 累计登录次数字段（登录成功 +1）。"""
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("SHOW COLUMNS FROM users")
+        cols = {row[0] for row in cur.fetchall()}
+        if 'login_count' not in cols:
+            cur.execute("ALTER TABLE users ADD COLUMN login_count INT NOT NULL DEFAULT 0")
+            conn.commit()
+            app.logger.info("users.login_count 字段已添加")
+    finally:
+        cur.close(); conn.close()
+
+
+ensure_user_login_count_schema()
 def convert_decimal_for_json(data):
     """
     转换数据中的Decimal类型为float/int以便JSON序列化
@@ -2103,6 +2120,21 @@ def login():
             (auth_result,)
         )
         user = cursor.fetchone()
+        # 累计登录次数 +1（失败不影响登录）；流水表 user_logins.username 仅 varchar(50)，
+        # 超长学号会被截断，且明细表只用于追溯，不影响计数，记录失败同样不阻断登录。
+        if user:
+            try:
+                cursor.execute("UPDATE users SET login_count = login_count + 1 WHERE id = %s", (user['id'],))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                app.logger.exception('登录计数写入失败')
+            try:
+                cursor.execute("INSERT INTO user_logins (username, login_time) VALUES (%s, NOW())", (user['employee_id'][:50],))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                app.logger.warning('登录流水写入 user_logins 失败（不影响登录）')
         cursor.close()
         conn.close()
         # 设置会话
@@ -4693,8 +4725,8 @@ def account_management():
     cursor.execute("SELECT COUNT(*) AS students FROM users WHERE role = 'student'")
     student_count = cursor.fetchone()['students']
     
-    # 获取所有用户信息
-    cursor.execute("SELECT id, name, employee_id, role, can_login FROM users WHERE role = 'student'")
+    # 获取所有用户信息（含累计登录次数）
+    cursor.execute("SELECT id, name, employee_id, role, can_login, login_count FROM users WHERE role = 'student'")
     users = cursor.fetchall()
     
     cursor.close()

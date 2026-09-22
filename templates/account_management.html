@@ -59,6 +59,7 @@
                             <th>学号</th>
                             <th>角色</th>
                             <th>登录状态</th>
+                            <th>累计登录次数</th>
                             <th>操作</th>
                             <th>重置密码</th>
                             <th>学习详情</th>
@@ -75,6 +76,7 @@
                                     {{ "允许登录" if user.can_login else "禁止登录" }}
                                 </span>
                             </td>
+                            <td><span class="login-count-badge">{{ user.login_count or 0 }}</span></td>
                             <td>
                                 <a href="/toggle_login/{{ user.id }}" class="toggle-btn {{ 'btn-disable' if user.can_login else 'btn-enable' }}">
                                     {{ "禁用" if user.can_login else "启用" }}
@@ -406,6 +408,18 @@ h1 {
 .status-inactive {
     background-color: #ffebee;
     color: #c62828;
+}
+
+.login-count-badge {
+    display: inline-block;
+    min-width: 40px;
+    text-align: center;
+    padding: 4px 10px;
+    border-radius: 14px;
+    font-size: 13px;
+    font-weight: 600;
+    background-color: #e3f2fd;
+    color: #1565c0;
 }
 
 /* 按钮样式 */
