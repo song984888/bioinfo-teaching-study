@@ -391,12 +391,25 @@
           <option value="">保存为传统学习笔记</option>
         </select>
         <h3>选择关联概念</h3>
+        <select id="noteConceptKbSelect" style="width:100%;padding:0.6rem 0.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);margin-bottom:0.6rem">
+          <option value="">— 先选择知识库 —</option>
+        </select>
         <select id="noteConceptSelect" style="width:100%;padding:0.6rem 0.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text)">
           <option value="">— 加载中 —</option>
         </select>
       </div>
       <div class="exp-section">
         <h3>记录想法</h3>
+        <label for="noteThoughtType">笔记类型</label>
+        <select id="noteThoughtType" style="width:100%;padding:0.6rem 0.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);margin-bottom:0.6rem">
+          <option value="question">疑问</option>
+          <option value="hypothesis">假设</option>
+          <option value="inference">推论</option>
+          <option value="analogy">类比</option>
+          <option value="counterexample">反例</option>
+          <option value="reflection" selected>反思</option>
+          <option value="conclusion">结论</option>
+        </select>
         <textarea id="noteContent" style="width:100%;min-height:100px;padding:0.6rem 0.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);resize:vertical" placeholder="这篇文献给你什么启发？..."></textarea>
       </div>
       <div class="exp-section" style="display:flex;gap:0.5rem;justify-content:flex-end">
@@ -416,10 +429,25 @@ let analysisCache = {};
 const canEditJournals = {{ 'true' if can_edit_journals else 'false' }};
 
 function articleMatchesJournal(article, selectedJournals) {
-  const journal = (article.journalInfo?.journal?.title || article.journalTitle || '').toLowerCase();
-  return selectedJournals.some(journalName =>
-    journalName.toLowerCase().split(/\s+/).every(word => journal.includes(word))
-  );
+  const aliases = {
+    'brief bioinform': 'briefings in bioinformatics',
+    'nucleic acids res': 'nucleic acids research',
+    'genome biol': 'genome biology',
+    'plos comput biol': 'plos computational biology',
+    'genome res': 'genome research',
+    'nat biotechnol': 'nature biotechnology',
+    'mol biol evol': 'molecular biology and evolution'
+  };
+  const normalize = value => value.toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const journal = normalize(article.journalInfo?.journal?.title || article.journalTitle || '');
+  return selectedJournals.some(journalName => {
+    const selected = normalize(journalName);
+    const canonical = aliases[selected] || selected;
+    return journal === canonical || journal.includes(canonical);
+  });
 }
 
 async function searchCrossrefFallback(keywords, selectedJournals, yearFrom, yearTo, pageSize) {
@@ -473,14 +501,18 @@ async function searchArticles() {
     return;
   }
 
-  let queryParts = [];
-  // Europe PMC API is very sensitive: no parentheses, no quotes around journal names
-  // Build a simple query: keywords AND journal fragments
+  // Build a title-friendly query. A complete title should be treated as a phrase;
+  // splitting it into dozens of AND terms can make the API rank/filter it poorly.
   const terms = [];
 
-  // Add keyword terms (replace spaces with AND)
+  // Add keyword terms. Remove a pasted leading period and quote full titles.
   if (keywords) {
-    terms.push(keywords.replace(/\s+/g, ' AND '));
+    const titleOrKeywords = keywords.replace(/^[.。\s]+/, '').replace(/"/g, '').trim();
+    if (titleOrKeywords.split(/\s+/).length >= 5) {
+      terms.push(`"${titleOrKeywords}"`);
+    } else {
+      terms.push(titleOrKeywords.replace(/\s+/g, ' AND '));
+    }
   } else {
     terms.push('comparative AND genomics');
   }
@@ -730,25 +762,40 @@ function closeUploadToKb() {
 // ===== 文献检索 → 学习笔记 =====
 let currentNoteArticleIdx = null;
 let noteConceptListCache = null;
+let noteConceptKbMap = {};
 
 async function loadNoteConcepts() {
   if (noteConceptListCache) return noteConceptListCache;
-  const sel = document.getElementById('noteConceptSelect');
+  const conceptSel = document.getElementById('noteConceptSelect');
+  const kbSel = document.getElementById('noteConceptKbSelect');
   try {
-    const resp = await fetch('/api/public_concepts');
+    const resp = await fetch('/api/thought-chain-concepts');
     const data = await resp.json();
     if (!data.success || !data.concepts || !data.concepts.length) {
-      sel.innerHTML = '<option value="">无可用概念</option>';
+      kbSel.innerHTML = '<option value="">无可用知识库</option>';
+      conceptSel.innerHTML = '<option value="">无可用概念</option>';
       return [];
     }
     noteConceptListCache = data.concepts;
-    sel.innerHTML = '<option value="">— 选择概念 —</option>';
+    noteConceptKbMap = {};
     data.concepts.forEach(function(c) {
-      sel.innerHTML += '<option value="' + c.concept_id + '|' + escapeHtml(c.concept_name) + '">' + escapeHtml(c.concept_name) + '</option>';
+      noteConceptKbMap[c.knowledge_base_id] = c.knowledge_base_name;
     });
+    kbSel.innerHTML = '<option value="">— 选择知识库 —</option>';
+    Object.keys(noteConceptKbMap).forEach(function(kbId) {
+      kbSel.innerHTML += '<option value="' + kbId + '">' + escapeHtml(noteConceptKbMap[kbId]) + '</option>';
+    });
+    conceptSel.innerHTML = '<option value="">— 先选择知识库 —</option>';
+    kbSel.onchange = function() {
+      conceptSel.innerHTML = '<option value="">— 选择关联概念 —</option>';
+      data.concepts.filter(function(c) { return String(c.knowledge_base_id) === kbSel.value; }).forEach(function(c) {
+        conceptSel.innerHTML += '<option value="' + c.concept_id + '|' + escapeHtml(c.concept_name) + '">' + escapeHtml(c.concept_name) + '</option>';
+      });
+    };
     return noteConceptListCache;
   } catch(e) {
-    sel.innerHTML = '<option value="">加载失败</option>';
+    kbSel.innerHTML = '<option value="">加载失败</option>';
+    conceptSel.innerHTML = '<option value="">加载失败</option>';
     return [];
   }
 }
@@ -818,7 +865,7 @@ async function submitNote() {
       var ideaResp = await fetch('/api/thought-chains/' + chainId + '/ideas', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-          content: content, thought_type: 'reflection', confidence: 3,
+          content: content, thought_type: document.getElementById('noteThoughtType').value, confidence: 3,
           trigger_concept_id: conceptId,
           literature: {title: article.title || '', abstract: article.abstractText || '', url: sourceUrl || ''}
         })
