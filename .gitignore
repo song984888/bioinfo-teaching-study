@@ -12,6 +12,7 @@ logs/
 uploads/
 users/
 src/tmp/
+docs/internal/
 *.db
 *.sqlite*
 .env

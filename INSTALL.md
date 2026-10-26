@@ -1,8 +1,9 @@
 # 生物信息学课程教&学系统 — 安装与启动指南
 
 
-## @186 install ,please not modify init.db (because its older mysql db version) and using port:5000 ---> mapt to 172.24.64.53:8080 in app.py
-## mysql using local installed readme refer to: MYSQL_local_INSTALL.md (system mysql version too old!!! )
+> **部署提示**：应用默认监听 `5000` 端口，需要对外提供服务时请通过反向代理 / 端口映射转发到实际域名，不要把内部地址写进文档或代码。
+> **MySQL 版本**：请使用第 4 节给出的 MySQL 8.x 安装方式；不要覆盖已有的 `init.db`（旧版 MySQL 结构，仅作历史数据参考）。
+> **本地配置**：数据库账号、密码和 AI API Key 一律放在本地 `myscripts/config_modules/my_config.py`（已在 `.gitignore` 中），不要提交到仓库。
 
 
 ## 系统要求
@@ -169,7 +170,7 @@ source .venv/bin/activate
 gunicorn --workers 5 --bind 0.0.0.0:5000 app:app
 ```
 
-应用将在所有网络接口的 `:5000` 启动；外部映射地址为 `http://172.24.64.53:8080`。
+应用将在所有网络接口的 `:5000` 启动；如需对外提供服务，请通过反向代理映射到实际域名或端口（不要把内部地址写入仓库）。
 
 ### 后台运行（生产环境）
 
@@ -185,7 +186,7 @@ lsof -ti:5000 | xargs kill
 
 ## 10. 验证安装
 
-打开浏览器访问 `http://172.24.64.53:8080`，使用以下账户登录：
+打开浏览器访问 `http://127.0.0.1:5000`（或你的反向代理地址），使用第 8 节创建的账户登录：
 
 | 角色 | 学号 | 密码 |
 |------|------|------|
@@ -245,4 +246,4 @@ bioinfo-teaching-study/
 
 - **Author:** Songht
 - **Version:** 2.1
-- **Email:** songhongtao@bnu.edu.cn
+- **问题反馈:** https://github.com/song984888/bioinfo-teaching-study/issues

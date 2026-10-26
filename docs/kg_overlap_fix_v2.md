@@ -276,7 +276,7 @@ const bottomOffset2 = bottomOffset1 + 24;
 
 ## 📁 修改文件
 
-**文件**：[`templates/teacher/knowledge_graph.html`](file:///Users/songhongtao/Downloads/code_exam_web/templates/teacher/knowledge_graph.html)
+**文件**：[`templates/teacher/knowledge_graph.html`](templates/teacher/knowledge_graph.html)
 
 **修改行数**：
 - 第 357-381 行：边距和间距系数优化

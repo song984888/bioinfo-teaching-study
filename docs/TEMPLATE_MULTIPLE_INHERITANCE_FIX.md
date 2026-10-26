@@ -263,7 +263,7 @@ head -5 templates/teacher/view_knowledge_base.html
 - 网络请求详情
 - 后端日志
 
-发送至：songhongtao@bnu.edu.cn
+提交至 GitHub Issues：https://github.com/song984888/bioinfo-teaching-study/issues
 
 ---
 

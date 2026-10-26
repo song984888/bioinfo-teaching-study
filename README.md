@@ -218,4 +218,5 @@ python app.py
 ## 联系方式
 
 - GitHub: https://github.com/song984888/bioinfo-teaching-study
-- 维护者: song984888 <307852487@qq.com>
+- 维护者: [@song984888](https://github.com/song984888)
+- 问题反馈: https://github.com/song984888/bioinfo-teaching-study/issues

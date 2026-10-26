@@ -266,7 +266,7 @@ document.getElementById('addConceptForm').addEventListener('submit', async funct
 ### 方法 1: 使用测试脚本
 
 ```bash
-cd /Users/songhongtao/Downloads/code_exam_web
+cd <项目根目录>
 python test_concept_management.py
 ```
 
@@ -411,5 +411,4 @@ python test_concept_management.py
 3. 验证用户权限
 4. 确认数据库连接正常
 
-**开发团队联系方式：**
-- Email: songhongtao@bnu.edu.cn
+**问题反馈：** https://github.com/song984888/bioinfo-teaching-study/issues

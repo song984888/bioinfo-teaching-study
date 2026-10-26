@@ -39,7 +39,7 @@ cursor.execute("""
 **根本原因**：
 1. 精确匹配概念时，只记录了位置，没有统计出现次数
 2. TF-IDF 提取的候选词虽然有 `freq` 变量，但保存时没有写入数据库
-3. INSERT 语句缺少 `frequency` 和 [size](file:///Users/songhongtao/Downloads/code_exam_web/src/chart.js#L1233-L1233) 字段
+3. INSERT 语句缺少 `frequency` 和 [size](src/chart.js#L1233-L1233) 字段
 
 ### 2. 数据库表结构（正常）
 

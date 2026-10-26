@@ -2,11 +2,11 @@
 
 ## 📋 问题描述
 
-在 [`app.py`](file:///Users/songhongtao/Downloads/code_exam_web/app.py) 的 `register_user` 函数中，密码以**明文形式**存储到数据库，而不是使用 SHA256 哈希，导致与系统其他部分的密码验证机制不一致。
+在 [`app.py`](app.py) 的 `register_user` 函数中，密码以**明文形式**存储到数据库，而不是使用 SHA256 哈希，导致与系统其他部分的密码验证机制不一致。
 
 ## 🔍 问题位置
 
-**文件**: `/Users/songhongtao/Downloads/code_exam_web/app.py`  
+**文件**: `<项目根目录>/app.py`  
 **函数**: `register_user` (约第 2698-2724 行)  
 **路由**: `@app.route('/register', methods=['POST'])`
 
@@ -112,7 +112,7 @@ print("✓ 密码哈希已修复！")
 
 然后执行：
 ```bash
-cd /Users/songhongtao/Downloads/code_exam_web
+cd <项目根目录>
 python fix_register_password.py
 python -m py_compile app.py
 ```
@@ -140,7 +140,7 @@ python -m py_compile app.py
 
 ### 为什么使用 SHA256？
 
-1. **系统一致性**: 系统的 [`authenticate_user`](file:///Users/songhongtao/Downloads/code_exam_web/app.py#L703-L728) 函数使用 SHA256 验证密码
+1. **系统一致性**: 系统的 [`authenticate_user`](app.py#L703-L728) 函数使用 SHA256 验证密码
 2. **安全性**: 虽然 SHA256 不是最安全的密码哈希算法（bcrypt/argon2 更好），但对于教学系统足够
 3. **简单性**: Python 内置支持，无需额外依赖
 
@@ -153,20 +153,20 @@ python -m py_compile app.py
 ### 其他相关修复
 
 已修复的相关工具：
-- ✓ [`tools/user_add.pl`](file:///Users/songhongtao/Downloads/code_exam_web/tools/user_add.pl) - Perl 批量创建脚本
-- ✓ [`tools/batch_create_students.py`](file:///Users/songhongtao/Downloads/code_exam_web/tools/batch_create_students.py) - Python 批量创建脚本  
-- ✓ [`tools/fix_student_passwords.py`](file:///Users/songhongtao/Downloads/code_exam_web/tools/fix_student_passwords.py) - 密码修复工具
+- ✓ [`tools/user_add.pl`](tools/user_add.pl) - Perl 批量创建脚本
+- ✓ [`tools/batch_create_students.py`](tools/batch_create_students.py) - Python 批量创建脚本  
+- ✓ [`tools/fix_student_passwords.py`](tools/fix_student_passwords.py) - 密码修复工具
 
 ## ⚠️ 注意事项
 
-1. **已有账号**: 修复前已创建的账号密码是明文，需要运行 [`tools/fix_student_passwords.py`](file:///Users/songhongtao/Downloads/code_exam_web/tools/fix_student_passwords.py) 批量修复
+1. **已有账号**: 修复前已创建的账号密码是明文，需要运行 [`tools/fix_student_passwords.py`](tools/fix_student_passwords.py) 批量修复
 2. **备份**: 修改前务必备份 `app.py`
 3. **测试**: 修改后先在测试环境验证
 
 ## 📞 技术支持
 
-如有问题，请联系：
-- Email: songhongtao@bnu.edu.cn
+如有问题，请通过 GitHub Issues 反馈：
+- https://github.com/song984888/bioinfo-teaching-study/issues
 
 ---
 

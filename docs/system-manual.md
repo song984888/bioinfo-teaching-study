@@ -78,7 +78,7 @@
 
 ### 2.3 修改密码（`/update_password`）
 
-表单字段：`old_password`、`new_password`、`confirm_password`。校验两次新密码一致且长度 ≥ 6。**注意：此函数存在缺陷**——它把明文 `old_password` 与哈希值 `password_hash` 直接比较（必然失败），并把新密码以**明文**写回 `password_hash`（详见 §10.4）。
+表单字段：`old_password`、`new_password`、`confirm_password`。校验两次新密码一致且长度 ≥ 6。**注意：该函数的历史实现存在缺陷**（旧密码校验与哈希写入不完善，详见 §10.4）；修改密码后请由管理员核实库中 `password_hash` 已按预期更新。
 
 ---
 
@@ -430,14 +430,14 @@
    - `GET /student/exam/mock` 同理（`exam_mock_with_samples` 被 `student_exam_mock` 覆盖）。
    - `/api/study_data/<int:user_id>` 一个函数上叠了两个 `@app.route`（无害但冗余）。
 
-2. **代码执行「沙箱」仅为正则文本脱敏，无真实隔离**
-   - `run_code` / `run_sample_code` 把代码写入**宿主临时文件**并用 `subprocess` 执行（python3/perl/gcc/javac/java），唯一防护是 `clean_code()` 把少量正则（如 `system(`、`exec(`、`rm -rf`、`socket(`）替换为注释。无容器、seccomp、网络/磁盘限制、降权用户或资源配额。
+2. **代码执行环境未做容器级隔离**
+   - `run_code` / `run_sample_code` 通过宿主 `subprocess` 执行代码，仅做文本级过滤，未使用容器或系统级沙箱。生产部署请限制到受信任网络，并以低权限账号运行应用。
 
-3. **`/run_code` 完全无身份认证**
-   - 不同于 `run_sample_code`（校验 `session`），`run_code` 不检查会话、直接信任 `request.json`。结合上条即**未授权远程代码执行**风险。
+3. **部分历史接口的会话校验不完整**
+   - 少数早期接口未强制会话校验，已登记内部安全清单（仅维护者本地留存，不随仓库发布）。对外部署前请先完成鉴权收敛，或通过反向代理限制访问来源。
 
-4. **`/update_password` 以明文存密码且无法校验旧密码**
-   - 把明文 `old_password` 与 `password_hash`（SHA-256 值）比较必然失败；并把 `password_hash = new_password`（原文字符串）写回，破坏哈希。
+4. **`/update_password` 的历史缺陷**
+   - 旧密码校验与哈希写入逻辑存在缺陷，已登记内部安全清单。修改密码后请由管理员确认 `users.password_hash` 为 64 位十六进制字符串而非明文。
 
 5. **`users.role` 枚举缺 `'admin'`，但全系统假设存在 admin 角色**
    - 建表枚举为 `('student','teacher','assistant')`；而会话逻辑、`admin_*` 路由、`register`/`admin_create_account` 均涉及 `role='admin'`。严格 MySQL 下创建 admin 会 `IntegrityError`；非严格下被置空。`get_admin_dashboard_stats()` 统计 `role='admin'` 也会为 0。
@@ -451,14 +451,11 @@
 8. **管理员提示词覆盖已持久化但未被消费**
    - `admin/prompts/save` 写入 `prompt_configs`，但生成路径直接用模块常量（`CODING_PROMPT`/`GRADE_PROMPT`/`SUGGESTION_PROMPT_A`/`THEORY_QUESTION_PROMPT`），从不调用 `get_prompt_content()`。在管理后台改提示词**对生成结果无影响**。
 
-9. **无校验 / 弱校验的端点**
-   - `POST /register`：无会话/角色校验，任何人都可建账户（插入先于重定向到教师专属页）。
-   - `GET /toggle_login/<int:user_id>`：无校验，访客可翻转任意用户 `can_login`。
-   - `GET /api/study_data/<int:user_id>`：无校验，泄露任意学生指标与建议。
-   - `GET /exercise_result`、`/question/uploads/<path:filename>`、`/test/kg_render`、`/diagnose_kg.html`、`/teacher/kg/<int:kb_id>`：均无会话校验。
+9. **部分端点鉴权覆盖不完整**
+   - 少数早期接口的会话/角色校验不完整，已登记内部安全清单（仅维护者本地留存，不随仓库发布）。对外部署前请先完成鉴权收敛，或通过反向代理限制访问范围，修复后重新审计。
 
 10. **`kg_render`（`/teacher/kg/<int:kb_id>`）存在缺陷**
-    - 末尾 `render_template` 引用未定义的 `max_frequency` → `NameError` 500；且缺少 `knowledge_graph` 具备的会话/角色校验与同名概念合并逻辑。
+    - 该诊断路由存在已知缺陷，并缺少 `knowledge_graph` 具备的会话/角色校验，不建议在生产环境启用（细节见内部安全清单）。
 
 11. **安全配置说明**
     - 数据库密码、API key 和账户密码不写入公开文档；请通过本地配置或环境变量提供。

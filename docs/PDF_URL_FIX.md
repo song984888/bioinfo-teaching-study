@@ -91,5 +91,5 @@ uploads/knowledge_bases/18/ChatGPT_20260308143025.pdf
 
 ## 联系支持
 
-如果以上方法都无法解决问题，请联系系统管理员：
-- Email: songhongtao@bnu.edu.cn
+如果以上方法都无法解决问题，请通过 GitHub Issues 反馈给项目维护者：
+- https://github.com/song984888/bioinfo-teaching-study/issues

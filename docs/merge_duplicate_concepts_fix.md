@@ -54,7 +54,7 @@
 
 #### 实现细节
 
-修改文件：[`app.py`](file:///Users/songhongtao/Downloads/code_exam_web/app.py)
+修改文件：[`app.py`](app.py)
 
 修改位置：`knowledge_graph` 函数（第 3889-3920 行）
 
@@ -163,7 +163,7 @@ app.logger.info(f"知识库 {kb_id} 原始概念数量：{len(raw_concepts)}, �
 
 #### 工具脚本
 
-文件：[`merge_knowledge_concepts.py`](file:///Users/songhongtao/Downloads/code_exam_web/merge_knowledge_concepts.py)
+文件：[`merge_knowledge_concepts.py`](merge_knowledge_concepts.py)
 
 **功能**：
 1. 找出同一知识库中所有重复的概念
@@ -372,7 +372,7 @@ python merge_knowledge_concepts.py <kb_id>
 
 ### 1. 核心文件
 
-**文件**：[`app.py`](file:///Users/songhongtao/Downloads/code_exam_web/app.py)
+**文件**：[`app.py`](app.py)
 
 **修改位置**：
 - 第 3889-3920 行：`knowledge_graph` 函数中的概念合并逻辑
@@ -383,7 +383,7 @@ python merge_knowledge_concepts.py <kb_id>
 
 ### 2. 工具脚本
 
-**文件**：[`merge_knowledge_concepts.py`](file:///Users/songhongtao/Downloads/code_exam_web/merge_knowledge_concepts.py)
+**文件**：[`merge_knowledge_concepts.py`](merge_knowledge_concepts.py)
 
 **功能**：数据库级合并工具
 
@@ -396,7 +396,7 @@ python merge_knowledge_concepts.py <kb_id>
 
 ### 3. 文档
 
-**文件**：[`merge_duplicate_concepts_fix.md`](file:///Users/songhongtao/Downloads/code_exam_web/merge_duplicate_concepts_fix.md)
+**文件**：[`merge_duplicate_concepts_fix.md`](merge_duplicate_concepts_fix.md)
 
 **内容**：详细修复报告文档
 
@@ -524,8 +524,8 @@ cursor.execute("""
 
 ## 📞 技术支持
 
-如有问题，请联系：
-- 系统管理员邮箱：songhongtao@bnu.edu.cn
+如有问题，请通过 GitHub Issues 反馈：
+- https://github.com/song984888/bioinfo-teaching-study/issues
 
 ---
 

@@ -10,7 +10,7 @@ NameError: name 'high_quality_concepts' is not defined
 
 ### 错误堆栈
 ```
-File "/Users/songhongtao/Downloads/code_exam_web/app.py", line 4184, in extract_concepts
+File "<项目根目录>/app.py", line 4184, in extract_concepts
     for concept in high_quality_concepts:
                    ^^^^^^^^^^^^^^^^^^^^^
 NameError: name 'high_quality_concepts' is not defined
@@ -19,10 +19,10 @@ NameError: name 'high_quality_concepts' is not defined
 ## 🔍 问题分析
 
 ### 根本原因
-在 [`extract_concepts`](file:///Users/songhongtao/Downloads/code_exam_web/app.py#L4153-L4410) 函数中，代码尝试使用 `high_quality_concepts` 变量进行精确匹配，但该变量**未定义**。
+在 [`extract_concepts`](app.py#L4153-L4410) 函数中，代码尝试使用 `high_quality_concepts` 变量进行精确匹配，但该变量**未定义**。
 
 ### 问题代码位置
-- **文件**: [`app.py`](file:///Users/songhongtao/Downloads/code_exam_web/app.py)
+- **文件**: [`app.py`](app.py)
 - **行号**: 4184
 - **函数**: `extract_concepts(kb_id, doc_id)`
 
@@ -41,7 +41,7 @@ for concept in high_quality_concepts:  # ❌ 变量未定义
 ## ✅ 修复方案
 
 ### 解决方案
-在 [extract_concepts](file:///Users/songhongtao/Downloads/code_exam_web/app.py#L4159-L4368) 函数中，添加高质量专业概念词典的定义，包含多个领域的核心概念。
+在 [extract_concepts](app.py#L4159-L4368) 函数中，添加高质量专业概念词典的定义，包含多个领域的核心概念。
 
 ### 修复后的代码
 ```python
@@ -187,7 +187,7 @@ Python 语言特有的语法和最佳实践
 ## 📝 修改记录
 
 ### 文件修改
-- **文件**: [`app.py`](file:///Users/songhongtao/Downloads/code_exam_web/app.py)
+- **文件**: [`app.py`](app.py)
 - **函数**: `extract_concepts(kb_id, doc_id)`
 - **修改类型**: 添加变量定义
 - **代码行数**: +42 行
@@ -210,7 +210,7 @@ Python 语言特有的语法和最佳实践
 
 ## 🔗 相关文件
 
-- **主要文件**: [`app.py`](file:///Users/songhongtao/Downloads/code_exam_web/app.py#L4153-L4410)
+- **主要文件**: [`app.py`](app.py#L4153-L4410)
 - **数据库表**: `knowledge_concepts`
 - **前端页面**: `templates/teacher/knowledge_graph.html`
 
