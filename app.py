@@ -10560,10 +10560,10 @@ def preview_exam_paper(paper_id):
             return redirect(url_for('create_exam_paper'))
         
         import json
-        paper_a = json.loads(paper['paper_a_json'])
-        paper_b = json.loads(paper['paper_b_json'])
-        answer_a = json.loads(paper['answer_a_json'])
-        answer_b = json.loads(paper['answer_b_json'])
+        paper_a = json.loads(paper['paper_a_json'] or '[]')
+        paper_b = json.loads(paper['paper_b_json'] or '[]')
+        answer_a = json.loads(paper['answer_a_json'] or '[]')
+        answer_b = json.loads(paper['answer_b_json'] or '[]')
         
         return render_template('teacher/exam_paper_preview.html',
                              paper_id=paper_id,
@@ -10896,6 +10896,696 @@ def merge_concepts(ai_concepts, keyword_concepts):
             concept_dict[name] = concept
     
     return list(concept_dict.values())
+
+# ==================== 试卷制考试：教师发布 → 学生限时作答 → AI 评分 → 教师终审 ====================
+
+def ensure_exam_task_schema():
+    """幂等创建试卷制考试相关表，并为 users 增加班级字段。"""
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS exam_tasks (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                paper_id INT NOT NULL,
+                paper_type VARCHAR(2) NOT NULL DEFAULT 'A',
+                paper_name VARCHAR(200) DEFAULT NULL,
+                course_name VARCHAR(100) DEFAULT NULL,
+                title VARCHAR(200) NOT NULL,
+                start_at DATETIME NOT NULL,
+                end_at DATETIME NOT NULL,
+                duration_minutes INT NOT NULL DEFAULT 90,
+                total_score INT NOT NULL DEFAULT 100,
+                question_count INT NOT NULL DEFAULT 0,
+                created_by VARCHAR(50) DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                status VARCHAR(20) NOT NULL DEFAULT 'published',
+                KEY idx_exam_tasks_creator (created_by),
+                KEY idx_exam_tasks_window (start_at, end_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS exam_task_students (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                task_id INT NOT NULL,
+                employee_id VARCHAR(50) NOT NULL,
+                student_name VARCHAR(100) DEFAULT NULL,
+                class_name VARCHAR(100) DEFAULT NULL,
+                assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_task_student (task_id, employee_id),
+                KEY idx_task_students_emp (employee_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS exam_attempts (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                task_id INT NOT NULL,
+                employee_id VARCHAR(50) NOT NULL,
+                answers_json LONGTEXT,
+                ai_detail_json LONGTEXT,
+                ai_total INT DEFAULT NULL,
+                ai_comment TEXT,
+                ai_progress INT NOT NULL DEFAULT 0,
+                ai_graded_at DATETIME DEFAULT NULL,
+                teacher_detail_json LONGTEXT,
+                teacher_total INT DEFAULT NULL,
+                teacher_comment TEXT,
+                status VARCHAR(20) NOT NULL DEFAULT 'in_progress',
+                started_at DATETIME DEFAULT NULL,
+                submitted_at DATETIME DEFAULT NULL,
+                reviewed_by VARCHAR(50) DEFAULT NULL,
+                reviewed_at DATETIME DEFAULT NULL,
+                UNIQUE KEY uniq_task_attempt (task_id, employee_id),
+                KEY idx_attempt_task (task_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        cursor.execute("""
+            SELECT COUNT(*) FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'class_name'
+        """)
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("ALTER TABLE users ADD COLUMN class_name VARCHAR(100) DEFAULT NULL")
+        conn.commit()
+    except Exception:
+        app.logger.exception('初始化试卷考试表失败')
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+ensure_exam_task_schema()
+
+EXAM_ATTEMPT_STATUS_TEXT = {
+    'in_progress': '作答中',
+    'grading': 'AI 评分中',
+    'ai_graded': '待教师终审',
+    'reviewed': '已终审',
+    'grading_failed': 'AI 评分失败',
+}
+
+
+def _teacher_required():
+    return 'user_id' in session and session.get('role') in ('teacher', 'admin')
+
+
+def _student_required():
+    return 'user_id' in session and session.get('role') == 'student'
+
+
+def _parse_dt_local(value, fallback=None):
+    value = (value or '').strip()
+    if not value:
+        return fallback
+    for fmt in ('%Y-%m-%dT%H:%M', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M'):
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+    return fallback
+
+
+def _paper_questions(paper_row, paper_type):
+    key = 'paper_a_json' if (paper_type or 'A').upper() == 'A' else 'paper_b_json'
+    try:
+        data = json.loads(paper_row.get(key) or '[]')
+        return data if isinstance(data, list) else []
+    except (TypeError, ValueError):
+        return []
+
+
+def _exam_window_state(task, attempt=None):
+    """返回 (状态键, 中文说明, 可作答秒数)。"""
+    now = datetime.now()
+    start_at = task['start_at']
+    end_at = task['end_at']
+    if attempt and attempt.get('submitted_at'):
+        return 'submitted', '已交卷', 0
+    if now < start_at:
+        return 'pending', '未开始', 0
+    if now > end_at:
+        return 'expired', '已结束', 0
+    limit = end_at
+    if attempt and attempt.get('started_at'):
+        limit = min(limit, attempt['started_at'] + timedelta(minutes=int(task.get('duration_minutes') or 90)))
+    if now >= limit:
+        return 'timeout', '作答时间已用尽', 0
+    return 'open', '进行中', int((min(limit, end_at) - now).total_seconds())
+
+
+def _grade_exam_attempt(attempt_id, task_id):
+    """后台线程：逐题调用 AI 评分，写入 ai_detail_json / ai_total / 状态。"""
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM exam_tasks WHERE id = %s", (task_id,))
+        task = cursor.fetchone()
+        cursor.execute("SELECT * FROM exam_papers WHERE id = %s", (task['paper_id'],))
+        paper = cursor.fetchone()
+        cursor.execute("SELECT * FROM exam_attempts WHERE id = %s", (attempt_id,))
+        attempt = cursor.fetchone()
+        if not (task and paper and attempt):
+            return
+        questions = _paper_questions(paper, task['paper_type'])
+        try:
+            answers = json.loads(attempt['answers_json'] or '{}')
+        except (TypeError, ValueError):
+            answers = {}
+        details = []
+        total = 0.0
+        max_total = 0.0
+        for idx, q in enumerate(questions):
+            max_score = float(q.get('score') or 10)
+            max_total += max_score
+            student_answer = str(answers.get(str(idx), '') or '').strip()
+            if not student_answer:
+                details.append({
+                    'index': idx, 'question_text': q.get('question_text', ''),
+                    'type_name': q.get('type_name') or ('程序设计题' if q.get('question_type') == 'programming' else '理论题'),
+                    'language': q.get('language') or '', 'answer': '',
+                    'max_score': max_score, 'ai_score': 0.0,
+                    'ai_comment': '未作答，AI 评分 0 分。',
+                })
+            else:
+                is_programming = (q.get('question_type') in ('programming', 'coding')) or bool(q.get('language'))
+                try:
+                    if is_programming:
+                        res = auto_grade(q.get('id'), q.get('question_text', ''), q.get('sample_answer', ''),
+                                         student_answer, q.get('language') or 'python')
+                        raw = float(res.get('score') or 0)
+                        score = round(min(100.0, max(0.0, raw)) / 100.0 * max_score, 1)
+                    else:
+                        res = auto_grade_theory(q.get('question_text', ''), q.get('sample_answer', ''),
+                                                student_answer, q.get('grading_criteria') or '', max_score=max_score)
+                        score = round(min(max_score, max(0.0, float(res.get('score') or 0))), 1)
+                    comment = res.get('comment') or ''
+                    details.append({
+                        'index': idx, 'question_text': q.get('question_text', ''),
+                        'type_name': q.get('type_name') or ('程序设计题' if is_programming else '理论题'),
+                        'language': q.get('language') or '', 'answer': student_answer,
+                        'max_score': max_score, 'ai_score': score, 'ai_comment': comment,
+                    })
+                except Exception as exc:  # 单题失败不影响整卷
+                    app.logger.exception('考试题目 AI 评分失败 attempt=%s idx=%s', attempt_id, idx)
+                    details.append({
+                        'index': idx, 'question_text': q.get('question_text', ''),
+                        'type_name': q.get('type_name') or '题目', 'language': q.get('language') or '',
+                        'answer': student_answer, 'max_score': max_score, 'ai_score': 0.0,
+                        'ai_comment': f'AI 评分失败，需教师人工评定（{type(exc).__name__}）。',
+                    })
+            total += details[-1]['ai_score']
+            cursor.execute("UPDATE exam_attempts SET ai_progress = %s WHERE id = %s", (idx + 1, attempt_id))
+            conn.commit()
+
+        rounded_total = round(total, 1)
+        summary = f'AI 自动评分完成：{rounded_total:.0f}/{max_total:.0f} 分，共 {len(details)} 题。'
+        cursor.execute("""
+            UPDATE exam_attempts
+               SET ai_detail_json = %s, ai_total = %s, ai_comment = %s,
+                   ai_graded_at = NOW(), ai_progress = %s, status = 'ai_graded'
+             WHERE id = %s
+        """, (json.dumps(details, ensure_ascii=False), int(round(rounded_total)), summary,
+              len(details), attempt_id))
+        conn.commit()
+    except Exception:
+        app.logger.exception('考试整卷 AI 评分失败 attempt=%s', attempt_id)
+        try:
+            if conn and cursor:
+                cursor.execute("UPDATE exam_attempts SET status = 'grading_failed' WHERE id = %s", (attempt_id,))
+                conn.commit()
+        except Exception:
+            pass
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.route('/teacher/exam_task/publish/<int:paper_id>', methods=['GET', 'POST'])
+def publish_exam_task(paper_id):
+    if not _teacher_required():
+        return redirect(url_for('login'))
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT * FROM exam_papers WHERE id = %s", (paper_id,))
+        paper = cursor.fetchone()
+        if not paper:
+            flash('试卷不存在', 'danger')
+            return redirect(url_for('paper_management'))
+
+        if request.method == 'POST':
+            title = (request.form.get('title') or '').strip() or paper['paper_name']
+            paper_type = (request.form.get('paper_type') or 'A').upper()
+            if paper_type not in ('A', 'B'):
+                paper_type = 'A'
+            duration = request.form.get('duration_minutes') or paper.get('exam_duration') or 90
+            try:
+                duration = max(5, min(300, int(duration)))
+            except (TypeError, ValueError):
+                duration = 90
+            start_at = _parse_dt_local(request.form.get('start_at'))
+            end_at = _parse_dt_local(request.form.get('end_at'))
+            employee_ids = [e.strip() for e in request.form.getlist('employee_ids') if e.strip()]
+
+            error = None
+            if not start_at or not end_at:
+                error = '请填写完整的考试开始与结束时间'
+            elif end_at <= start_at:
+                error = '结束时间必须晚于开始时间'
+            elif not employee_ids:
+                error = '请至少勾选一名参考学生'
+
+            questions = _paper_questions(paper, paper_type)
+            if not questions:
+                error = error or f'所选试卷（{paper_type} 卷）没有题目，无法发布'
+
+            if error:
+                flash(error, 'danger')
+            else:
+                cursor.execute("""
+                    INSERT INTO exam_tasks
+                        (paper_id, paper_type, paper_name, course_name, title, start_at, end_at,
+                         duration_minutes, total_score, question_count, created_by, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'published')
+                """, (paper_id, paper_type, paper['paper_name'], paper['course_name'], title,
+                      start_at, end_at, duration, int(paper.get('total_score') or 100),
+                      len(questions), session['user_id']))
+                task_id = cursor.lastrowid
+                cursor.execute(
+                    "SELECT employee_id, name, IFNULL(class_name, '') AS class_name FROM users WHERE employee_id IN (%s)"
+                    % ','.join(['%s'] * len(employee_ids)), tuple(employee_ids))
+                roster = cursor.fetchall()
+                for stu in roster:
+                    cursor.execute("""
+                        INSERT IGNORE INTO exam_task_students (task_id, employee_id, student_name, class_name)
+                        VALUES (%s, %s, %s, %s)
+                    """, (task_id, stu['employee_id'], stu['name'], stu['class_name']))
+                conn.commit()
+                flash(f'考试已发布给 {len(roster)} 名学生', 'success')
+                return redirect(url_for('exam_task_detail', task_id=task_id))
+
+        students = []
+        cursor.execute("""
+            SELECT employee_id, name, IFNULL(class_name, '') AS class_name
+            FROM users WHERE role = 'student' AND can_login = 1
+            ORDER BY employee_id
+        """)
+        students = cursor.fetchall()
+        for stu in students:
+            stu['grade'] = (stu['employee_id'] or '')[:4]
+        classes = sorted({s['class_name'] for s in students if s['class_name']})
+        grades = sorted({s['grade'] for s in students if s['grade']})
+        questions = _paper_questions(paper, 'A')
+        b_questions = _paper_questions(paper, 'B')
+        return render_template('teacher/exam_task_publish.html',
+                               paper=paper, students=students, classes=classes, grades=grades,
+                               question_count=len(questions),
+                               a_count=len(questions), b_count=len(b_questions),
+                               default_start=datetime.now().strftime('%Y-%m-%dT%H:%M'),
+                               default_end=(datetime.now() + timedelta(days=7)).strftime('%Y-%m-%dT%H:%M'))
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/teacher/students/set_class', methods=['POST'])
+def set_students_class():
+    if not _teacher_required():
+        return redirect(url_for('login'))
+    class_name = (request.form.get('class_name') or '').strip()
+    employee_ids = [e.strip() for e in request.form.getlist('employee_ids') if e.strip()]
+    back = request.form.get('return_to') or url_for('paper_management')
+    if not class_name or not employee_ids:
+        flash('请先勾选学生并填写班级名称', 'warning')
+        return redirect(back)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE users SET class_name = %%s WHERE role = 'student' AND employee_id IN (%s)"
+            % ','.join(['%s'] * len(employee_ids)),
+            tuple([class_name] + employee_ids))
+        conn.commit()
+        flash(f'已将 {cursor.rowcount} 名学生归入班级「{class_name}」', 'success')
+    finally:
+        cursor.close()
+        conn.close()
+    return redirect(back)
+
+
+@app.route('/teacher/exam_tasks')
+def exam_tasks():
+    if not _teacher_required():
+        return redirect(url_for('login'))
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT t.*,
+                   (SELECT COUNT(*) FROM exam_task_students s WHERE s.task_id = t.id) AS assigned_count,
+                   (SELECT COUNT(*) FROM exam_attempts a WHERE a.task_id = t.id AND a.submitted_at IS NOT NULL) AS submitted_count,
+                   (SELECT COUNT(*) FROM exam_attempts a WHERE a.task_id = t.id AND a.status = 'reviewed') AS reviewed_count
+              FROM exam_tasks t
+             WHERE t.created_by = %s
+             ORDER BY t.created_at DESC
+        """, (session['user_id'],))
+        tasks = cursor.fetchall()
+        now = datetime.now()
+        for t in tasks:
+            t['window_text'] = '未开始' if now < t['start_at'] else ('已结束' if now > t['end_at'] else '进行中')
+        return render_template('teacher/exam_tasks.html', tasks=tasks)
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/teacher/exam_task/<int:task_id>')
+def exam_task_detail(task_id):
+    if not _teacher_required():
+        return redirect(url_for('login'))
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT * FROM exam_tasks WHERE id = %s", (task_id,))
+        task = cursor.fetchone()
+        if not task:
+            flash('考试任务不存在', 'danger')
+            return redirect(url_for('exam_tasks'))
+        cursor.execute("""
+            SELECT s.employee_id, s.student_name, s.class_name, a.id AS attempt_id, a.status,
+                   a.ai_total, a.teacher_total, a.submitted_at, a.ai_progress
+              FROM exam_task_students s
+              LEFT JOIN exam_attempts a ON a.task_id = s.task_id AND a.employee_id = s.employee_id
+             WHERE s.task_id = %s
+             ORDER BY s.employee_id
+        """, (task_id,))
+        roster = cursor.fetchall()
+        for row in roster:
+            row['status_text'] = EXAM_ATTEMPT_STATUS_TEXT.get(row['status'], '未作答') if row['status'] else '未作答'
+        stats = {
+            'assigned': len(roster),
+            'submitted': sum(1 for r in roster if r['submitted_at']),
+            'reviewed': sum(1 for r in roster if r['status'] == 'reviewed'),
+        }
+        return render_template('teacher/exam_task_detail.html', task=task, roster=roster, stats=stats)
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/teacher/exam_attempt/<int:attempt_id>/review', methods=['GET', 'POST'])
+def review_exam_attempt(attempt_id):
+    if not _teacher_required():
+        return redirect(url_for('login'))
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT a.*, t.title, t.total_score, t.paper_id, t.paper_type, t.duration_minutes,
+                   s.student_name, s.class_name
+              FROM exam_attempts a
+              JOIN exam_tasks t ON t.id = a.task_id
+              LEFT JOIN exam_task_students s ON s.task_id = a.task_id AND s.employee_id = a.employee_id
+             WHERE a.id = %s
+        """, (attempt_id,))
+        attempt = cursor.fetchone()
+        if not attempt:
+            flash('答卷不存在', 'danger')
+            return redirect(url_for('exam_tasks'))
+
+        try:
+            ai_details = json.loads(attempt['ai_detail_json'] or '[]')
+        except (TypeError, ValueError):
+            ai_details = []
+        try:
+            teacher_details = json.loads(attempt['teacher_detail_json'] or '[]')
+        except (TypeError, ValueError):
+            teacher_details = []
+        teacher_scores = {int(d.get('index', -1)): d.get('teacher_score') for d in teacher_details
+                          if d.get('teacher_score') is not None}
+
+        if request.method == 'POST':
+            if not ai_details:
+                flash('AI 评分尚未完成，请稍后再终审', 'warning')
+                return redirect(url_for('review_exam_attempt', attempt_id=attempt_id))
+            merged = []
+            total = 0.0
+            for item in ai_details:
+                idx = int(item.get('index', 0))
+                max_score = float(item.get('max_score') or 0)
+                raw = request.form.get(f'teacher_score_{idx}')
+                try:
+                    score = float(raw)
+                except (TypeError, ValueError):
+                    score = float(item.get('ai_score') or 0)
+                score = max(0.0, min(max_score, score))
+                total += score
+                merged.append({
+                    'index': idx, 'question_text': item.get('question_text', ''),
+                    'type_name': item.get('type_name', ''), 'answer': item.get('answer', ''),
+                    'max_score': max_score, 'ai_score': item.get('ai_score'),
+                    'ai_comment': item.get('ai_comment', ''), 'teacher_score': round(score, 1),
+                })
+            comment = (request.form.get('teacher_comment') or '').strip()
+            cursor.execute("""
+                UPDATE exam_attempts
+                   SET teacher_detail_json = %s, teacher_total = %s, teacher_comment = %s,
+                       status = 'reviewed', reviewed_by = %s, reviewed_at = NOW()
+                 WHERE id = %s
+            """, (json.dumps(merged, ensure_ascii=False), int(round(total)), comment,
+                  session['user_id'], attempt_id))
+            conn.commit()
+            flash(f'终审完成，最终得分 {total:.0f}/{attempt["total_score"]}', 'success')
+            return redirect(url_for('exam_task_detail', task_id=attempt['task_id']))
+
+        return render_template('teacher/exam_attempt_review.html', attempt=attempt,
+                               ai_details=ai_details, teacher_scores=teacher_scores)
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/teacher/exam_task/<int:task_id>/close', methods=['POST'])
+def close_exam_task(task_id):
+    if not _teacher_required():
+        return redirect(url_for('login'))
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE exam_tasks SET end_at = NOW() WHERE id = %s AND created_by = %s",
+                       (task_id, session['user_id']))
+        conn.commit()
+        flash('考试已提前结束', 'success')
+    finally:
+        cursor.close()
+        conn.close()
+    return redirect(url_for('exam_task_detail', task_id=task_id))
+
+
+@app.route('/student/exam_tasks')
+def student_exam_tasks():
+    if not _student_required():
+        return redirect(url_for('login'))
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT t.*, s.class_name, a.id AS attempt_id, a.status, a.ai_total, a.teacher_total,
+                   a.submitted_at, a.ai_progress, a.started_at
+              FROM exam_task_students s
+              JOIN exam_tasks t ON t.id = s.task_id
+              LEFT JOIN exam_attempts a ON a.task_id = t.id AND a.employee_id = s.employee_id
+             WHERE s.employee_id = %s AND t.status = 'published'
+             ORDER BY t.start_at DESC
+        """, (session['user_id'],))
+        tasks = cursor.fetchall()
+        for t in tasks:
+            state, text, left = _exam_window_state(t, t)
+            t['window_state'] = state
+            t['window_text'] = text
+            t['status_text'] = EXAM_ATTEMPT_STATUS_TEXT.get(t['status']) if t['status'] else '未作答'
+        return render_template('student_exam_tasks.html', tasks=tasks)
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/student/exam_task/<int:task_id>', methods=['GET', 'POST'])
+def student_exam_task(task_id):
+    if not _student_required():
+        return redirect(url_for('login'))
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT t.*, s.student_name
+              FROM exam_task_students s JOIN exam_tasks t ON t.id = s.task_id
+             WHERE t.id = %s AND s.employee_id = %s
+        """, (task_id, session['user_id']))
+        task = cursor.fetchone()
+        if not task:
+            abort(403)
+        cursor.execute("SELECT * FROM exam_attempts WHERE task_id = %s AND employee_id = %s",
+                       (task_id, session['user_id']))
+        attempt = cursor.fetchone()
+
+        if attempt and attempt['submitted_at']:
+            return redirect(url_for('student_exam_task_result', task_id=task_id))
+
+        state, state_text, remaining = _exam_window_state(task, attempt)
+        if state in ('pending', 'expired'):
+            flash(f'当前不可作答：{state_text}', 'warning')
+            return redirect(url_for('student_exam_tasks'))
+        if state == 'timeout':
+            flash('作答时间已用尽，未交卷的答案未被记录', 'danger')
+            return redirect(url_for('student_exam_tasks'))
+
+        cursor.execute("SELECT * FROM exam_papers WHERE id = %s", (task['paper_id'],))
+        paper = cursor.fetchone()
+        questions = _paper_questions(paper, task['paper_type'])
+
+        if request.method == 'POST':
+            if datetime.now() > task['end_at']:
+                flash('考试已结束，无法提交', 'danger')
+                return redirect(url_for('student_exam_tasks'))
+            answers = {}
+            for idx in range(len(questions)):
+                answers[str(idx)] = (request.form.get(f'answer_{idx}') or '').strip()
+            if not any(answers.values()):
+                flash('请至少完成一道题后再交卷', 'warning')
+            else:
+                if attempt:
+                    cursor.execute("""
+                        UPDATE exam_attempts
+                           SET answers_json = %s, status = 'grading', submitted_at = NOW(), ai_progress = 0
+                         WHERE id = %s
+                    """, (json.dumps(answers, ensure_ascii=False), attempt['id']))
+                    attempt_id = attempt['id']
+                else:
+                    cursor.execute("""
+                        INSERT INTO exam_attempts (task_id, employee_id, answers_json, status, started_at, submitted_at)
+                        VALUES (%s, %s, %s, 'grading', NOW(), NOW())
+                    """, (task_id, session['user_id'], json.dumps(answers, ensure_ascii=False)))
+                    attempt_id = cursor.lastrowid
+                conn.commit()
+                threading.Thread(target=_grade_exam_attempt, args=(attempt_id, task_id), daemon=True).start()
+                flash('交卷成功，AI 正在评分，可稍后查看结果', 'success')
+                return redirect(url_for('student_exam_task_result', task_id=task_id))
+
+        saved = {}
+        if attempt and attempt['answers_json']:
+            try:
+                saved = json.loads(attempt['answers_json'])
+            except (TypeError, ValueError):
+                saved = {}
+        for idx, q in enumerate(questions):
+            q['index'] = idx
+            q['saved_answer'] = saved.get(str(idx), '')
+            q.pop('sample_answer', None)
+            q.pop('grading_criteria', None)
+
+        if not attempt:
+            cursor.execute("""
+                INSERT INTO exam_attempts (task_id, employee_id, answers_json, status, started_at)
+                VALUES (%s, %s, '{}', 'in_progress', NOW())
+            """, (task_id, session['user_id']))
+            conn.commit()
+            attempt = {'started_at': datetime.now(), 'answers_json': '{}'}
+            state, state_text, remaining = _exam_window_state(task, attempt)
+
+        return render_template('student_exam_task_take.html', task=task, questions=questions,
+                               remaining_seconds=remaining, attempt=attempt)
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/student/exam_task/<int:task_id>/autosave', methods=['POST'])
+def student_exam_task_autosave(task_id):
+    if not _student_required():
+        return jsonify({'ok': False, 'message': '未登录'}), 401
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT t.end_at, a.id, a.submitted_at FROM exam_task_students s
+              JOIN exam_tasks t ON t.id = s.task_id
+              LEFT JOIN exam_attempts a ON a.task_id = t.id AND a.employee_id = s.employee_id
+             WHERE t.id = %s AND s.employee_id = %s
+        """, (task_id, session['user_id']))
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({'ok': False, 'message': '无权访问'}), 403
+        if row['submitted_at']:
+            return jsonify({'ok': False, 'message': '已交卷'}), 400
+        if datetime.now() > row['end_at']:
+            return jsonify({'ok': False, 'message': '考试已结束'}), 400
+        payload = request.get_json(silent=True) or {}
+        answers = payload.get('answers') or {}
+        answers = {str(k): str(v) for k, v in answers.items()}
+        if row['id']:
+            cursor.execute("UPDATE exam_attempts SET answers_json = %s WHERE id = %s",
+                           (json.dumps(answers, ensure_ascii=False), row['id']))
+        else:
+            cursor.execute("""
+                INSERT INTO exam_attempts (task_id, employee_id, answers_json, status, started_at)
+                VALUES (%s, %s, %s, 'in_progress', NOW())
+            """, (task_id, session['user_id'], json.dumps(answers, ensure_ascii=False)))
+        conn.commit()
+        return jsonify({'ok': True})
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/student/exam_task/<int:task_id>/result')
+def student_exam_task_result(task_id):
+    if not _student_required():
+        return redirect(url_for('login'))
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT t.*, s.student_name FROM exam_task_students s JOIN exam_tasks t ON t.id = s.task_id
+             WHERE t.id = %s AND s.employee_id = %s
+        """, (task_id, session['user_id']))
+        task = cursor.fetchone()
+        if not task:
+            abort(403)
+        cursor.execute("SELECT * FROM exam_attempts WHERE task_id = %s AND employee_id = %s",
+                       (task_id, session['user_id']))
+        attempt = cursor.fetchone()
+        if not attempt or not attempt['submitted_at']:
+            flash('你还没有交卷', 'warning')
+            return redirect(url_for('student_exam_task', task_id=task_id))
+
+        def load(raw):
+            try:
+                data = json.loads(raw or '[]')
+                return data if isinstance(data, list) else []
+            except (TypeError, ValueError):
+                return []
+
+        ai_details = load(attempt['ai_detail_json'])
+        teacher_details = load(attempt['teacher_detail_json'])
+        teacher_map = {int(d.get('index', -1)): d for d in teacher_details}
+        for item in ai_details:
+            matched = teacher_map.get(int(item.get('index', -1)))
+            item['teacher_score'] = matched.get('teacher_score') if matched else None
+        return render_template('student_exam_task_result.html', task=task, attempt=attempt,
+                               ai_details=ai_details, total_questions=task['question_count'],
+                               status_text=EXAM_ATTEMPT_STATUS_TEXT.get(attempt['status'], attempt['status']))
+    finally:
+        cursor.close()
+        conn.close()
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000,debug=True)

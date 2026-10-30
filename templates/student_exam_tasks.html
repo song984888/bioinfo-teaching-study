@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}我的考试{% endblock %}
+
+{% block content %}
+<div class="wrap">
+    <div class="page-head">
+        <div>
+            <h1>📋 我的考试</h1>
+            <p class="subtitle">教师发布的整卷考试：限时作答，交卷后先由 AI 评分，再由教师终审，两份评价都能看到。</p>
+        </div>
+        <a class="btn ghost" href="{{ url_for('dashboard') }}">← 返回学习中心</a>
+    </div>
+
+    {% if not tasks %}
+    <div class="empty">
+        <h3>暂时没有待参加的考试</h3>
+        <p>教师发布考试后，这里会自动出现考试安排。</p>
+    </div>
+    {% else %}
+    <div class="task-list">
+        {% for t in tasks %}
+        <div class="task-card">
+            <div class="task-main">
+                <h3>
+                    {{ t.title }}
+                    <span class="badge {{ t.window_state }}">{{ t.window_text }}</span>
+                    {% if t.status %}<span class="badge status-{{ t.status }}">{{ t.status_text }}</span>{% endif %}
+                </h3>
+                <p class="meta">
+                    题量 {{ t.question_count }} 题 ｜ 总分 {{ t.total_score }} ｜ 限时 {{ t.duration_minutes }} 分钟
+                </p>
+                <p class="meta">
+                    考试时间：{{ t.start_at.strftime('%Y-%m-%d %H:%M') }} ~ {{ t.end_at.strftime('%Y-%m-%d %H:%M') }}
+                </p>
+                {% if t.status == 'grading' %}
+                <p class="meta grading">AI 正在评分（{{ t.ai_progress or 0 }}/{{ t.question_count }}），请稍后刷新</p>
+                {% endif %}
+            </div>
+            <div class="task-actions">
+                {% if t.attempt_id and t.submitted_at %}
+                    <div class="score-line">
+                        AI {{ t.ai_total if t.ai_total is not none else '—' }}
+                        ｜ 教师 {{ t.teacher_total if t.teacher_total is not none else '待终审' }}
+                    </div>
+                    <a class="btn primary" href="{{ url_for('student_exam_task_result', task_id=t.id) }}">查看成绩与评价</a>
+                {% elif t.window_state == 'open' %}
+                    <a class="btn primary" href="{{ url_for('student_exam_task', task_id=t.id) }}">
+                        {{ '继续作答' if t.attempt_id else '开始考试' }}
+                    </a>
+                    <small class="hint">点击后开始计时，限时 {{ t.duration_minutes }} 分钟</small>
+                {% elif t.window_state == 'pending' %}
+                    <button class="btn disabled" disabled>未到考试时间</button>
+                {% else %}
+                    <button class="btn disabled" disabled>{{ t.window_text }}</button>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.wrap { padding: 8px 0 40px; max-width: 1040px; margin: 0 auto; }
+.page-head { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:18px; }
+.page-head h1 { margin:0 0 6px; font-size:24px; }
+.subtitle { color:#5b6b7c; margin:0; font-size:13px; }
+.empty { background:#fff; border:1px dashed #cfdcea; border-radius:14px; padding:40px; text-align:center; color:#5b6b7c; }
+.empty h3 { margin:0 0 8px; color:#1f3b57; }
+.task-list { display:flex; flex-direction:column; gap:14px; }
+.task-card { display:flex; justify-content:space-between; gap:20px; background:#fff; border:1px solid #e5ecf4; border-radius:14px; padding:18px 20px; box-shadow:0 2px 10px rgba(23,43,77,.04); }
+.task-main h3 { margin:0 0 8px; font-size:16px; color:#1f3b57; }
+.meta { margin:2px 0; font-size:12.5px; color:#5b6b7c; }
+.meta.grading { color:#a05a00; }
+.task-actions { display:flex; flex-direction:column; align-items:flex-end; gap:6px; justify-content:center; }
+.score-line { font-size:13px; color:#1f3b57; }
+.badge { font-size:11px; padding:2px 8px; border-radius:999px; margin-left:6px; font-weight:normal; background:#f2f4f7; color:#6b7785; }
+.badge.open { background:#e6f4ea; color:#1f7a3d; }
+.badge.pending { background:#eef3fb; color:#365b9c; }
+.badge.status-ai_graded { background:#fff4e5; color:#a05a00; }
+.badge.status-reviewed { background:#e6f4ea; color:#1f7a3d; }
+.badge.status-grading { background:#eef3fb; color:#365b9c; }
+.btn { display:inline-flex; align-items:center; gap:6px; border:none; cursor:pointer; border-radius:9px; padding:9px 15px; font-size:13px; text-decoration:none; color:#fff; background:#2f6fed; }
+.btn.primary { background:linear-gradient(135deg,#2f6fed,#4f9cff); }
+.btn.ghost { background:#fff; color:#2f6fed; border:1px solid #cfe0f7; }
+.btn.disabled { background:#f2f4f7; color:#98a4b1; cursor:not-allowed; }
+.hint { font-size:11.5px; color:#8b98a6; }
+@media (max-width: 760px) { .task-card { flex-direction:column; } .task-actions { align-items:flex-start; } }
+</style>
+{% endblock %}

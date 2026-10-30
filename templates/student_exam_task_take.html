@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}{{ task.title }} - 在线考试{% endblock %}
+
+{% block content %}
+<div class="take-wrap">
+    <div class="take-head">
+        <div>
+            <h1>{{ task.title }}</h1>
+            <p class="subtitle">共 {{ task.question_count }} 题 ｜ 总分 {{ task.total_score }} ｜ 交卷后由 AI 自动评分，教师终审</p>
+        </div>
+        <div class="timer" id="timer" data-remaining="{{ remaining_seconds }}">
+            <span>剩余时间</span>
+            <strong id="timerText">--:--</strong>
+        </div>
+    </div>
+
+    <form method="post" id="examForm" action="{{ url_for('student_exam_task', task_id=task.id) }}">
+        {% for q in questions %}
+        <section class="q-card">
+            <header>
+                <h2>第 {{ loop.index }} 题
+                    <small>{{ q.type_name }}{% if q.language %} · {{ q.language }}{% endif %}{% if q.difficulty %} · 难度 {{ q.difficulty }}{% endif %}</small>
+                </h2>
+                <span class="q-score">{{ q.score }} 分</span>
+            </header>
+            <div class="q-text">{{ q.question_text }}</div>
+            <textarea name="answer_{{ q.index }}" class="answer" rows="10"
+                      placeholder="在此作答{% if q.language %}（{{ q.language }} 代码或解题说明）{% endif %}">{{ q.saved_answer }}</textarea>
+        </section>
+        {% endfor %}
+
+        <div class="submit-bar">
+            <span id="saveState" class="hint">答案每 25 秒自动暂存</span>
+            <button type="submit" class="btn primary" id="submitBtn">📤 交卷</button>
+        </div>
+    </form>
+</div>
+
+<style>
+.take-wrap { padding: 8px 0 100px; max-width: 960px; margin: 0 auto; }
+.take-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:16px; }
+.take-head h1 { margin:0 0 6px; font-size:23px; }
+.subtitle { color:#5b6b7c; font-size:13px; margin:0; }
+.timer { background:#fff; border:1px solid #e5ecf4; border-radius:12px; padding:10px 16px; text-align:center; min-width:130px; }
+.timer span { display:block; font-size:11.5px; color:#7b8a99; }
+.timer strong { font-size:22px; color:#1f3b57; font-variant-numeric:tabular-nums; }
+.timer.warn strong { color:#c0392b; }
+.q-card { background:#fff; border:1px solid #e5ecf4; border-radius:14px; padding:16px 18px; margin-bottom:14px; }
+.q-card header { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.q-card h2 { margin:0; font-size:15px; color:#1f3b57; }
+.q-card h2 small { font-size:12px; color:#7b8a99; font-weight:normal; margin-left:6px; }
+.q-score { font-size:12.5px; color:#365b9c; background:#eef3fb; border-radius:999px; padding:3px 10px; }
+.q-text { font-size:13.5px; color:#31465c; line-height:1.85; white-space:pre-wrap; margin:12px 0; padding:12px; background:#fbfdff; border-left:3px solid #cfe0f7; border-radius:0 8px 8px 0; }
+.answer { width:100%; padding:12px; border:1px solid #d7e1ec; border-radius:10px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:13px; line-height:1.6; resize:vertical; }
+.submit-bar { position:fixed; left:0; right:0; bottom:0; background:#fff; border-top:1px solid #e5ecf4; padding:12px 24px; display:flex; justify-content:space-between; align-items:center; box-shadow:0 -4px 16px rgba(23,43,77,.06); z-index:50; }
+.btn { display:inline-flex; align-items:center; gap:6px; border:none; cursor:pointer; border-radius:9px; padding:10px 20px; font-size:14px; text-decoration:none; color:#fff; }
+.btn.primary { background:linear-gradient(135deg,#2f6fed,#4f9cff); }
+.hint { font-size:12px; color:#8b98a6; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    const form = document.getElementById('examForm');
+    const timerBox = document.getElementById('timer');
+    const timerText = document.getElementById('timerText');
+    const saveState = document.getElementById('saveState');
+    const submitBtn = document.getElementById('submitBtn');
+    const AUTOSAVE_URL = "{{ url_for('student_exam_task_autosave', task_id=task.id) }}";
+    let remaining = parseInt(timerBox.dataset.remaining || '0', 10);
+    let submitting = false;
+
+    function pad(n) { return n < 10 ? '0' + n : '' + n; }
+
+    function renderTimer() {
+        const h = Math.floor(remaining / 3600);
+        const m = Math.floor((remaining % 3600) / 60);
+        const s = remaining % 60;
+        timerText.textContent = (h > 0 ? h + ':' : '') + pad(m) + ':' + pad(s);
+        if (remaining <= 300) timerBox.classList.add('warn');
+    }
+
+    function collect() {
+        const answers = {};
+        form.querySelectorAll('textarea.answer').forEach(el => {
+            answers[el.name.replace('answer_', '')] = el.value;
+        });
+        return answers;
+    }
+
+    async function autosave() {
+        if (submitting) return;
+        try {
+            const resp = await fetch(AUTOSAVE_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ answers: collect() })
+            });
+            const data = await resp.json().catch(() => ({}));
+            saveState.textContent = data.ok ? ('已暂存 ' + new Date().toLocaleTimeString()) : (data.message || '暂存失败');
+        } catch (err) {
+            saveState.textContent = '暂存失败：网络异常';
+        }
+    }
+
+    function tick() {
+        if (submitting) return;
+        remaining -= 1;
+        if (remaining <= 0) {
+            remaining = 0;
+            renderTimer();
+            submitting = true;
+            saveState.textContent = '时间已到，正在自动交卷…';
+            form.submit();
+            return;
+        }
+        renderTimer();
+    }
+
+    form.addEventListener('submit', function (e) {
+        if (submitting) return;
+        const filled = Object.values(collect()).some(v => v.trim().length > 0);
+        if (!filled) {
+            e.preventDefault();
+            alert('请至少完成一道题后再交卷');
+            return;
+        }
+        if (!confirm('确认交卷？交卷后将不能修改答案。')) {
+            e.preventDefault();
+            return;
+        }
+        submitting = true;
+        submitBtn.disabled = true;
+        submitBtn.textContent = '提交中…';
+    });
+
+    renderTimer();
+    setInterval(tick, 1000);
+    setInterval(autosave, 25000);
+})();
+</script>
+{% endblock %}

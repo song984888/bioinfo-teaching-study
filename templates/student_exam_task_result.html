@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}考试结果 - {{ task.title }}{% endblock %}
+
+{% block content %}
+<div class="result-wrap">
+    <div class="page-head">
+        <div>
+            <h1>{{ task.title }}</h1>
+            <p class="subtitle">
+                共 {{ total_questions }} 题 ｜ 卷面总分 {{ task.total_score }} ｜ 交卷时间 {{ attempt.submitted_at.strftime('%Y-%m-%d %H:%M') if attempt.submitted_at else '—' }}
+                ｜ 状态：<span class="status">{{ status_text }}</span>
+            </p>
+        </div>
+        <div class="head-actions">
+            <a class="btn ghost" href="{{ url_for('student_exam_tasks') }}">← 我的考试</a>
+            <a class="btn ghost" href="{{ url_for('dashboard') }}">学习中心</a>
+        </div>
+    </div>
+
+    {% if attempt.status in ('grading', 'in_progress') %}
+    <div class="notice">
+        <strong>AI 正在评分（{{ attempt.ai_progress or 0 }}/{{ total_questions }}）</strong>
+        <span>页面会自动刷新，请稍候…</span>
+    </div>
+    {% endif %}
+
+    <div class="dual">
+        <section class="eval ai">
+            <h2>🤖 AI 评分<span class="tag">机器初评</span></h2>
+            <div class="big-score">
+                {{ attempt.ai_total if attempt.ai_total is not none else '—' }}<small> / {{ task.total_score }}</small>
+            </div>
+            <p class="comment">{{ attempt.ai_comment or 'AI 评分尚未完成' }}</p>
+            <p class="note">AI 依据参考答案与评分要点给出，仅作为初评结果，最终成绩以教师终审为准。</p>
+        </section>
+
+        <section class="eval teacher">
+            <h2>🧑‍🏫 教师终审<span class="tag">最终成绩</span></h2>
+            {% if attempt.status == 'reviewed' %}
+            <div class="big-score">
+                {{ attempt.teacher_total if attempt.teacher_total is not none else '—' }}<small> / {{ task.total_score }}</small>
+            </div>
+            <p class="comment">{{ attempt.teacher_comment or '教师未填写评语' }}</p>
+            <p class="note">终审时间：{{ attempt.reviewed_at.strftime('%Y-%m-%d %H:%M') if attempt.reviewed_at else '—' }}</p>
+            {% else %}
+            <div class="big-score muted">待终审</div>
+            <p class="comment">教师还没有完成终审评分，终审后这里会显示最终成绩和评语。</p>
+            {% endif %}
+        </section>
+    </div>
+
+    {% if ai_details %}
+    <section class="detail">
+        <h2>逐题评价</h2>
+        {% for item in ai_details %}
+        <div class="q-item">
+            <header>
+                <h3>第 {{ loop.index }} 题 <small>{{ item.type_name }}{% if item.language %} · {{ item.language }}{% endif %}</small></h3>
+                <span class="scores">
+                    AI <strong>{{ item.ai_score }}</strong>/{{ item.max_score }}
+                    {% if attempt.status == 'reviewed' %}
+                    ｜ 教师 <strong>{{ item.teacher_score if item.teacher_score is not none else '—' }}</strong>/{{ item.max_score }}
+                    {% endif %}
+                </span>
+            </header>
+            <div class="q-text">{{ item.question_text }}</div>
+            <details>
+                <summary>我的答案</summary>
+                <pre>{{ item.answer or '（未作答）' }}</pre>
+            </details>
+            <div class="ai-comment"><strong>AI 评价：</strong>{{ item.ai_comment or '无' }}</div>
+        </div>
+        {% endfor %}
+    </section>
+    {% endif %}
+</div>
+
+<style>
+.result-wrap { padding: 8px 0 40px; max-width: 1000px; margin: 0 auto; }
+.page-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:16px; }
+.page-head h1 { margin:0 0 6px; font-size:23px; }
+.subtitle { color:#5b6b7c; font-size:12.5px; margin:0; line-height:1.8; }
+.status { color:#1f7a3d; font-weight:600; }
+.head-actions { display:flex; gap:10px; }
+.notice { background:#fff8e6; border:1px solid #f3e0b0; border-radius:12px; padding:12px 16px; margin-bottom:14px; font-size:13px; color:#8a5b00; display:flex; gap:12px; }
+.dual { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:18px; }
+@media (max-width: 760px) { .dual { grid-template-columns:1fr; } }
+.eval { background:#fff; border:1px solid #e5ecf4; border-radius:14px; padding:18px; }
+.eval.ai { border-top:3px solid #4f9cff; }
+.eval.teacher { border-top:3px solid #2fa36b; }
+.eval h2 { margin:0 0 10px; font-size:16px; color:#1f3b57; display:flex; align-items:center; gap:8px; }
+.tag { font-size:11px; font-weight:normal; background:#f2f4f7; color:#6b7785; border-radius:999px; padding:2px 8px; }
+.big-score { font-size:34px; font-weight:700; color:#1f3b57; line-height:1.2; }
+.big-score small { font-size:15px; color:#7b8a99; font-weight:normal; }
+.big-score.muted { font-size:24px; color:#98a4b1; }
+.comment { font-size:13.5px; color:#41556b; line-height:1.8; margin:8px 0; }
+.note { font-size:12px; color:#8b98a6; margin:0; line-height:1.7; }
+.detail { background:#fff; border:1px solid #e5ecf4; border-radius:14px; padding:18px; }
+.detail h2 { margin:0 0 14px; font-size:16px; color:#1f3b57; }
+.q-item { border-top:1px solid #f1f5f9; padding:14px 0; }
+.q-item:first-of-type { border-top:none; }
+.q-item header { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.q-item h3 { margin:0; font-size:14px; color:#1f3b57; }
+.q-item h3 small { font-size:12px; color:#7b8a99; font-weight:normal; margin-left:6px; }
+.scores { font-size:12.5px; color:#5b6b7c; }
+.scores strong { color:#1f3b57; }
+.q-text { font-size:13px; color:#41556b; line-height:1.8; white-space:pre-wrap; margin:8px 0; }
+details summary { cursor:pointer; font-size:12.5px; color:#365b9c; }
+details pre { background:#f7f9fc; border:1px solid #eef3f8; border-radius:8px; padding:10px; font-size:12.5px; white-space:pre-wrap; word-break:break-word; max-height:300px; overflow:auto; }
+.ai-comment { font-size:13px; color:#41556b; line-height:1.8; background:#fbfdff; border-left:3px solid #cfe0f7; padding:8px 12px; border-radius:0 8px 8px 0; }
+.btn { display:inline-flex; align-items:center; gap:6px; border:none; cursor:pointer; border-radius:9px; padding:8px 14px; font-size:13px; text-decoration:none; color:#fff; }
+.btn.ghost { background:#fff; color:#2f6fed; border:1px solid #cfe0f7; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+{% if attempt.status in ('grading', 'in_progress') %}
+<script>setTimeout(function () { window.location.reload(); }, 6000);</script>
+{% endif %}
+{% endblock %}

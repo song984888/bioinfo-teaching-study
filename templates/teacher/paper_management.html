@@ -57,6 +57,9 @@
                         <a href="{{ url_for('preview_exam_paper', paper_id=paper.id) }}" class="btn-sm primary" title="预览">
                             👁️ 预览
                         </a>
+                        <a href="{{ url_for('publish_exam_task', paper_id=paper.id) }}" class="btn-sm success" title="发布考试">
+                            📤 发布考试
+                        </a>
                         <button onclick="clonePaper({{ paper.id }}, '{{ paper.paper_name }}')" class="btn-sm info" title="克隆">
                             🍝 克隆
                         </button>
@@ -280,6 +283,15 @@ function deletePaper(paperId, paperName) {
 
 .btn-sm.primary:hover {
     background: var(--secondary);
+}
+
+.btn-sm.success {
+    background: #22a06b;
+    color: white;
+}
+
+.btn-sm.success:hover {
+    background: #1b8256;
 }
 
 .btn-sm.danger {

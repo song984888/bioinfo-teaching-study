@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}终审评分 - {{ attempt.student_name }}{% endblock %}
+
+{% block content %}
+<div class="wrap">
+    <div class="page-head">
+        <div>
+            <h1>🧑‍🏫 终审评分</h1>
+            <p class="subtitle">
+                {{ attempt.title }} ｜ {{ attempt.student_name }}（{{ attempt.student_name and attempt.employee_id }}） ｜ 班级：{{ attempt.class_name or '—' }}<br>
+                交卷时间：{{ attempt.submitted_at.strftime('%Y-%m-%d %H:%M') if attempt.submitted_at else '—' }} ｜ 试卷总分：{{ attempt.total_score }}
+            </p>
+        </div>
+        <a class="btn ghost" href="{{ url_for('exam_task_detail', task_id=attempt.task_id) }}">← 返回学生列表</a>
+    </div>
+
+    <div class="ai-summary">
+        <div>
+            <span class="label">AI 评分</span>
+            <strong>{{ attempt.ai_total if attempt.ai_total is not none else '—' }}</strong> / {{ attempt.total_score }}
+            <p>{{ attempt.ai_comment or 'AI 评分尚未生成' }}</p>
+        </div>
+        <div>
+            <span class="label">你的终审分</span>
+            <strong id="finalTotal">0</strong> / {{ attempt.total_score }}
+            <p>逐题给分，总分自动累加；不修改的题目沿用 AI 分数。</p>
+        </div>
+    </div>
+
+    <form method="post" class="review-form">
+        {% for item in ai_details %}
+        <section class="q-card">
+            <header>
+                <h3>第 {{ loop.index }} 题 · {{ item.type_name }}{% if item.language %}（{{ item.language }}）{% endif %}</h3>
+                <span class="q-score">AI {{ item.ai_score }} / {{ item.max_score }}</span>
+            </header>
+            <div class="q-body">
+                <div class="q-text">{{ item.question_text }}</div>
+                <div class="q-answer">
+                    <h4>学生答案</h4>
+                    <pre>{{ item.answer or '（未作答）' }}</pre>
+                </div>
+                <div class="ai-comment">
+                    <h4>AI 评价</h4>
+                    <p>{{ item.ai_comment or '无' }}</p>
+                </div>
+            </div>
+            <footer>
+                <label>教师给分
+                    <input type="number" step="0.5" min="0" max="{{ item.max_score }}"
+                           name="teacher_score_{{ item.index }}" class="score-input"
+                           data-max="{{ item.max_score }}"
+                           value="{{ teacher_scores.get(item.index, item.ai_score) }}">
+                </label>
+                <span class="hint">满分 {{ item.max_score }}</span>
+            </footer>
+        </section>
+        {% endfor %}
+
+        <section class="q-card overall">
+            <h3>终审评语</h3>
+            <textarea name="teacher_comment" rows="4" placeholder="写给学生的最终评价（学生可在成绩页看到 AI 与教师两份评价）">{{ attempt.teacher_comment or '' }}</textarea>
+            <div class="submit-row">
+                <span>最终得分：<strong id="finalTotal2">0</strong> / {{ attempt.total_score }}</span>
+                <button type="submit" class="btn primary">✅ 提交终审</button>
+            </div>
+        </section>
+    </form>
+</div>
+
+<style>
+.wrap { padding: 8px 0 40px; max-width: 1000px; margin: 0 auto; }
+.page-head { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; margin-bottom:16px; }
+.page-head h1 { margin:0 0 8px; font-size:23px; }
+.subtitle { color:#5b6b7c; font-size:12.5px; line-height:1.8; margin:0; }
+.ai-summary { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; }
+.ai-summary > div { background:#fff; border:1px solid #e5ecf4; border-radius:12px; padding:14px 16px; }
+.ai-summary .label { display:block; font-size:12px; color:#7b8a99; margin-bottom:4px; }
+.ai-summary strong { font-size:22px; color:#1f3b57; }
+.ai-summary p { margin:6px 0 0; font-size:12.5px; color:#5b6b7c; }
+.q-card { background:#fff; border:1px solid #e5ecf4; border-radius:14px; padding:16px 18px; margin-bottom:14px; }
+.q-card header { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.q-card h3 { margin:0; font-size:15px; color:#1f3b57; }
+.q-score { font-size:12.5px; color:#365b9c; background:#eef3fb; border-radius:999px; padding:3px 10px; }
+.q-text { font-size:13.5px; color:#31465c; line-height:1.8; white-space:pre-wrap; margin:10px 0 14px; }
+.q-answer h4, .ai-comment h4 { margin:0 0 6px; font-size:12.5px; color:#7b8a99; }
+.q-answer pre { background:#f7f9fc; border:1px solid #eef3f8; border-radius:10px; padding:12px; font-size:12.5px; white-space:pre-wrap; word-break:break-word; max-height:320px; overflow:auto; margin:0 0 12px; }
+.ai-comment p { margin:0 0 10px; font-size:13px; color:#41556b; line-height:1.8; background:#fbfdff; border-left:3px solid #cfe0f7; padding:8px 12px; }
+.q-card footer { display:flex; align-items:center; gap:12px; border-top:1px dashed #e5ecf4; padding-top:12px; }
+.q-card footer label { font-size:12.5px; color:#41556b; display:flex; align-items:center; gap:8px; }
+.score-input { width:90px; padding:7px 9px; border:1px solid #d7e1ec; border-radius:8px; font-size:14px; }
+.overall textarea { width:100%; padding:10px; border:1px solid #d7e1ec; border-radius:10px; font-size:13.5px; resize:vertical; }
+.submit-row { display:flex; justify-content:space-between; align-items:center; margin-top:12px; font-size:13px; color:#41556b; }
+.btn { display:inline-flex; align-items:center; gap:6px; border:none; cursor:pointer; border-radius:9px; padding:8px 14px; font-size:13px; text-decoration:none; color:#fff; background:#2f6fed; }
+.btn.primary { background:linear-gradient(135deg,#2f6fed,#4f9cff); padding:10px 18px; font-size:14px; }
+.btn.ghost { background:#fff; color:#2f6fed; border:1px solid #cfe0f7; }
+.hint { font-size:12px; color:#8b98a6; }
+@media (max-width: 760px) { .ai-summary { grid-template-columns:1fr; } }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    const inputs = Array.from(document.querySelectorAll('.score-input'));
+    const outs = [document.getElementById('finalTotal'), document.getElementById('finalTotal2')];
+    function recalc() {
+        let total = 0;
+        inputs.forEach(el => {
+            const max = parseFloat(el.dataset.max || '0');
+            let v = parseFloat(el.value);
+            if (isNaN(v) || v < 0) v = 0;
+            if (v > max) v = max;
+            total += v;
+        });
+        outs.forEach(o => { if (o) o.textContent = total.toFixed(1).replace(/\.0$/, ''); });
+    }
+    inputs.forEach(el => el.addEventListener('input', recalc));
+    recalc();
+})();
+</script>
+{% endblock %}
