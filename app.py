@@ -2732,26 +2732,6 @@ def exam_with_samples():
        cursor.close()
        conn.close()
 
-
-@app.route('/student/exam')
-def student_exam():
-    if 'user_id' not in session or session['role'] != 'student':
-        return redirect(url_for('login'))
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT * FROM questions 
-        WHERE review_status = 'approved' 
-        ORDER BY RAND() LIMIT 1
-    """)
-    question = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    if not question:
-        flash('当前没有可用题目，请稍后再试', 'warning')
-        return redirect(url_for('dashboard'))
-    return render_template('exam_selection.html')
-
 #模拟考试功能
 @app.route('/student/exam/mock')
 def exam_mock_with_samples():
@@ -2795,26 +2775,6 @@ def exam_mock_with_samples():
        conn.close()
 
 
-@app.route('/student/exam/mock')
-def student_exam_mock():
-    if 'user_id' not in session or session['role'] != 'student':
-        return redirect(url_for('login'))
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT * FROM questions_mock
-        WHERE is_approved = FALSE 
-        ORDER BY RAND() LIMIT 1
-    """)
-    question = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    if not question:
-        flash('当前没有可用题目，请稍后再试', 'warning')
-        return redirect(url_for('dashboard'))
-    return render_template('exam_mock_selection.html')
-
-
 @app.route('/student/exam/mock/select')
 def exam_mock_selection():
     if 'user_id' not in session or session['role'] != 'student':
@@ -2847,6 +2807,7 @@ def exam_mock_selection():
                               topic_descriptions=CONFIG['EXAM_TOPIC'])
     
     except Exception as e:
+        app.logger.exception('加载模拟考试选择页面失败')
         flash(f'加载题目选择失败: {str(e)}', 'danger')
         return redirect(url_for('dashboard'))
     finally:
@@ -3201,6 +3162,7 @@ def exam_selection():
                               topic_descriptions=CONFIG['EXAM_TOPIC'])
     
     except Exception as e:
+        app.logger.exception('加载模拟考试选择页面失败')
         flash(f'加载题目选择失败: {str(e)}', 'danger')
         return redirect(url_for('dashboard'))
     finally:
@@ -3309,6 +3271,7 @@ def exercise_selection():
                               topic_lang_diff_counts=topic_lang_diff_counts)
     
     except Exception as e:
+        app.logger.exception('加载抽题学习选择页面失败')
         flash(f'加载题目选择失败: {str(e)}', 'danger')
         return redirect(url_for('dashboard'))
     finally:

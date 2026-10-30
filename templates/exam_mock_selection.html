@@ -9,6 +9,15 @@
         <p class="subtitle">请选择你想要的题目主题、编程语言和难度</p>
     </div>
 
+    {% set mock_total = topic_counts.values() | sum %}
+    {% if mock_total == 0 %}
+    <div class="empty-mock-notice" style="background:#fff;border:1px solid #e3e8f0;border-radius:14px;padding:32px 24px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,0.04);">
+        <div style="font-size:2.2rem;margin-bottom:8px;">🎯</div>
+        <h3 style="color:#4a69bd;margin:0 0 8px;">模拟题库暂无题目</h3>
+        <p style="color:#888;margin:0 0 18px;">教师尚未导入模拟试题，暂时无法开始模拟考试。你可以先参加在线考试，或稍后再来。</p>
+        <a class="btn primary" href="{{ url_for('exam_selection') }}">前往在线考试</a>
+    </div>
+    {% else %}
     <div class="selection-steps">
         <div class="step active" data-step="1">
             <span class="step-number">1</span>
@@ -89,10 +98,12 @@
             <button type="submit" class="btn primary" id="startBtn" style="display:none;">开始模拟考试</button>
         </div>
     </form>
+    {% endif %}
 </div>
 {% endblock %}
 
 {% block scripts %}
+{% if topic_counts.values() | sum > 0 %}
 <script>
     let currentStep = 1;
     const totalSteps = 3;
@@ -231,5 +242,6 @@
     // 初始化
     updateStepDisplay();
 </script>
+{% endif %}
 
 {% endblock %}

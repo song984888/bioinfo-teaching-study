@@ -29,7 +29,7 @@
         <div class="selection-step active" id="step1">
             <div class="topic-grid">
                 {% for topic in topics %}
-                <div class="topic-card" data-topic="{{ topic }}">
+                <div class="topic-card{% if topic_counts.get(topic, 0) == 0 %} disabled{% endif %}" data-topic="{{ topic }}"{% if topic_counts.get(topic, 0) == 0 %} style="opacity:.45;cursor:not-allowed;"{% endif %}>
                     <div class="topic-icon">
                         {{ topic_icons.get(topic, '📚') }}
                     </div>
@@ -152,6 +152,10 @@
     // 主题选择
     document.querySelectorAll('.topic-card').forEach(card => {
         card.addEventListener('click', function() {
+            if (this.classList.contains('disabled')) {
+                alert('该主题暂无可用题目，请选择其他主题');
+                return;
+            }
             // 移除之前的选择
             document.querySelectorAll('.topic-card').forEach(c => {
                 c.classList.remove('selected');

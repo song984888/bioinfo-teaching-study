@@ -80,6 +80,18 @@
             <h3>📝 抽题学习</h3>
             <p>编程题 + 理论题混合练习</p>
         </a>
+        <a href="{{ url_for('exam_selection') }}" class="card">
+            <h3>🧾 在线考试</h3>
+            <p>按主题/语言/难度抽题作答，AI 自动评分</p>
+        </a>
+        <a href="{{ url_for('exam_mock_selection') }}" class="card">
+            <h3>🎯 模拟考试</h3>
+            <p>考前热身，不计入正式考试记录</p>
+        </a>
+        <a href="{{ url_for('view_grades') }}" class="card">
+            <h3>📈 我的成绩</h3>
+            <p>查看考试成绩、AI 评语与教师复核</p>
+        </a>
         <a href="{{ url_for('student_collections') }}" class="card">
             <h3>💡 学习笔记</h3>
             <p>记录学习心得、收藏概念和文档</p>
