@@ -8,6 +8,8 @@
         <h2>考试记录管理</h2>
     </div>
 
+    {% include "teacher/_exam_records_tabs.html" %}
+
     <!-- 筛选表单 -->
     <div class="filter-section">
         <form method="GET" action="{{ url_for('view_exam_records') }}" class="filter-form">

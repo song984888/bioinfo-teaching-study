@@ -14,8 +14,8 @@
     <div class="empty-mock-notice" style="background:#fff;border:1px solid #e3e8f0;border-radius:14px;padding:32px 24px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,0.04);">
         <div style="font-size:2.2rem;margin-bottom:8px;">🎯</div>
         <h3 style="color:#4a69bd;margin:0 0 8px;">模拟题库暂无题目</h3>
-        <p style="color:#888;margin:0 0 18px;">教师尚未导入模拟试题，暂时无法开始模拟考试。你可以先参加在线考试，或稍后再来。</p>
-        <a class="btn primary" href="{{ url_for('exam_selection') }}">前往在线考试</a>
+        <p style="color:#888;margin:0 0 18px;">教师尚未导入模拟试题，暂时无法开始模拟考试。你可以先参加教师发布的考试，或稍后再来。</p>
+        <a class="btn primary" href="{{ url_for('student_exam_tasks') }}">前往我的考试</a>
     </div>
     {% else %}
     <div class="selection-steps">

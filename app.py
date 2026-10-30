@@ -5203,10 +5203,79 @@ def view_exam_records():
     difficulty = request.args.get('difficulty', '')
     language = request.args.get('language', '')
     review_status = request.args.get('review_status', '')
-    
+    tab = request.args.get('tab', 'single')
+
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    
+
+    # 两个标签页的记录数（用于页签上的角标）
+    cursor.execute("SELECT COUNT(*) AS c FROM exams")
+    single_total = cursor.fetchone()['c'] or 0
+    cursor.execute("""SELECT COUNT(*) AS c FROM exam_attempts
+                       WHERE status IN ('grading', 'ai_graded', 'grading_failed', 'reviewed')""")
+    paper_total = cursor.fetchone()['c'] or 0
+
+    if tab == 'paper':
+        # 教师打开整卷记录时，顺手重排因进程重启中断的评分
+        _recover_stalled_exam_grading(2)
+        # 整卷（试卷制）考试记录：答卷在 exam_attempts，终审入口为 review_exam_attempt
+        pquery = """
+            SELECT a.id, a.status, a.employee_id, a.ai_total, a.teacher_total, a.ai_comment,
+                   a.teacher_comment, a.submitted_at, a.reviewed_at, a.reviewed_by, a.ai_progress,
+                   TIMESTAMPDIFF(MINUTE, a.submitted_at, NOW()) AS waiting_minutes,
+                   t.id AS task_id, t.title, t.paper_name, t.paper_type, t.total_score AS paper_total_score,
+                   t.question_count, t.created_at AS task_created_at,
+                   COALESCE(s.student_name, u.name) AS student_name,
+                   s.class_name
+              FROM exam_attempts a
+              JOIN exam_tasks t ON t.id = a.task_id
+              LEFT JOIN exam_task_students s
+                     ON s.task_id = a.task_id AND s.employee_id = a.employee_id
+              LEFT JOIN users u ON u.employee_id = a.employee_id
+             WHERE a.status IN ('grading', 'ai_graded', 'grading_failed', 'reviewed')
+        """
+        pparams = []
+        if student_name:
+            pquery += " AND COALESCE(s.student_name, u.name) LIKE %s"
+            pparams.append(f"%{student_name}%")
+        if student_id:
+            pquery += " AND a.employee_id LIKE %s"
+            pparams.append(f"%{student_id}%")
+        if start_date:
+            pquery += " AND DATE(a.submitted_at) >= %s"
+            pparams.append(start_date)
+        if end_date:
+            pquery += " AND DATE(a.submitted_at) <= %s"
+            pparams.append(end_date)
+        if review_status == 'reviewed':
+            pquery += " AND a.status = 'reviewed'"
+        elif review_status == 'not_reviewed':
+            pquery += " AND a.status IN ('grading', 'ai_graded', 'grading_failed')"
+        pquery += " ORDER BY a.submitted_at DESC LIMIT 1000"
+
+        cursor.execute(pquery, pparams)
+        paper_records = cursor.fetchall()
+        cursor.execute("""SELECT SUM(status IN ('grading','ai_graded','grading_failed')) AS pending,
+                                 SUM(status = 'reviewed') AS reviewed,
+                                 AVG(ai_total) AS avg_ai
+                            FROM exam_attempts
+                           WHERE status IN ('grading','ai_graded','grading_failed','reviewed')""")
+        pstats = cursor.fetchone() or {}
+        cursor.close()
+        conn.close()
+        return render_template(
+            'teacher/paper_exam_records.html',
+            records=paper_records,
+            request_args=request.args,
+            single_total=single_total,
+            paper_total=paper_total,
+            pending_count=int(pstats.get('pending') or 0),
+            reviewed_count=int(pstats.get('reviewed') or 0),
+            avg_ai=round(float(pstats.get('avg_ai') or 0), 1),
+            status_text=EXAM_ATTEMPT_STATUS_TEXT,
+            tab='paper'
+        )
+
     # 构建基础查询
     query = """
         SELECT e.*, u.name as student_name, u.employee_id, q.topic, q.difficulty, q.language, q.question_text
@@ -5274,7 +5343,10 @@ def view_exam_records():
         records=records,
         all_topics=all_topics,
         all_languages=all_languages,
-        request_args=request.args
+        request_args=request.args,
+        single_total=single_total,
+        paper_total=paper_total,
+        tab='single'
     )
 
 @app.route('/teacher/get_exam_detail/<int:exam_id>')
@@ -10967,6 +11039,13 @@ def ensure_exam_task_schema():
         """)
         if cursor.fetchone()[0] == 0:
             cursor.execute("ALTER TABLE users ADD COLUMN class_name VARCHAR(100) DEFAULT NULL")
+        # 评分认领时间：用于识别线程中断（重启/超时）后遗留的「AI 评分中」答卷并安全重排
+        cursor.execute("""
+            SELECT COUNT(*) FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exam_attempts' AND COLUMN_NAME = 'ai_claim_at'
+        """)
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("ALTER TABLE exam_attempts ADD COLUMN ai_claim_at DATETIME DEFAULT NULL")
         conn.commit()
     except Exception:
         app.logger.exception('初始化试卷考试表失败')
@@ -11036,6 +11115,54 @@ def _exam_window_state(task, attempt=None):
     return 'open', '进行中', int((min(limit, end_at) - now).total_seconds())
 
 
+def _recover_stalled_exam_grading(limit=2):
+    """把长期停在「AI 评分中」的答卷重新排入评分。
+
+    评分跑在 worker 的守护线程里，worker 重启（SIGHUP/超时/崩溃）会把它悄悄杀掉，
+    答卷就会永远停在 grading。这里用 ai_claim_at 做原子认领后重排，多个 worker
+    同时触发也只有一个能真正认领，避免重复调用模型。
+    """
+    conn = None
+    cursor = None
+    requeued = []
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT id, task_id FROM exam_attempts
+             WHERE status = 'grading'
+               AND submitted_at < NOW() - INTERVAL 2 MINUTE
+               AND (ai_claim_at IS NULL OR ai_claim_at < NOW() - INTERVAL 3 MINUTE)
+             ORDER BY submitted_at ASC
+             LIMIT %s
+        """, (limit,))
+        rows = cursor.fetchall()
+        for row in rows:
+            cursor.execute("""
+                UPDATE exam_attempts
+                   SET ai_claim_at = NOW(), ai_progress = 0
+                 WHERE id = %s AND status = 'grading'
+                   AND (ai_claim_at IS NULL OR ai_claim_at < NOW() - INTERVAL 3 MINUTE)
+            """, (row['id'],))
+            if cursor.rowcount == 1:
+                conn.commit()
+                threading.Thread(target=_grade_exam_attempt,
+                                 args=(row['id'], row['task_id']), daemon=True).start()
+                requeued.append(row['id'])
+            else:
+                conn.rollback()
+        if requeued:
+            app.logger.info('重排中断的整卷 AI 评分: %s', requeued)
+    except Exception:
+        app.logger.exception('重排中断的整卷 AI 评分失败')
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+    return requeued
+
+
 def _grade_exam_attempt(attempt_id, task_id):
     """后台线程：逐题调用 AI 评分，写入 ai_detail_json / ai_total / 状态。"""
     conn = None
@@ -11051,6 +11178,8 @@ def _grade_exam_attempt(attempt_id, task_id):
         attempt = cursor.fetchone()
         if not (task and paper and attempt):
             return
+        cursor.execute("UPDATE exam_attempts SET ai_claim_at = NOW() WHERE id = %s", (attempt_id,))
+        conn.commit()
         questions = _paper_questions(paper, task['paper_type'])
         try:
             answers = json.loads(attempt['answers_json'] or '{}')
@@ -11300,6 +11429,48 @@ def exam_task_detail(task_id):
         conn.close()
 
 
+@app.route('/teacher/exam_attempt/<int:attempt_id>/regrade', methods=['POST'])
+def regrade_exam_attempt(attempt_id):
+    """重新触发整卷 AI 评分（用于评分线程中断、或 AI 评分失败的答卷）。"""
+    if not _teacher_required():
+        return redirect(url_for('login'))
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT id, task_id, status FROM exam_attempts WHERE id = %s", (attempt_id,))
+        attempt = cursor.fetchone()
+        if not attempt:
+            flash('答卷不存在', 'danger')
+            return redirect(url_for('view_exam_records', tab='paper'))
+        if attempt['status'] == 'reviewed':
+            flash('该答卷已完成教师终审，无需重新评分', 'warning')
+        elif attempt['status'] == 'grading':
+            # 同一答卷短时间内重复点击，避免并发重复调用模型
+            cursor.execute("""SELECT TIMESTAMPDIFF(SECOND, submitted_at, NOW()) AS waited
+                                FROM exam_attempts WHERE id = %s""", (attempt_id,))
+            waited = (cursor.fetchone() or {}).get('waited') or 0
+            if waited < 120:
+                flash('AI 正在评分中，请稍后刷新查看结果', 'info')
+            else:
+                cursor.execute("UPDATE exam_attempts SET ai_progress = 0 WHERE id = %s", (attempt_id,))
+                conn.commit()
+                threading.Thread(target=_grade_exam_attempt,
+                                 args=(attempt_id, attempt['task_id']), daemon=True).start()
+                flash('已重新提交 AI 评分，请稍后刷新查看', 'info')
+        else:
+            cursor.execute("""UPDATE exam_attempts
+                               SET status = 'grading', ai_progress = 0
+                             WHERE id = %s""", (attempt_id,))
+            conn.commit()
+            threading.Thread(target=_grade_exam_attempt,
+                             args=(attempt_id, attempt['task_id']), daemon=True).start()
+            flash('已重新提交 AI 评分，请稍后刷新查看', 'info')
+    finally:
+        cursor.close()
+        conn.close()
+    return redirect(url_for('view_exam_records', tab='paper'))
+
+
 @app.route('/teacher/exam_attempt/<int:attempt_id>/review', methods=['GET', 'POST'])
 def review_exam_attempt(attempt_id):
     if not _teacher_required():
@@ -11393,6 +11564,7 @@ def close_exam_task(task_id):
 def student_exam_tasks():
     if not _student_required():
         return redirect(url_for('login'))
+    _recover_stalled_exam_grading(1)
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
@@ -11549,6 +11721,8 @@ def student_exam_task_autosave(task_id):
 def student_exam_task_result(task_id):
     if not _student_required():
         return redirect(url_for('login'))
+    # 学生停在结果页等待时，顺手把因进程重启中断的评分重新排队
+    _recover_stalled_exam_grading(1)
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:

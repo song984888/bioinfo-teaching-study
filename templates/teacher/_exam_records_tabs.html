@@ -1,0 +1,62 @@
+{# 考试记录页签：单题考试记录 / 整卷考试记录（被 view_exam_records 与 paper_exam_records 共用） #}
+<div class="records-tabs">
+    <a class="records-tab {% if tab|default('single') != 'paper' %}active{% endif %}"
+       href="{{ url_for('view_exam_records') }}">
+        单题考试记录<span class="records-tab-count">{{ single_total|default(0) }}</span>
+    </a>
+    <a class="records-tab {% if tab|default('single') == 'paper' %}active{% endif %}"
+       href="{{ url_for('view_exam_records', tab='paper') }}">
+        整卷考试记录<span class="records-tab-count">{{ paper_total|default(0) }}</span>
+    </a>
+    <a class="records-tab-link" href="{{ url_for('exam_tasks') }}">考试任务管理 →</a>
+</div>
+<style>
+.records-tabs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 2px solid #e9ecef;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+.records-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 16px;
+    color: #495057;
+    text-decoration: none;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    font-size: 15px;
+    font-weight: 500;
+    margin-bottom: -2px;
+}
+.records-tab:hover { background-color: #f1f3f5; }
+.records-tab.active {
+    color: #007bff;
+    background-color: #fff;
+    border-color: #e9ecef;
+    border-bottom: 2px solid #007bff;
+}
+.records-tab-count {
+    display: inline-block;
+    min-width: 22px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background-color: #e9ecef;
+    color: #495057;
+    font-size: 12px;
+    text-align: center;
+}
+.records-tab.active .records-tab-count { background-color: #cfe3ff; color: #0056b3; }
+.records-tab-link {
+    margin-left: auto;
+    color: #6c757d;
+    text-decoration: none;
+    font-size: 13px;
+    padding: 6px 10px;
+}
+.records-tab-link:hover { color: #007bff; }
+</style>

@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+
+{% block title %}考试记录管理 · 整卷考试{% endblock %}
+
+{% block content %}
+<div class="exam-records-container">
+    <div class="page-header">
+        <h2>考试记录管理</h2>
+    </div>
+
+    {% include "teacher/_exam_records_tabs.html" %}
+
+    <!-- 概览 -->
+    <div class="paper-stats">
+        <div class="stat-card">
+            <div class="stat-value">{{ paper_total }}</div>
+            <div class="stat-label">整卷答卷总数</div>
+        </div>
+        <div class="stat-card warn">
+            <div class="stat-value">{{ pending_count }}</div>
+            <div class="stat-label">待终审</div>
+        </div>
+        <div class="stat-card ok">
+            <div class="stat-value">{{ reviewed_count }}</div>
+            <div class="stat-label">已终审</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ avg_ai }}</div>
+            <div class="stat-label">AI 平均分</div>
+        </div>
+    </div>
+
+    <!-- 筛选 -->
+    <div class="filter-section">
+        <form method="GET" action="{{ url_for('view_exam_records') }}" class="filter-form">
+            <input type="hidden" name="tab" value="paper">
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label for="student_name">学生姓名:</label>
+                    <input type="text" id="student_name" name="student_name"
+                           value="{{ request_args.get('student_name', '') }}" placeholder="输入学生姓名">
+                </div>
+                <div class="filter-group">
+                    <label for="student_id">学号:</label>
+                    <input type="text" id="student_id" name="student_id"
+                           value="{{ request_args.get('student_id', '') }}" placeholder="输入学号">
+                </div>
+                <div class="filter-group">
+                    <label for="start_date">起始日期:</label>
+                    <input type="date" id="start_date" name="start_date"
+                           value="{{ request_args.get('start_date', '') }}">
+                </div>
+                <div class="filter-group">
+                    <label for="end_date">结束日期:</label>
+                    <input type="date" id="end_date" name="end_date"
+                           value="{{ request_args.get('end_date', '') }}">
+                </div>
+                <div class="filter-group">
+                    <label for="review_status">评阅状态:</label>
+                    <select id="review_status" name="review_status">
+                        <option value="">全部</option>
+                        <option value="not_reviewed" {% if request_args.get('review_status') == 'not_reviewed' %}selected{% endif %}>待终审</option>
+                        <option value="reviewed" {% if request_args.get('review_status') == 'reviewed' %}selected{% endif %}>已终审</option>
+                    </select>
+                </div>
+                <div class="filter-actions">
+                    <button type="submit" class="btn primary">应用筛选</button>
+                    <a href="{{ url_for('view_exam_records', tab='paper') }}" class="btn">清除筛选</a>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    {% set active_filters = [] %}
+    {% if request_args.get('student_name') %}{% set _ = active_filters.append('姓名: ' ~ request_args.get('student_name')) %}{% endif %}
+    {% if request_args.get('student_id') %}{% set _ = active_filters.append('学号: ' ~ request_args.get('student_id')) %}{% endif %}
+    {% if request_args.get('start_date') %}{% set _ = active_filters.append('起始日期: ' ~ request_args.get('start_date')) %}{% endif %}
+    {% if request_args.get('end_date') %}{% set _ = active_filters.append('结束日期: ' ~ request_args.get('end_date')) %}{% endif %}
+    {% if request_args.get('review_status') %}{% set _ = active_filters.append('评阅状态: ' ~ ('已终审' if request_args.get('review_status') == 'reviewed' else '待终审')) %}{% endif %}
+    {% if active_filters %}
+    <div class="active-filters">
+        {% for f in active_filters %}<span class="filter-tag">{{ f }}</span>{% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="results-count">
+        找到 {{ records|length }} 条整卷考试记录
+    </div>
+
+    {% if not records %}
+        <div class="empty-state">
+            <p>还没有学生提交整卷考试</p>
+            <p class="empty-hint">发布考试后，学生交卷并完成 AI 评分，答卷会出现在这里，可直接进入终审评分。</p>
+            <a href="{{ url_for('exam_tasks') }}" class="btn primary">前往考试任务管理</a>
+        </div>
+    {% else %}
+        <div class="records-table-container">
+            <table class="records-table">
+                <thead>
+                    <tr>
+                        <th>学生</th>
+                        <th>考试</th>
+                        <th>交卷时间</th>
+                        <th>AI 得分</th>
+                        <th>终审得分</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for record in records %}
+                    <tr>
+                        <td>
+                            <div class="student-name">{{ record.student_name or '未知学生' }}</div>
+                            <div class="student-meta">{{ record.employee_id }}{% if record.class_name %} · {{ record.class_name }}{% endif %}</div>
+                        </td>
+                        <td>
+                            <div>{{ record.title }}</div>
+                            <div class="student-meta">
+                                {{ record.paper_name }} · {{ record.paper_type }} 卷 · {{ record.question_count }} 题 · 满分 {{ record.paper_total_score }}
+                                <a href="{{ url_for('exam_task_detail', task_id=record.task_id) }}" class="inline-link">任务详情</a>
+                            </div>
+                        </td>
+                        <td>{{ record.submitted_at.strftime('%Y-%m-%d %H:%M') if record.submitted_at else '—' }}</td>
+                        <td>
+                            {% if record.ai_total is not none %}
+                                <strong>{{ '%.0f'|format(record.ai_total) }}</strong> / {{ record.paper_total_score }}
+                            {% elif record.status == 'grading' %}
+                                <span class="muted">评分中 {{ record.ai_progress }}/{{ record.question_count }}</span>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td>
+                            {% if record.teacher_total is not none %}
+                                <strong>{{ '%.0f'|format(record.teacher_total) }}</strong> / {{ record.paper_total_score }}
+                            {% else %}<span class="muted">—</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if record.status == 'reviewed' %}
+                                <span class="status-badge status-reviewed">已终审</span>
+                                {% if record.reviewed_at %}<div class="student-meta">{{ record.reviewed_at.strftime('%Y-%m-%d %H:%M') }}</div>{% endif %}
+                            {% elif record.status == 'grading' %}
+                                <span class="status-badge status-grading">AI 评分中</span>
+                            {% elif record.status == 'grading_failed' %}
+                                <span class="status-badge status-failed">AI 评分失败</span>
+                            {% else %}
+                                <span class="status-badge status-pending">待终审</span>
+                            {% endif %}
+                        </td>
+                        <td class="actions">
+                            {% if record.status == 'ai_graded' %}
+                                <a class="btn small primary" href="{{ url_for('review_exam_attempt', attempt_id=record.id) }}">终审评分</a>
+                            {% elif record.status == 'reviewed' %}
+                                <a class="btn small" href="{{ url_for('review_exam_attempt', attempt_id=record.id) }}">查看 / 修改终审</a>
+                            {% elif record.status == 'grading_failed' %}
+                                <a class="btn small primary" href="{{ url_for('review_exam_attempt', attempt_id=record.id) }}">人工终审</a>
+                                <form method="POST" action="{{ url_for('regrade_exam_attempt', attempt_id=record.id) }}" class="inline-form">
+                                    <button type="submit" class="btn small">重新 AI 评分</button>
+                                </form>
+                            {% elif record.waiting_minutes is not none and record.waiting_minutes >= 2 %}
+                                <div class="muted">已等待 {{ record.waiting_minutes }} 分钟，评分线程可能已中断</div>
+                                <form method="POST" action="{{ url_for('regrade_exam_attempt', attempt_id=record.id) }}" class="inline-form">
+                                    <button type="submit" class="btn small primary">重新 AI 评分</button>
+                                </form>
+                            {% else %}
+                                <span class="muted">等待 AI 评分完成</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+</div>
+
+<style>
+.exam-records-container { padding: 20px; }
+.page-header { margin-bottom: 20px; }
+.paper-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+.stat-card {
+    flex: 1 1 150px;
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 14px 16px;
+}
+.stat-card.warn { background-color: #fff8e6; border-color: #ffe0a3; }
+.stat-card.ok { background-color: #eefaf3; border-color: #bfe8d2; }
+.stat-value { font-size: 24px; font-weight: 600; color: #212529; }
+.stat-label { font-size: 13px; color: #6c757d; margin-top: 4px; }
+.filter-section { background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+.filter-form { display: flex; flex-direction: column; gap: 15px; }
+.filter-row { display: flex; flex-wrap: wrap; gap: 15px; align-items: end; }
+.filter-group { display: flex; flex-direction: column; gap: 5px; min-width: 150px; }
+.filter-group label { font-weight: 500; font-size: 14px; color: #495057; }
+.filter-group select,
+.filter-group input { padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; }
+.filter-actions { display: flex; gap: 10px; margin-left: auto; }
+.active-filters { margin-bottom: 15px; padding: 10px; background-color: #e9ecef; border-radius: 4px; }
+.filter-tag { display: inline-block; margin-right: 8px; padding: 4px 8px; background-color: #fff; border-radius: 4px; font-size: 13px; color: #495057; }
+.results-count { margin-bottom: 15px; color: #495057; font-weight: 500; }
+.records-table-container { overflow-x: auto; }
+.records-table { width: 100%; border-collapse: collapse; background-color: #fff; }
+.records-table th,
+.records-table td { padding: 12px; border-bottom: 1px solid #e9ecef; text-align: left; font-size: 14px; vertical-align: top; }
+.records-table th { background-color: #f8f9fa; color: #495057; font-weight: 600; }
+.records-table tbody tr:hover { background-color: #f8f9fa; }
+.student-name { font-weight: 600; color: #212529; }
+.student-meta { font-size: 12px; color: #6c757d; margin-top: 3px; }
+.inline-link { color: #007bff; text-decoration: none; margin-left: 6px; }
+.inline-link:hover { text-decoration: underline; }
+.muted { color: #adb5bd; font-size: 13px; }
+.status-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+.status-pending { background-color: #fff3cd; color: #856404; }
+.status-grading { background-color: #e2e3e5; color: #41464b; }
+.status-failed { background-color: #f8d7da; color: #842029; }
+.status-reviewed { background-color: #d4edda; color: #155724; }
+.actions { white-space: nowrap; }
+.inline-form { display: inline-block; margin-left: 6px; }
+.btn { display: inline-block; padding: 6px 12px; background-color: #6c757d; color: #fff; text-decoration: none; border-radius: 4px; font-size: 14px; border: none; cursor: pointer; }
+.btn.small { padding: 4px 10px; font-size: 13px; }
+.btn.primary { background-color: #007bff; }
+.btn:hover { opacity: 0.9; }
+.empty-state { text-align: center; padding: 40px; color: #6c757d; background-color: #f8f9fa; border-radius: 8px; }
+.empty-state .empty-hint { font-size: 13px; margin: 8px 0 16px; }
+</style>
+{% endblock %}
