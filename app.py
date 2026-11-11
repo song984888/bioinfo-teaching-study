@@ -8088,8 +8088,25 @@ def student_document_view(kb_id, doc_id):
     # 记录文档浏览（30 分钟去重，避免刷新虚高）
     _student_log('document_view_logs', session['user_id'], kb_id,
                  {'document_id': doc_id, 'document_title': doc.get('title')}, dedupe=True)
+    meta = _build_doc_metadata(doc)
+    # 文献完整引用信息：写入学习笔记 literature_json，供学习笔记页渲染引用卡片
+    doc_lit = {
+        'title': (doc.get('title') or '').strip(),
+        'authors': (meta.get('authors') or '').strip(),
+        'journal': (meta.get('journal') or '').strip(),
+        'year': str(meta.get('pub_year') or '').strip(),
+        'doi': (meta.get('doi') or '').strip(),
+        'pmid': (meta.get('pmid') or '').strip(),
+        'url': (meta.get('source_url') or '').strip()
+               or '/student/knowledge_bases/%s/document/%s' % (kb_id, doc_id),
+        'abstract': (doc.get('content') or '').strip()[:1500],
+    }
+    # 预转义成脚本安全的 JSON（转义 < > & 与非 ASCII），避免内联进 <script> 时被 HTML 转义破坏
+    doc_lit_json = (json.dumps(doc_lit, ensure_ascii=True)
+                    .replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026'))
     return render_template('student/document_view.html', document=doc, kb_id=kb_id,
-                           kb_name=doc.get('kb_name'), doc_meta=_build_doc_metadata(doc))
+                           kb_name=doc.get('kb_name'), doc_meta=meta, doc_lit=doc_lit,
+                           doc_lit_json=doc_lit_json)
 
 
 @app.route('/student/knowledge_bases/<int:kb_id>/document/<int:doc_id>/pdf')
@@ -8425,7 +8442,7 @@ def thought_chains_api():
     conn = get_db_connection(); cur = conn.cursor(dictionary=True)
     try:
         if request.method == 'GET':
-            cur.execute("SELECT id, title, question, visibility, status, created_at, updated_at FROM thought_chains WHERE owner_id=%s ORDER BY updated_at DESC, created_at DESC", (owner_id,))
+            cur.execute("SELECT id, title, question, visibility, status, knowledge_base_id, created_at, updated_at FROM thought_chains WHERE owner_id=%s ORDER BY updated_at DESC, created_at DESC", (owner_id,))
             return jsonify({'success': True, 'chains': cur.fetchall()})
         data = request.get_json(silent=True) or {}
         title = (data.get('title') or '').strip()[:255]

@@ -63,10 +63,35 @@
             <h6 class="mb-0"><i class="fas fa-lightbulb text-warning"></i> 文献阅读中的想法</h6>
         </div>
         <div class="card-body py-2">
-            <textarea id="docNoteContent" class="form-control form-control-sm mb-2" rows="2" 
+            <div class="mb-2 small">
+                <label class="me-4" style="cursor:pointer">
+                    <input type="radio" name="docNoteMode" value="note" checked onchange="toggleDocNoteMode()">
+                    传统学习笔记 <span class="text-muted">（默认，按文献归档）</span>
+                </label>
+                <label style="cursor:pointer">
+                    <input type="radio" name="docNoteMode" value="chain" onchange="toggleDocNoteMode()">
+                    加入思维链 <span class="text-muted">（作为链条中的一个想法节点）</span>
+                </label>
+            </div>
+
+            <div id="docNoteChainBox" class="mb-2" style="display:none">
+                <select id="docNoteChain" class="form-select form-select-sm mb-1" onchange="onDocChainChange()">
+                    <option value="">— 选择思维链 —</option>
+                </select>
+                <select id="docNoteConcept" class="form-select form-select-sm">
+                    <option value="">— 可选：关联概念 —</option>
+                </select>
+                <div class="form-text" id="docNoteChainHint">还没有思维链？可先到「学习笔记 · 思维链」新建一条。</div>
+            </div>
+
+            <textarea id="docNoteContent" class="form-control form-control-sm mb-2" rows="2"
                 placeholder="阅读这篇文献时有什么想法和启发？记录到学习笔记..."></textarea>
+
+            <div id="docNoteLitPreview" class="mb-2 p-2 rounded small"
+                 style="background:rgba(255,193,7,.12);border-left:3px solid #ffc107"></div>
+
             <button class="btn btn-warning btn-sm" onclick="saveDocNote()">
-                <i class="fas fa-save"></i> 保存想法（关联文献）
+                <i class="fas fa-save"></i> 保存想法（完整引用该文献）
             </button>
             <span id="docNoteStatus" class="ms-2 small text-muted"></span>
         </div>
@@ -77,20 +102,128 @@
 
 {% block scripts %}
 <script>
-// 文献笔记保存（关联到文档本身，通过知识库概念间接关联）
+// 文献完整引用信息（标题/作者/期刊/年份/DOI/PMID/全文链接），由后端按文档元数据生成
+const DOC_LIT = {{ doc_lit_json|safe }};
+
+function docNoteMode() {
+    const el = document.querySelector('input[name="docNoteMode"]:checked');
+    return el ? el.value : 'note';
+}
+
+// 传统笔记（默认）/ 加入思维链 切换
+function toggleDocNoteMode() {
+    document.getElementById('docNoteChainBox').style.display = (docNoteMode() === 'chain') ? 'block' : 'none';
+}
+
+function docEscape(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+        return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+    });
+}
+
+// 保存前预览：将随笔记完整引用的文献信息
+function renderDocLitPreview() {
+    const box = document.getElementById('docNoteLitPreview');
+    if (!DOC_LIT || (!DOC_LIT.title && !DOC_LIT.url)) { box.style.display = 'none'; return; }
+    const meta = [DOC_LIT.authors, DOC_LIT.journal, DOC_LIT.year].filter(Boolean).map(docEscape).join(' · ');
+    const ids = [DOC_LIT.doi ? 'DOI: ' + DOC_LIT.doi : '', DOC_LIT.pmid ? 'PMID: ' + DOC_LIT.pmid : '']
+        .filter(Boolean).map(docEscape).join('　');
+    let html = '<div class="text-muted">保存后将在「学习笔记」中完整引用该文献</div>';
+    html += '<div><strong>📄 ' + docEscape(DOC_LIT.title || '未命名文献') + '</strong></div>';
+    if (meta) html += '<div class="text-muted">' + meta + '</div>';
+    if (ids) html += '<div class="text-muted">' + ids + '</div>';
+    if (DOC_LIT.url) html += '<div><a href="' + docEscape(DOC_LIT.url) + '" target="_blank" rel="noopener">🔗 查看全文链接</a></div>';
+    box.innerHTML = html;
+}
+
+// 载入该生已有思维链（供“加入思维链”选择）
+async function loadDocChains() {
+    try {
+        const resp = await fetch('/api/thought-chains');
+        const data = await resp.json();
+        const chains = (data.chains || []).filter(function(c) { return c.status === 'active'; });
+        const sel = document.getElementById('docNoteChain');
+        sel.innerHTML = '<option value="">— 选择思维链 —</option>';
+        chains.forEach(function(c) {
+            sel.innerHTML += '<option value="' + c.id + '" data-kb="' + (c.knowledge_base_id || '') + '">'
+                + docEscape(c.title) + '</option>';
+        });
+        document.getElementById('docNoteChainHint').style.display = chains.length ? 'none' : 'block';
+    } catch (e) {}
+}
+
+// 按所选思维链所属知识库过滤可选概念
+async function onDocChainChange() {
+    const sel = document.getElementById('docNoteChain');
+    const opt = sel.options[sel.selectedIndex];
+    const kbId = opt ? opt.getAttribute('data-kb') : '';
+    const conceptSel = document.getElementById('docNoteConcept');
+    conceptSel.innerHTML = '<option value="">— 可选：关联概念 —</option>';
+    if (!kbId) return;
+    try {
+        const resp = await fetch('/api/thought-chain-concepts');
+        const data = await resp.json();
+        (data.concepts || []).filter(function(c) { return String(c.knowledge_base_id) === String(kbId); })
+            .forEach(function(c) {
+                conceptSel.innerHTML += '<option value="' + c.concept_id + '">' + docEscape(c.concept_name) + '</option>';
+            });
+    } catch (e) {}
+}
+
 async function saveDocNote() {
     const content = document.getElementById('docNoteContent').value.trim();
     if (!content) { alert('请输入你的想法'); return; }
-    const resp = await fetch('/api/student/note', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            target_type: 'document', target_id: {{ document.id }},
-            content: content, tags: '文献阅读,' + '{{ document.title|e }}'
-        })
-    });
-    const data = await resp.json();
-    document.getElementById('docNoteStatus').textContent = data.success ? '✓ 想法已保存到学习笔记' : '保存失败';
-    if (data.success) document.getElementById('docNoteContent').value = '';
+    const mode = docNoteMode();
+    const statusEl = document.getElementById('docNoteStatus');
+    try {
+        // 思维链：作为想法节点写入，同时保留文献标题、摘要、全文链接
+        if (mode === 'chain') {
+            const chainId = parseInt(document.getElementById('docNoteChain').value, 10) || 0;
+            if (!chainId) { alert('请选择要加入的思维链'); return; }
+            const conceptId = parseInt(document.getElementById('docNoteConcept').value, 10) || 0;
+            const resp = await fetch('/api/thought-chains/' + chainId + '/ideas', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    content: content,
+                    thought_type: 'question',
+                    confidence: 3,
+                    trigger_concept_id: conceptId || null,
+                    literature: {title: DOC_LIT.title, abstract: DOC_LIT.abstract, url: DOC_LIT.url}
+                })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                statusEl.textContent = '✓ 想法已加入思维链（含文献标题、摘要与全文链接）';
+                document.getElementById('docNoteContent').value = '';
+            } else {
+                statusEl.textContent = '保存失败：' + (data.message || '未知错误');
+            }
+            return;
+        }
+
+        // 传统学习笔记（默认）：正文只存想法，文献信息结构化写入 literature_json
+        const resp = await fetch('/api/student/note', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                target_type: 'document', target_id: {{ document.id }},
+                content: content,
+                tags: '文献阅读',
+                literature: DOC_LIT
+            })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            statusEl.textContent = '✓ 已保存为传统学习笔记，并完整引用文献信息';
+            document.getElementById('docNoteContent').value = '';
+        } else {
+            statusEl.textContent = '保存失败：' + (data.message || '未知错误');
+        }
+    } catch (e) {
+        statusEl.textContent = '保存失败：' + e.message;
+    }
 }
+
+renderDocLitPreview();
+loadDocChains();
 </script>
 {% endblock %}
