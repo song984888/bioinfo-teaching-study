@@ -8670,18 +8670,45 @@ def api_student_note():
                         target_id = row[0]
                         break
             if not target_id:
-                target_id = 0  # 概念名解析失败，保持0
+                # 概念名解析失败时不再静默写入 target_id=0：那会生成挂不上任何概念的孤儿笔记
+                return jsonify({'success': False,
+                                'message': '未找到关联概念，请先选择要归档的概念'}), 400
         
+        try:
+            target_id = int(target_id or 0)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'target_id 不合法'}), 400
+
         # 如果有 parent_note_id，从父笔记继承 target_type/target_id
+        # 父笔记必须属于当前用户，否则拒绝（避免把笔记挂到他人笔记树下）
         if parent_note_id:
             cur.execute("SELECT target_type, target_id FROM student_notes WHERE id=%s AND student_id=%s",
                         (parent_note_id, student_id))
             parent = cur.fetchone()
-            if parent:
-                target_type = target_type or parent[0]
-                target_id = target_id or parent[1]
+            if not parent:
+                return jsonify({'success': False, 'message': '父笔记不存在或无权限'}), 400
+            target_type = target_type or parent[0]
+            target_id = target_id or parent[1]
         if not target_type:
             target_type = 'idea'  # 独立灵感笔记
+        if target_type not in ('concept', 'document', 'idea'):
+            return jsonify({'success': False, 'message': '笔记类型不合法'}), 400
+
+        # 目标存在性校验：概念必须挂在文档上、文档必须挂在知识库上，
+        # 保证每条笔记都能顺着 概念→文档→知识库 找到归属，不产生孤儿笔记
+        if target_type == 'concept':
+            cur.execute("""SELECT c.id FROM knowledge_concepts c
+                           JOIN knowledge_documents d ON d.id=c.knowledge_document_id
+                           JOIN knowledge_bases kb ON kb.id=d.knowledge_base_id
+                           WHERE c.id=%s""", (target_id,))
+            if not cur.fetchone():
+                return jsonify({'success': False, 'message': '关联概念不存在或未挂到知识库'}), 400
+        elif target_type == 'document':
+            cur.execute("""SELECT d.id FROM knowledge_documents d
+                           JOIN knowledge_bases kb ON kb.id=d.knowledge_base_id
+                           WHERE d.id=%s""", (target_id,))
+            if not cur.fetchone():
+                return jsonify({'success': False, 'message': '关联文献不存在或未挂到知识库'}), 400
 
         if parent_note_id:
             # 思路延续：始终新增（不覆盖父笔记）
