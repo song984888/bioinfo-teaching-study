@@ -88,7 +88,24 @@ def ensure_thought_chain_stage1_schema():
             existing = {row[0] for row in cur.fetchall()}
             for name, definition in columns:
                 if name not in existing:
-                    cur.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+                    try:
+                        cur.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+                    except mysql.connector.errors.ProgrammingError as e:
+                        # 1060 = 列已存在：多 worker 同时启动时并发 ALTER 的竞态
+                        if getattr(e, 'errno', None) != 1060:
+                            raise
+        # 学习笔记的文献结构化引用（标题/作者/期刊/年份/DOI/PMID/全文链接），
+        # 不再把文献信息塞进 content 正文里靠 --- 分隔符解析
+        cur.execute(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() "
+            "AND TABLE_NAME='student_notes' AND COLUMN_NAME='literature_json'"
+        )
+        if cur.fetchone()[0] == 0:
+            try:
+                cur.execute("ALTER TABLE student_notes ADD COLUMN literature_json LONGTEXT NULL")
+            except mysql.connector.errors.ProgrammingError as e:
+                if getattr(e, 'errno', None) != 1060:  # 1060: 多 worker 并发 ALTER 已加过该列
+                    raise
         conn.commit()
     finally:
         cur.close()
@@ -8603,6 +8620,21 @@ def api_student_note():
     content = (data.get('content') or '').strip()
     parent_note_id = data.get('parent_note_id')
     tags_str = (data.get('tags') or '').strip()[:255] or None
+    # 文献结构化引用：标题/作者/期刊/年份/DOI/PMID/全文链接，单独存 JSON，
+    # 学习笔记页据此渲染成完整的文献引用卡片（标题不截断、链接可点）
+    literature = data.get('literature') or {}
+    literature_json = None
+    if isinstance(literature, dict) and (str(literature.get('title') or '').strip() or str(literature.get('url') or '').strip()):
+        literature_json = json.dumps({
+            'title': str(literature.get('title') or '').strip()[:500],
+            'authors': str(literature.get('authors') or '').strip()[:500],
+            'journal': str(literature.get('journal') or '').strip()[:255],
+            'year': str(literature.get('year') or '').strip()[:20],
+            'doi': str(literature.get('doi') or '').strip()[:200],
+            'pmid': str(literature.get('pmid') or '').strip()[:50],
+            'url': str(literature.get('url') or '').strip()[:1000],
+            'abstract': str(literature.get('abstract') or '').strip()[:2000],
+        }, ensure_ascii=False)
     if not content:
         return jsonify({'success': False, 'message': '内容不能为空'}), 400
     student_id = session['user_id']
@@ -8637,15 +8669,15 @@ def api_student_note():
         if parent_note_id:
             # 思路延续：始终新增（不覆盖父笔记）
             cur.execute(
-                "INSERT INTO student_notes (student_id, target_type, target_id, content, parent_note_id, tags) "
-                "VALUES (%s,%s,%s,%s,%s,%s)",
-                (student_id, target_type, target_id, content, parent_note_id, tags_str))
+                "INSERT INTO student_notes (student_id, target_type, target_id, content, parent_note_id, tags, literature_json) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                (student_id, target_type, target_id, content, parent_note_id, tags_str, literature_json))
         else:
             # 根笔记：始终新增（不同时间的想法各自独立，不互相覆盖）
             cur.execute(
-                "INSERT INTO student_notes (student_id, target_type, target_id, content, tags) "
-                "VALUES (%s,%s,%s,%s,%s)",
-                (student_id, target_type or 'concept', target_id, content, tags_str))
+                "INSERT INTO student_notes (student_id, target_type, target_id, content, tags, literature_json) "
+                "VALUES (%s,%s,%s,%s,%s,%s)",
+                (student_id, target_type or 'concept', target_id, content, tags_str, literature_json))
         conn.commit()
         return jsonify({'success': True, 'message': '笔记已保存'})
     except Exception as e:
@@ -8713,7 +8745,7 @@ def student_collections():
         # 根笔记（非回复）+ 灵感笔记
         cur.execute("""
             SELECT sn.id AS note_id, sn.content, sn.target_type, sn.target_id,
-                   sn.updated_at, sn.tags, sn.parent_note_id,
+                   sn.updated_at, sn.tags, sn.parent_note_id, sn.literature_json,
                    CASE WHEN sn.target_type='concept' THEN c.concept_name
                         WHEN sn.target_type='document' THEN kd2.title
                         WHEN sn.target_type='idea' THEN '灵感笔记' END AS target_name
@@ -8832,7 +8864,7 @@ def student_collections():
             chain['idea_count'] = len(ideas)
             thought_chains.append(chain)
         cur.execute("""
-            SELECT sn.content, sn.updated_at, sn.target_type, sn.target_id,
+            SELECT sn.id, sn.content, sn.updated_at, sn.target_type, sn.target_id, sn.tags, sn.literature_json,
                    CASE WHEN sn.target_type='concept' THEN c.concept_name
                         WHEN sn.target_type='document' THEN kd.title
                         ELSE '灵感笔记' END AS target_name
@@ -8843,6 +8875,35 @@ def student_collections():
             ORDER BY sn.updated_at DESC, sn.id DESC
         """, (student_id,))
         legacy_notes = cur.fetchall()
+        # 传统笔记：优先用结构化 literature_json 渲染完整文献引用（标题/作者/期刊/年份/DOI/PMID/全文链接），
+        # 同时兼容历史笔记里「字段: 值 + --- + 想法」的纯文本格式，正文只展示学生自己的想法
+        for note in legacy_notes:
+            lit = None
+            idea_text = note.get('content') or ''
+            raw_lit = note.get('literature_json')
+            if raw_lit:
+                try:
+                    parsed = json.loads(raw_lit) if isinstance(raw_lit, str) else raw_lit
+                    if parsed and (parsed.get('title') or parsed.get('url')):
+                        lit = parsed
+                except (ValueError, TypeError):
+                    lit = None
+            if lit is None and '\n---\n' in idea_text:
+                meta_part, _, idea_part = idea_text.partition('\n---\n')
+                parsed = {}
+                for line in meta_part.split('\n'):
+                    key, sep, val = line.partition(': ')
+                    if not sep:
+                        continue
+                    field = {'文献': 'title', '作者': 'authors', '期刊': 'journal', '年份': 'year',
+                             'DOI': 'doi', 'PMID': 'pmid', '全文': 'url'}.get(key.strip())
+                    if field:
+                        parsed[field] = val.strip()
+                if parsed.get('title') or parsed.get('url'):
+                    lit = parsed
+                    idea_text = idea_part.strip()
+            note['lit'] = lit
+            note['idea_text'] = idea_text
         stats = {'chain_count': 0, 'knowledge_base_count': 0, 'concept_count': 0, 'idea_count': 0, 'active_30_days': 0, 'type_counts': {key: 0 for key in type_labels}}
         cur.execute("SELECT COUNT(*) AS chain_count, COUNT(DISTINCT knowledge_base_id) AS knowledge_base_count, COUNT(DISTINCT trigger_concept_id) AS concept_count FROM thought_chains WHERE owner_id=%s", (student_id,))
         summary = cur.fetchone()

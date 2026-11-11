@@ -384,12 +384,19 @@
       <div><h2>💡 记录想法到学习笔记</h2><div class="sub" id="noteModalSub">将文献启发的灵感关联到概念</div></div>
       <button class="modal-close" onclick="closeNoteModal()">✕</button>
     </div>
+    <style>
+      .note-mode { display: flex; gap: .45rem; align-items: baseline; margin: .35rem 0; cursor: pointer; }
+      .note-mode-hint { color: #8b949e; font-size: .78rem; }
+      .note-lit-preview { margin-top: .55rem; border-left: 3px solid #a371f7; padding: .5rem .65rem; background: rgba(163,113,247,.08); border-radius: 6px; font-size: .8rem; line-height: 1.55; }
+      .note-lit-preview a { color: #58a6ff; word-break: break-all; }
+    </style>
     <div class="modal-body">
       <div class="exp-section">
-        <label>保存到思维链（可选）</label>
-        <select id="noteChainSelect" style="width:100%;padding:0.6rem 0.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text)">
-          <option value="">保存为传统学习笔记</option>
-        </select>
+        <h3>保存方式</h3>
+        <label class="note-mode"><input type="radio" name="noteSaveMode" value="note" checked onchange="toggleNoteMode()"> <span>传统学习笔记 <span class="note-mode-hint">（默认；按概念归档，在学习笔记中查看）</span></span></label>
+        <label class="note-mode"><input type="radio" name="noteSaveMode" value="chain" onchange="toggleNoteMode()"> <span>加入思维链 <span class="note-mode-hint">（作为链条想法节点，可继续推演）</span></span></label>
+      </div>
+      <div class="exp-section" id="noteModeNote">
         <h3>选择关联概念</h3>
         <select id="noteConceptKbSelect" style="width:100%;padding:0.6rem 0.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);margin-bottom:0.6rem">
           <option value="">— 先选择知识库 —</option>
@@ -398,10 +405,14 @@
           <option value="">— 加载中 —</option>
         </select>
       </div>
-      <div class="exp-section">
-        <h3>记录想法</h3>
-        <label for="noteThoughtType">笔记类型</label>
-        <select id="noteThoughtType" style="width:100%;padding:0.6rem 0.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);margin-bottom:0.6rem">
+      <div class="exp-section" id="noteModeChain" style="display:none">
+        <h3>选择思维链</h3>
+        <select id="noteChainSelect" style="width:100%;padding:0.6rem 0.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text)">
+          <option value="">— 选择思维链 —</option>
+        </select>
+        <p class="note-mode-hint" id="noteChainEmpty" style="display:none;margin:.4rem 0 0">还没有思维链，可先到「学习笔记 · 思维链」新建一条。</p>
+        <label for="noteThoughtType" style="display:block;margin-top:.6rem">想法类型</label>
+        <select id="noteThoughtType" style="width:100%;padding:0.6rem 0.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text)">
           <option value="question">疑问</option>
           <option value="hypothesis">假设</option>
           <option value="inference">推论</option>
@@ -410,7 +421,11 @@
           <option value="reflection" selected>反思</option>
           <option value="conclusion">结论</option>
         </select>
+      </div>
+      <div class="exp-section">
+        <h3>记录想法</h3>
         <textarea id="noteContent" style="width:100%;min-height:100px;padding:0.6rem 0.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);resize:vertical" placeholder="这篇文献给你什么启发？..."></textarea>
+        <div id="noteLitPreview" class="note-lit-preview" style="display:none"></div>
       </div>
       <div class="exp-section" style="display:flex;gap:0.5rem;justify-content:flex-end">
         <button class="btn btn-secondary" onclick="closeNoteModal()">取消</button>
@@ -817,13 +832,21 @@ function openNoteModal(idx) {
   if (!article) return;
   document.getElementById('noteModalSub').textContent = '文献: ' + (article.title || 'Untitled').substring(0, 50);
   document.getElementById('noteContent').value = '';
+  // 每次打开都默认「传统学习笔记」，并显示将被完整引用的文献信息
+  var defaultMode = document.querySelector('input[name="noteSaveMode"][value="note"]');
+  if (defaultMode) defaultMode.checked = true;
+  toggleNoteMode();
+  renderNoteLitPreview(article);
   document.getElementById('noteModal').style.display = 'flex';
   fetch('/api/thought-chains').then(function(resp) { return resp.json(); }).then(function(data) {
     var chainSel = document.getElementById('noteChainSelect');
-    chainSel.innerHTML = '<option value="">保存为传统学习笔记</option>';
-    (data.chains || []).filter(function(c) { return c.status === 'active'; }).forEach(function(c) {
+    var chains = (data.chains || []).filter(function(c) { return c.status === 'active'; });
+    chainSel.innerHTML = '<option value="">— 选择思维链 —</option>';
+    chains.forEach(function(c) {
       chainSel.innerHTML += '<option value="' + c.id + '">' + escapeHtml(c.title) + '</option>';
     });
+    var emptyHint = document.getElementById('noteChainEmpty');
+    if (emptyHint) emptyHint.style.display = chains.length ? 'none' : 'block';
   }).catch(function() {});
   loadNoteConcepts().then(function() {
     // 自动匹配检索关键词到概念下拉
@@ -844,61 +867,105 @@ function closeNoteModal() {
   document.getElementById('noteModal').style.display = 'none';
 }
 
+function noteSaveMode() {
+  var el = document.querySelector('input[name="noteSaveMode"]:checked');
+  return el ? el.value : 'note';
+}
+
+// 传统笔记 / 思维链 两种保存方式切换（默认传统笔记）
+function toggleNoteMode() {
+  var mode = noteSaveMode();
+  var noteBox = document.getElementById('noteModeNote');
+  var chainBox = document.getElementById('noteModeChain');
+  if (noteBox) noteBox.style.display = (mode === 'chain') ? 'none' : 'block';
+  if (chainBox) chainBox.style.display = (mode === 'chain') ? 'block' : 'none';
+}
+
+// 组装文献完整引用信息：标题 / 作者 / 期刊 / 年份 / DOI / PMID / 全文链接
+function articleLiterature(article) {
+  var journal = '';
+  try { journal = (article.journalInfo && article.journalInfo.journal && article.journalInfo.journal.title) || article.journalTitle || ''; } catch (e) { journal = article.journalTitle || ''; }
+  return {
+    title: article.title || '',
+    authors: article.authorString || '',
+    journal: journal,
+    year: article.pubYear ? String(article.pubYear) : '',
+    doi: article.doi || '',
+    pmid: String(article.pmid || article.id || ''),
+    url: articleSourceUrl(article) || '',
+    abstract: article.abstractText || ''
+  };
+}
+
+function renderNoteLitPreview(article) {
+  var box = document.getElementById('noteLitPreview');
+  if (!box) return;
+  var lit = articleLiterature(article);
+  if (!lit.title && !lit.url) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  var meta = [];
+  if (lit.authors) meta.push(escapeHtml(lit.authors));
+  if (lit.journal) meta.push(escapeHtml(lit.journal));
+  if (lit.year) meta.push(escapeHtml(lit.year));
+  if (lit.doi) meta.push('DOI: ' + escapeHtml(lit.doi));
+  if (lit.pmid) meta.push('PMID: ' + escapeHtml(lit.pmid));
+  var html = '<div class="note-mode-hint">保存时会完整引用这篇文献</div>';
+  html += '<div style="margin-top:2px"><strong>📄 ' + escapeHtml(lit.title || '未命名文献') + '</strong></div>';
+  if (meta.length) html += '<div class="note-mode-hint">' + meta.join(' · ') + '</div>';
+  if (lit.url) html += '<div><a href="' + escapeHtml(lit.url) + '" target="_blank" rel="noopener">🔗 查看全文链接</a></div>';
+  box.innerHTML = html;
+  box.style.display = 'block';
+}
+
 async function submitNote() {
-  var conceptVal = document.getElementById('noteConceptSelect').value;
   var content = document.getElementById('noteContent').value.trim();
-  if (!conceptVal) { alert('请选择关联概念'); return; }
   if (!content) { alert('请输入你的想法'); return; }
   var article = articles[currentNoteArticleIdx];
   if (!article) { closeNoteModal(); return; }
-  var parts = conceptVal.split('|');
-  var conceptId = parseInt(parts[0]) || 0;
-  var conceptName = parts[1] || '';
-
-  // 构建文献元数据信息
-  var articleMeta = [];
-  if (article.title) articleMeta.push('文献: ' + article.title);
-  if (article.journalInfo?.journal?.title || article.journalTitle) 
-    articleMeta.push('期刊: ' + (article.journalInfo?.journal?.title || article.journalTitle));
-  if (article.pubYear) articleMeta.push('年份: ' + article.pubYear);
-  if (article.authorString) articleMeta.push('作者: ' + article.authorString);
-  if (article.doi) articleMeta.push('DOI: ' + article.doi);
-  if (article.pmid || article.id) articleMeta.push('PMID: ' + (article.pmid || article.id));
-  var sourceUrl = articleSourceUrl(article);
-  if (sourceUrl) articleMeta.push('全文: ' + sourceUrl);
-  
-  var fullContent = (articleMeta.length ? articleMeta.join('\n') + '\n\n---\n\n' : '') + content;
-  var tags = '文献检索,' + conceptName + ',' + (article.title || '').substring(0, 30);
+  var mode = noteSaveMode();
+  var lit = articleLiterature(article);
 
   try {
-    var chainId = parseInt(document.getElementById('noteChainSelect').value, 10) || 0;
-    if (chainId) {
+    if (mode === 'chain') {
+      var chainId = parseInt(document.getElementById('noteChainSelect').value, 10) || 0;
+      if (!chainId) { alert('请选择要加入的思维链'); return; }
       var ideaResp = await fetch('/api/thought-chains/' + chainId + '/ideas', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-          content: content, thought_type: document.getElementById('noteThoughtType').value, confidence: 3,
-          trigger_concept_id: conceptId,
-          literature: {title: article.title || '', abstract: article.abstractText || '', url: sourceUrl || ''}
+          content: content,
+          thought_type: document.getElementById('noteThoughtType').value,
+          confidence: 3,
+          literature: {title: lit.title, abstract: lit.abstract, url: lit.url}
         })
       });
       var ideaData = await ideaResp.json();
       if (!ideaData.success) { alert('保存失败: ' + (ideaData.message || '未知错误')); return; }
       closeNoteModal();
-      alert('✓ 想法已添加到思维链，并已保存文献标题、摘要和全文链接！');
+      alert('✓ 想法已加入思维链，已保存文献标题、摘要和全文链接');
       return;
     }
+
+    // 传统学习笔记（默认）：按概念归档，文献信息结构化写入 notes.literature_json
+    var conceptVal = document.getElementById('noteConceptSelect').value;
+    if (!conceptVal) { alert('请选择关联概念（传统学习笔记按概念归档）'); return; }
+    var parts = conceptVal.split('|');
+    var conceptId = parseInt(parts[0]) || 0;
+    var conceptName = parts[1] || '';
+    var tagList = ['文献阅读'];
+    if (conceptName) tagList.push(conceptName);
+    if (lit.title) tagList.push(lit.title.substring(0, 40));
     var resp = await fetch('/api/student/note', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         target_type: 'concept', target_id: conceptId,
-        content: fullContent,
-        tags: tags
+        content: content,
+        tags: tagList.join(','),
+        literature: lit
       })
     });
     var data = await resp.json();
     if (data.success) {
       closeNoteModal();
-      alert('✓ 想法已保存到学习笔记！可在首页 学习笔记 查看。');
+      alert('✓ 已保存为传统学习笔记，并完整引用文献信息（可在 学习笔记 查看）');
     } else {
       alert('保存失败: ' + (data.message || '未知错误'));
     }
